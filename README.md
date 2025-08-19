@@ -211,12 +211,18 @@ ThreadSchedule is designed with thread safety in mind:
 
 ## Platform Support
 
-Currently supports Linux x86_64. Features used:
+**Supported Platforms:**
+- Linux x86_64 (fully tested)
+- Linux ARM64 (should work, not extensively tested)
+- Other Linux architectures (should work, untested)
 
+**Features used:**
 - `pthread_setname_np` for thread naming
 - `sched_setscheduler` for scheduling policies  
 - `pthread_setaffinity_np` for CPU affinity
 - `setpriority`/`getpriority` for nice values
+
+All these APIs are POSIX-compliant or Linux-standard and should be available across different CPU architectures. The library doesn't use architecture-specific assembly or intrinsics.
 
 ## Contributing
 
