@@ -1,0 +1,314 @@
+#pragma once
+
+#include "concepts.hpp"
+#include <algorithm>
+#include <optional>
+#include <sched.h>
+#include <sstream>
+#include <string>
+#include <sys/resource.h>
+#include <system_error>
+#include <vector>
+
+namespace threadschedule
+{
+
+/**
+ * @brief Enumeration of available scheduling policies
+ */
+enum class SchedulingPolicy
+{
+    OTHER = SCHED_OTHER, ///< Standard round-robin time-sharing
+    FIFO  = SCHED_FIFO, ///< First in, first out
+    RR    = SCHED_RR, ///< Round-robin
+    BATCH = SCHED_BATCH, ///< For batch style execution
+    IDLE  = SCHED_IDLE, ///< For very low priority background tasks
+#ifdef SCHED_DEADLINE
+    DEADLINE = SCHED_DEADLINE ///< Real-time deadline scheduling
+#endif
+};
+
+/**
+ * @brief Thread priority wrapper with validation
+ */
+class ThreadPriority
+{
+  public:
+    constexpr explicit ThreadPriority(int priority = 0)
+        : priority_(
+              std::clamp(
+                  priority,
+                  min_priority,
+                  max_priority
+              )
+          )
+    {
+    }
+
+    constexpr int value() const noexcept
+    {
+        return priority_;
+    }
+    constexpr bool is_valid() const noexcept
+    {
+        return priority_ >= min_priority && priority_ <= max_priority;
+    }
+
+    // Factory methods for common priorities
+    static constexpr ThreadPriority lowest()
+    {
+        return ThreadPriority(min_priority);
+    }
+    static constexpr ThreadPriority normal()
+    {
+        return ThreadPriority(0);
+    }
+    static constexpr ThreadPriority highest()
+    {
+        return ThreadPriority(max_priority);
+    }
+
+    // Comparison operators
+    bool operator==(const ThreadPriority &other) const
+    {
+        return priority_ == other.priority_;
+    }
+    bool operator!=(const ThreadPriority &other) const
+    {
+        return priority_ != other.priority_;
+    }
+    bool operator<(const ThreadPriority &other) const
+    {
+        return priority_ < other.priority_;
+    }
+    bool operator<=(const ThreadPriority &other) const
+    {
+        return priority_ <= other.priority_;
+    }
+    bool operator>(const ThreadPriority &other) const
+    {
+        return priority_ > other.priority_;
+    }
+    bool operator>=(const ThreadPriority &other) const
+    {
+        return priority_ >= other.priority_;
+    }
+
+    std::string to_string() const
+    {
+        std::ostringstream oss;
+        oss << "ThreadPriority(" << priority_ << ")";
+        return oss.str();
+    }
+
+  private:
+    static constexpr int min_priority = -20;
+    static constexpr int max_priority = 19;
+    int                  priority_;
+};
+
+/**
+ * @brief CPU affinity management
+ */
+class ThreadAffinity
+{
+  public:
+    ThreadAffinity()
+    {
+        CPU_ZERO(&cpuset_);
+    }
+
+    explicit ThreadAffinity(const std::vector<int> &cpus) : ThreadAffinity()
+    {
+        for (int cpu : cpus)
+        {
+            add_cpu(cpu);
+        }
+    }
+
+    void add_cpu(int cpu)
+    {
+        if (cpu >= 0 && cpu < CPU_SETSIZE)
+        {
+            CPU_SET(cpu, &cpuset_);
+        }
+    }
+
+    void remove_cpu(int cpu)
+    {
+        if (cpu >= 0 && cpu < CPU_SETSIZE)
+        {
+            CPU_CLR(cpu, &cpuset_);
+        }
+    }
+
+    bool has_cpu(int cpu) const
+    {
+        return cpu >= 0 && cpu < CPU_SETSIZE && CPU_ISSET(cpu, &cpuset_);
+    }
+
+    void clear()
+    {
+        CPU_ZERO(&cpuset_);
+    }
+
+    std::vector<int> get_cpus() const
+    {
+        std::vector<int> cpus;
+        for (int i = 0; i < CPU_SETSIZE; ++i)
+        {
+            if (CPU_ISSET(i, &cpuset_))
+            {
+                cpus.push_back(i);
+            }
+        }
+        return cpus;
+    }
+
+    const cpu_set_t &native_handle() const
+    {
+        return cpuset_;
+    }
+
+    std::string to_string() const
+    {
+        auto               cpus = get_cpus();
+        std::ostringstream oss;
+        oss << "ThreadAffinity({";
+        for (size_t i = 0; i < cpus.size(); ++i)
+        {
+            if (i > 0)
+                oss << ", ";
+            oss << cpus[i];
+        }
+        oss << "})";
+        return oss.str();
+    }
+
+  private:
+    cpu_set_t cpuset_;
+};
+
+/**
+ * @brief Simple result type as std::expected replacement
+ */
+template <typename T, typename E> class result
+{
+  public:
+    result(const T &value) : has_value_(true)
+    {
+        new (&value_) T(value);
+    }
+
+    result(const E &error) : has_value_(false)
+    {
+        new (&error_) E(error);
+    }
+
+    ~result()
+    {
+        if (has_value_)
+        {
+            value_.~T();
+        }
+        else
+        {
+            error_.~E();
+        }
+    }
+
+    bool has_value() const
+    {
+        return has_value_;
+    }
+    const T &value() const
+    {
+        return value_;
+    }
+    const E &error() const
+    {
+        return error_;
+    }
+
+  private:
+    bool has_value_;
+    union {
+        T value_;
+        E error_;
+    };
+};
+
+/**
+ * @brief Scheduler parameter utilities
+ */
+class SchedulerParams
+{
+  public:
+    static result<
+        sched_param,
+        std::error_code>
+    create_for_policy(
+        SchedulingPolicy policy,
+        ThreadPriority   priority
+    )
+    {
+        sched_param param{};
+
+        const int policy_int = static_cast<int>(policy);
+        const int min_prio   = sched_get_priority_min(policy_int);
+        const int max_prio   = sched_get_priority_max(policy_int);
+
+        if (min_prio == -1 || max_prio == -1)
+        {
+            return std::make_error_code(std::errc::invalid_argument);
+        }
+
+        param.sched_priority = std::clamp(priority.value(), min_prio, max_prio);
+        return param;
+    }
+
+    static result<
+        int,
+        std::error_code>
+    get_priority_range(SchedulingPolicy policy)
+    {
+        const int policy_int = static_cast<int>(policy);
+        const int min_prio   = sched_get_priority_min(policy_int);
+        const int max_prio   = sched_get_priority_max(policy_int);
+
+        if (min_prio == -1 || max_prio == -1)
+        {
+            return std::make_error_code(std::errc::invalid_argument);
+        }
+
+        return max_prio - min_prio;
+    }
+};
+
+/**
+ * @brief String conversion utilities
+ */
+std::string to_string(SchedulingPolicy policy)
+{
+    switch (policy)
+    {
+    case SchedulingPolicy::OTHER:
+        return "OTHER";
+    case SchedulingPolicy::FIFO:
+        return "FIFO";
+    case SchedulingPolicy::RR:
+        return "RR";
+    case SchedulingPolicy::BATCH:
+        return "BATCH";
+    case SchedulingPolicy::IDLE:
+        return "IDLE";
+#ifdef SCHED_DEADLINE
+    case SchedulingPolicy::DEADLINE:
+        return "DEADLINE";
+#endif
+    default:
+        return "UNKNOWN";
+    }
+}
+
+} // namespace threadschedule
