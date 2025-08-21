@@ -3,6 +3,7 @@
 #include "concepts.hpp"
 #include "scheduler_policy.hpp"
 #include <chrono>
+#include <optional>
 #include <string>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
