@@ -29,6 +29,7 @@ if [[ ! -f "${BENCHMARK_DIR}/threadpool_basic_benchmarks" ]]; then
     echo "  cd build && cmake --build . --target threadpool_basic_benchmarks"
     echo "  cd build && cmake --build . --target threadpool_throughput_benchmarks"
     echo "  cd build && cmake --build . --target threadpool_memory_benchmarks"
+    echo "  cd build && cmake --build . --target threadpool_resampling_benchmarks"
     exit 1
 fi
 
@@ -67,6 +68,15 @@ echo "======================================"
     --benchmark_filter="BM_CacheFriendly.*|BM_CacheUnfriendly.*"
 
 echo ""
+echo "4. Running Image Resampling Benchmarks (Your Specific Workload)..."
+echo "===================================================================="
+echo "Simulating: Producer -> Queue -> Heavy Resampling -> Output Queue"
+"${BENCHMARK_DIR}/threadpool_resampling_benchmarks" \
+    --benchmark_min_time=1.0s \
+    --benchmark_counters_tabular=true \
+    --benchmark_filter="BM_Resampling_.*4Core.*|BM_Resampling_PoolComparison.*"
+
+echo ""
 echo "Benchmark Suite Complete!"
 echo "========================="
 echo ""
@@ -78,4 +88,10 @@ echo ""
 echo "To run specific benchmarks:"
 echo "  ./build/benchmarks/threadpool_basic_benchmarks --benchmark_filter=\".*HighPerformancePool.*\""
 echo "  ./build/benchmarks/threadpool_throughput_benchmarks --benchmark_filter=\".*Scalability.*\""  
-echo "  ./build/benchmarks/threadpool_memory_benchmarks --benchmark_filter=\".*NUMA.*\"" 
+echo "  ./build/benchmarks/threadpool_memory_benchmarks --benchmark_filter=\".*NUMA.*\""
+echo ""
+echo "For your specific image resampling workload:"
+echo "  ./build/benchmarks/threadpool_resampling_benchmarks --benchmark_filter=\".*4Core.*\""
+echo "  ./build/benchmarks/threadpool_resampling_benchmarks --benchmark_filter=\".*RealTimeVideo.*\""
+echo "  ./build/benchmarks/threadpool_resampling_benchmarks --benchmark_filter=\".*PoolComparison.*\""
+echo "  ./build/benchmarks/threadpool_resampling_benchmarks --benchmark_filter=\".*QueueDepth.*\"" 
