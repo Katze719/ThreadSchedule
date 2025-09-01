@@ -23,7 +23,8 @@
  * - Type-safe interfaces
  */
 
-namespace threadschedule {
+namespace threadschedule
+{
 
 /**
  * @brief Main namespace for all thread scheduling functionality
@@ -31,6 +32,8 @@ namespace threadschedule {
 namespace ts = threadschedule;
 
 // Re-export main types for convenience
+using ts::FastThreadPool;
+using ts::HighPerformancePool;
 using ts::JThreadWrapper;
 using ts::PThreadWrapper;
 using ts::SchedulingPolicy;
