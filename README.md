@@ -14,6 +14,55 @@ A modern C++23 header-only library for advanced thread management on Linux syste
 - 📊 **Monitoring**: Built-in statistics and thread information utilities
 - 🔒 **RAII**: Automatic resource management with exception safety
 
+## Quick Integration
+
+ThreadSchedule is designed for zero-friction integration into existing projects:
+
+### 1. Add to your project
+```bash
+# In your project root
+mkdir -p dependencies
+cd dependencies
+git clone https://github.com/Katze719/ThreadSchedule.git
+```
+
+### 2. Update CMakeLists.txt
+```cmake
+# Add ThreadSchedule (header-only, builds nothing extra)
+add_subdirectory(dependencies/ThreadSchedule)
+
+add_executable(your_app src/main.cpp)
+target_link_libraries(your_app PRIVATE ThreadSchedule::ThreadSchedule)
+```
+
+### 3. Start using
+```cpp
+#include <threadschedule/threadschedule.hpp>
+
+int main() {
+    using namespace threadschedule;
+    
+    // High-performance pool for heavy computing (e.g., image processing)
+    HighPerformancePool pool(4);
+    pool.configure_threads("worker");
+    pool.distribute_across_cpus();
+    
+    auto future = pool.submit([]() {
+        // Your heavy computation here
+        return process_image();
+    });
+    
+    auto result = future.get();
+    return 0;
+}
+```
+
+**That's it!** 🎉 No compilation of ThreadSchedule needed - it's header-only.
+
+**What gets built:** Only your app + ThreadSchedule headers. No examples, tests, or benchmarks.
+
+---
+
 ## Requirements
 
 - Linux operating system
