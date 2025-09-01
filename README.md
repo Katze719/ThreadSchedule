@@ -10,9 +10,58 @@ A modern C++23 header-only library for advanced thread management on Linux syste
 - 📛 **Thread Naming**: Set human-readable names for threads
 - ⚡ **Priority Control**: Manage thread priorities and scheduling policies
 - 🎯 **CPU Affinity**: Control which CPUs threads run on
-- 🏊 **Thread Pool**: High-performance thread pool with advanced features
+- 🏊 **High-Performance Thread Pool**: Work-stealing thread pool optimized for 10k+ tasks/second
 - 📊 **Monitoring**: Built-in statistics and thread information utilities
 - 🔒 **RAII**: Automatic resource management with exception safety
+
+## Quick Integration
+
+ThreadSchedule is designed for zero-friction integration into existing projects:
+
+### 1. Add to your project
+```bash
+# In your project root
+mkdir -p dependencies
+cd dependencies
+git clone https://github.com/Katze719/ThreadSchedule.git
+```
+
+### 2. Update CMakeLists.txt
+```cmake
+# Add ThreadSchedule (header-only, builds nothing extra)
+add_subdirectory(dependencies/ThreadSchedule)
+
+add_executable(your_app src/main.cpp)
+target_link_libraries(your_app PRIVATE ThreadSchedule::ThreadSchedule)
+```
+
+### 3. Start using
+```cpp
+#include <threadschedule/threadschedule.hpp>
+
+int main() {
+    using namespace threadschedule;
+    
+    // High-performance pool for heavy computing (e.g., image processing)
+    HighPerformancePool pool(4);
+    pool.configure_threads("worker");
+    pool.distribute_across_cpus();
+    
+    auto future = pool.submit([]() {
+        // Your heavy computation here
+        return process_image();
+    });
+    
+    auto result = future.get();
+    return 0;
+}
+```
+
+**That's it!** 🎉 No compilation of ThreadSchedule needed - it's header-only.
+
+**What gets built:** Only your app + ThreadSchedule headers. No examples, tests, or benchmarks.
+
+---
 
 ## Requirements
 
@@ -89,24 +138,82 @@ worker.set_cancel_state(true);
 worker.set_cancel_type(false); // Deferred cancellation
 ```
 
-### Thread Pool
+### Thread Pools
 
-High-performance thread pool with advanced scheduling:
+The library provides two thread pool implementations for different use cases:
+
+#### ThreadPool (Simple)
+For general-purpose applications with moderate task loads (< 1000 tasks/second):
 
 ```cpp
-ThreadPool pool(8); // 8 worker threads
-pool.configure_threads("worker", SchedulingPolicy::OTHER, ThreadPriority::normal());
+ThreadPool pool(4);
+pool.configure_threads("worker");
 
-// Submit tasks
+// Simple task submission
 auto future = pool.submit([]() { return 42; });
 int result = future.get();
 
-// Parallel execution
+// Range processing
+std::vector<Task> tasks = { /* ... */ };
+auto futures = pool.submit_range(tasks.begin(), tasks.end());
+```
+
+#### HighPerformancePool (Work-Stealing)
+For high-frequency task submission (10k+ tasks/second):
+
+```cpp
+HighPerformancePool pool(8); // 8 worker threads
+pool.configure_threads("worker", SchedulingPolicy::OTHER, ThreadPriority::normal());
+pool.distribute_across_cpus(); // Distribute threads across CPUs
+
+// Submit individual tasks
+auto future = pool.submit([]() { return 42; });
+int result = future.get();
+
+// High-throughput batch processing
+std::vector<std::function<void()>> tasks;
+for (int i = 0; i < 10000; ++i) {
+    tasks.emplace_back([i]() { /* work */ });
+}
+auto futures = pool.submit_batch(tasks.begin(), tasks.end());
+
+// Optimized parallel algorithms
 std::vector<int> data = {1, 2, 3, 4, 5};
 pool.parallel_for_each(data.begin(), data.end(), [](int& x) {
     x *= 2;
 });
+
+// Performance monitoring
+auto stats = pool.get_statistics();
+std::cout << "Tasks/second: " << stats.tasks_per_second << std::endl;
+std::cout << "Work stealing ratio: " << (stats.stolen_tasks * 100.0 / stats.completed_tasks) << "%" << std::endl;
 ```
+
+#### Performance Optimizations
+
+The thread pool includes several optimizations for high-frequency workloads:
+
+- **Work-Stealing Architecture**: Each worker thread has its own queue, can steal from others
+- **Lock-Free Fast Path**: Minimal synchronization for common operations
+- **Cache-Friendly Design**: Memory layout optimized for CPU cache efficiency
+- **Batch Processing**: Submit multiple tasks with single API call
+- **Adaptive Load Balancing**: Automatic distribution across worker threads
+- **Performance Metrics**: Built-in monitoring and statistics
+
+#### Choosing the Right Thread Pool
+
+**Use ThreadPool when:**
+- Task submission rate < 1000 tasks/second
+- Simple, straightforward task processing needed
+- Lower memory overhead is important
+- Debugging and understanding the code is a priority
+
+**Use HighPerformancePool when:**
+- Task submission rate > 10,000 tasks/second
+- Need maximum throughput and low latency
+- Working with CPU-bound, short-duration tasks (< 100μs)
+- Can afford slightly higher memory overhead
+- Performance monitoring and work-stealing statistics are valuable
 
 ### Scheduling Policies
 
@@ -168,13 +275,18 @@ auto policy = ThreadInfo::get_current_policy();
 auto priority = ThreadInfo::get_current_priority();
 ```
 
-### Global Thread Pool
+### Global Thread Pools
 
 ```cpp
-// Use singleton thread pool
+// Use singleton thread pool (simple)
 auto future = GlobalThreadPool::submit(task_function);
+auto range_futures = GlobalThreadPool::submit_range(tasks.begin(), tasks.end());
 
-// Parallel algorithms
+// Use singleton high-performance pool
+auto hp_future = GlobalHighPerformancePool::submit(task_function);
+auto batch_futures = GlobalHighPerformancePool::submit_batch(tasks.begin(), tasks.end());
+
+// Parallel algorithms (uses GlobalThreadPool by default)
 std::vector<int> data = {1, 2, 3, 4, 5};
 parallel_for_each(data, [](int& x) { x *= 2; });
 ```
@@ -199,6 +311,46 @@ make pthread_example
 - **Exception Safety**: Thread creation failures throw exceptions with detailed messages
 - **Lock-free Operations**: Minimal locking in thread pool implementation
 - **CPU Distribution**: Built-in methods for optimal CPU distribution
+
+### High-Performance Tuning
+
+For applications requiring 10,000+ tasks per second:
+
+```cpp
+HighPerformancePool pool(std::thread::hardware_concurrency());
+
+// 1. Configure for high performance
+pool.configure_threads("worker", SchedulingPolicy::OTHER, ThreadPriority::normal());
+pool.distribute_across_cpus();
+
+// 2. Use batch processing when possible
+std::vector<Task> batch;
+// ... fill batch ...
+auto futures = pool.submit_batch(batch.begin(), batch.end());
+
+// 3. Keep tasks lightweight (target < 100μs per task)
+pool.submit([]() {
+    // Fast, CPU-bound work only
+    volatile int x = 0;
+    for (int i = 0; i < 1000; ++i) x += i;
+});
+
+// 4. Monitor performance
+auto stats = pool.get_statistics();
+if (stats.stolen_tasks * 100.0 / stats.completed_tasks > 20.0) {
+    // High work stealing ratio might indicate load imbalance
+    // Consider adjusting task granularity
+}
+```
+
+**Performance Tips:**
+
+- **Task Size**: Keep individual tasks small (< 100μs) for best load balancing
+- **Batch Submission**: Use `submit_batch()` for submitting many tasks at once
+- **Work Stealing Ratio**: Monitor ratio; < 20% indicates good load balance
+- **CPU Affinity**: Use `distribute_across_cpus()` for CPU-bound workloads
+- **Thread Count**: Usually `hardware_concurrency()` works best
+- **Avoid I/O**: Use thread pool for CPU-bound tasks; use async I/O for I/O-bound tasks
 
 ## Thread Safety
 

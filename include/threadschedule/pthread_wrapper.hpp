@@ -6,6 +6,7 @@
 #include <exception>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <pthread.h>
 #include <string>
 
