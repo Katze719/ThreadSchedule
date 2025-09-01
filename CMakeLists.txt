@@ -9,6 +9,26 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Export compile commands for clangd and other tools
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+file(
+  DOWNLOAD
+  https://github.com/cpm-cmake/CPM.cmake/releases/download/v0.40.8/CPM.cmake
+  ${CMAKE_CURRENT_BINARY_DIR}/cmake/CPM.cmake
+  EXPECTED_HASH SHA256=78ba32abdf798bc616bab7c73aac32a17bbd7b06ad9e26a6add69de8f3ae4791
+)
+include(${CMAKE_CURRENT_BINARY_DIR}/cmake/CPM.cmake)
+
+# Add Google Benchmark dependency
+CPMAddPackage(
+  NAME benchmark
+  GITHUB_REPOSITORY google/benchmark
+  VERSION 1.9.4
+  OPTIONS
+    "BENCHMARK_ENABLE_TESTING OFF"
+    "BENCHMARK_ENABLE_GTEST_TESTS OFF"
+    "BENCHMARK_ENABLE_INSTALL OFF"
+    "BENCHMARK_DOWNLOAD_DEPENDENCIES ON"
+)
+
 # Compiler-specific flags for modern C++
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
@@ -63,6 +83,12 @@ option(THREADSCHEDULE_BUILD_TESTS "Build tests" ON)
 if(THREADSCHEDULE_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# Optional: Benchmarks
+option(THREADSCHEDULE_BUILD_BENCHMARKS "Build benchmarks" ON)
+if(THREADSCHEDULE_BUILD_BENCHMARKS AND TARGET benchmark::benchmark)
+    add_subdirectory(benchmarks)
 endif()
 
 # Install configuration
