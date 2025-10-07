@@ -1,0 +1,39 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+  workflow_dispatch:
+
+jobs:
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Install clang-format
+      run: sudo apt-get install -y clang-format-14
+    
+    - name: Check formatting
+      run: |
+        find include -name "*.hpp" -o -name "*.cpp" | xargs clang-format-14 --dry-run --Werror
+    
+    - name: Check CMake formatting
+      run: |
+        # Basic checks for CMake files
+        for file in CMakeLists.txt */CMakeLists.txt; do
+          if [ -f "$file" ]; then
+            echo "Checking $file"
+            # Check for tabs (spaces preferred in CMake)
+            if grep -q $'\t' "$file"; then
+              echo "ERROR: Found tabs in $file, please use spaces"
+              exit 1
+            fi
+          fi
+        done
+

@@ -1,8 +1,11 @@
 # ThreadSchedule
 
-[![CI](https://github.com/Katze719/ThreadSchedule/workflows/CI/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/ci.yml)
-[![Conan Deploy](https://github.com/Katze719/ThreadSchedule/workflows/Conan%20Deploy/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/conan-deploy.yml)
+[![Tests](https://github.com/Katze719/ThreadSchedule/workflows/Tests/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/tests.yml)
+[![Integration](https://github.com/Katze719/ThreadSchedule/workflows/Integration/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/integration.yml)
+[![Code Quality](https://github.com/Katze719/ThreadSchedule/workflows/Code%20Quality/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/code-quality.yml)
+[![Release](https://github.com/Katze719/ThreadSchedule/workflows/Release/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/release.yml)
 [![Documentation](https://github.com/Katze719/ThreadSchedule/workflows/Documentation/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/documentation.yml)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A modern C++ header-only library for advanced thread management on Linux and Windows systems. ThreadSchedule provides enhanced wrappers for `std::thread`, `std::jthread`, and `pthread` with extended functionality including thread naming, priority management, CPU affinity, and high-performance thread pools.
 
@@ -21,8 +24,6 @@ ThreadSchedule is continuously tested on the following configurations:
 | **Windows** | | | | |
 | Windows Server 2022 | MSVC 2022 | ✅ | ✅ | ✅ |
 
-> **Note**: All configurations include full test suite execution and are verified on every commit via GitHub Actions CI/CD.
->
 > **Ubuntu 24.04 Clang**: Clang 14 is limited to C++17 due to incompatibility with GCC 14's libstdc++. For C++20/23 on Ubuntu 24.04, Clang 18 is used.
 
 ## Key Features
