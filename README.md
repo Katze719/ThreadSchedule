@@ -1,8 +1,12 @@
 # ThreadSchedule
 
 [![CI](https://github.com/Katze719/ThreadSchedule/workflows/CI/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/ci.yml)
-[![Conan Deploy](https://github.com/Katze719/ThreadSchedule/workflows/Conan%20Deploy/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/conan-deploy.yml)
+[![Linux Build](https://github.com/Katze719/ThreadSchedule/actions/workflows/ci.yml/badge.svg?event=push&job=linux-build)](https://github.com/Katze719/ThreadSchedule/actions/workflows/ci.yml)
+[![Windows Build](https://github.com/Katze719/ThreadSchedule/actions/workflows/ci.yml/badge.svg?event=push&job=windows-build)](https://github.com/Katze719/ThreadSchedule/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/github/actions/workflow/status/Katze719/ThreadSchedule/ci.yml?label=tests&logo=github)](https://github.com/Katze719/ThreadSchedule/actions/workflows/ci.yml)
+[![Release](https://github.com/Katze719/ThreadSchedule/workflows/Release/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/release.yml)
 [![Documentation](https://github.com/Katze719/ThreadSchedule/workflows/Documentation/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/documentation.yml)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A modern C++ header-only library for advanced thread management on Linux and Windows systems. ThreadSchedule provides enhanced wrappers for `std::thread`, `std::jthread`, and `pthread` with extended functionality including thread naming, priority management, CPU affinity, and high-performance thread pools.
 
