@@ -1,6 +1,5 @@
 # ThreadSchedule
 
-[![Build](https://github.com/Katze719/ThreadSchedule/workflows/Build/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/build.yml)
 [![Tests](https://github.com/Katze719/ThreadSchedule/workflows/Tests/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/tests.yml)
 [![Integration](https://github.com/Katze719/ThreadSchedule/workflows/Integration/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/integration.yml)
 [![Code Quality](https://github.com/Katze719/ThreadSchedule/workflows/Code%20Quality/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/code-quality.yml)
@@ -25,8 +24,6 @@ ThreadSchedule is continuously tested on the following configurations:
 | **Windows** | | | | |
 | Windows Server 2022 | MSVC 2022 | ✅ | ✅ | ✅ |
 
-> **Note**: All configurations include full test suite execution and are verified on every commit via GitHub Actions CI/CD.
->
 > **Ubuntu 24.04 Clang**: Clang 14 is limited to C++17 due to incompatibility with GCC 14's libstdc++. For C++20/23 on Ubuntu 24.04, Clang 18 is used.
 
 ## Key Features
