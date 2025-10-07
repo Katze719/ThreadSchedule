@@ -189,7 +189,7 @@ class HighPerformancePool
     /**
      * @brief High-performance task submission (optimized hot path)
      */
-    template <typename F, typename... Args>
+    template <typename F, typename... Args, std::enable_if_t<ThreadCallable<F, Args...>, int> = 0>
     auto submit(F &&f, Args &&...args) -> std::future<std::invoke_result_t<F, Args...>>
     {
         using return_type = std::invoke_result_t<F, Args...>;
@@ -290,7 +290,11 @@ class HighPerformancePool
     /**
      * @brief Optimized parallel for_each with work distribution
      */
-    template <typename Iterator, typename F> void parallel_for_each(Iterator begin, Iterator end, F &&func)
+    template <
+        typename Iterator,
+        typename F,
+        std::enable_if_t<ThreadCallable<F, decltype(*std::declval<Iterator>())>, int> = 0>
+    void parallel_for_each(Iterator begin, Iterator end, F &&func)
     {
         const size_t total_items = std::distance(begin, end);
         if (total_items == 0)

@@ -2,6 +2,7 @@
 
 #include "concepts.hpp"
 #include <algorithm>
+#include <initializer_list>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -49,7 +50,9 @@ enum class SchedulingPolicy
 class ThreadPriority
 {
   public:
-    constexpr explicit ThreadPriority(int priority = 0) : priority_(std::clamp(priority, min_priority, max_priority))
+    template <typename T = int, std::enable_if_t<PriorityType<T>, int> = 0>
+    constexpr explicit ThreadPriority(T priority = 0)
+        : priority_(std::clamp(static_cast<int>(priority), min_priority, max_priority))
     {
     }
 
@@ -130,7 +133,18 @@ class ThreadAffinity
 #endif
     }
 
-    explicit ThreadAffinity(const std::vector<int> &cpus) : ThreadAffinity()
+    // Generic container constructor (works with vector, set, etc.)
+    template <typename T, std::enable_if_t<CPUSetType<T>, int> = 0>
+    explicit ThreadAffinity(const T &cpus) : ThreadAffinity()
+    {
+        for (auto cpu : cpus)
+        {
+            add_cpu(static_cast<int>(cpu));
+        }
+    }
+
+    // Constructor for initializer lists
+    explicit ThreadAffinity(std::initializer_list<int> cpus) : ThreadAffinity()
     {
         for (int cpu : cpus)
         {
