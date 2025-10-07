@@ -3,12 +3,17 @@
 #include "concepts.hpp"
 #include <algorithm>
 #include <optional>
-#include <sched.h>
 #include <sstream>
 #include <string>
-#include <sys/resource.h>
 #include <system_error>
 #include <vector>
+
+#ifdef _WIN32
+// Windows doesn't use sched.h, but we'll define compatible types
+#else
+#include <sched.h>
+#include <sys/resource.h>
+#endif
 
 namespace threadschedule
 {
@@ -18,6 +23,15 @@ namespace threadschedule
  */
 enum class SchedulingPolicy
 {
+#ifdef _WIN32
+    // Windows doesn't have the same scheduling policies as Linux
+    // We'll use generic values
+    OTHER = 0, ///< Standard scheduling
+    FIFO  = 1, ///< First in, first out
+    RR    = 2, ///< Round-robin
+    BATCH = 3, ///< For batch style execution
+    IDLE  = 4 ///< For very low priority background tasks
+#else
     OTHER = SCHED_OTHER, ///< Standard round-robin time-sharing
     FIFO  = SCHED_FIFO, ///< First in, first out
     RR    = SCHED_RR, ///< Round-robin
@@ -25,6 +39,7 @@ enum class SchedulingPolicy
     IDLE  = SCHED_IDLE, ///< For very low priority background tasks
 #ifdef SCHED_DEADLINE
     DEADLINE = SCHED_DEADLINE ///< Real-time deadline scheduling
+#endif
 #endif
 };
 
@@ -34,14 +49,7 @@ enum class SchedulingPolicy
 class ThreadPriority
 {
   public:
-    constexpr explicit ThreadPriority(int priority = 0)
-        : priority_(
-              std::clamp(
-                  priority,
-                  min_priority,
-                  max_priority
-              )
-          )
+    constexpr explicit ThreadPriority(int priority = 0) : priority_(std::clamp(priority, min_priority, max_priority))
     {
     }
 
@@ -115,7 +123,11 @@ class ThreadAffinity
   public:
     ThreadAffinity()
     {
+#ifdef _WIN32
+        mask_ = 0;
+#else
         CPU_ZERO(&cpuset_);
+#endif
     }
 
     explicit ThreadAffinity(const std::vector<int> &cpus) : ThreadAffinity()
@@ -128,33 +140,69 @@ class ThreadAffinity
 
     void add_cpu(int cpu)
     {
+#ifdef _WIN32
+        if (cpu >= 0 && cpu < 64)
+        {
+            mask_ |= (static_cast<unsigned long long>(1) << cpu);
+        }
+#else
         if (cpu >= 0 && cpu < CPU_SETSIZE)
         {
             CPU_SET(cpu, &cpuset_);
         }
+#endif
     }
 
     void remove_cpu(int cpu)
     {
+#ifdef _WIN32
+        if (cpu >= 0 && cpu < 64)
+        {
+            mask_ &= ~(static_cast<unsigned long long>(1) << cpu);
+        }
+#else
         if (cpu >= 0 && cpu < CPU_SETSIZE)
         {
             CPU_CLR(cpu, &cpuset_);
         }
+#endif
+    }
+
+    bool is_set(int cpu) const
+    {
+#ifdef _WIN32
+        return cpu >= 0 && cpu < 64 && (mask_ & (static_cast<unsigned long long>(1) << cpu)) != 0;
+#else
+        return cpu >= 0 && cpu < CPU_SETSIZE && CPU_ISSET(cpu, &cpuset_);
+#endif
     }
 
     bool has_cpu(int cpu) const
     {
-        return cpu >= 0 && cpu < CPU_SETSIZE && CPU_ISSET(cpu, &cpuset_);
+        return is_set(cpu);
     }
 
     void clear()
     {
+#ifdef _WIN32
+        mask_ = 0;
+#else
         CPU_ZERO(&cpuset_);
+#endif
     }
 
     std::vector<int> get_cpus() const
     {
         std::vector<int> cpus;
+#ifdef _WIN32
+        for (int i = 0; i < 64; ++i)
+        {
+            if (mask_ & (static_cast<unsigned long long>(1) << i))
+            {
+                cpus.push_back(i);
+            }
+        }
+#else
         for (int i = 0; i < CPU_SETSIZE; ++i)
         {
             if (CPU_ISSET(i, &cpuset_))
@@ -162,13 +210,21 @@ class ThreadAffinity
                 cpus.push_back(i);
             }
         }
+#endif
         return cpus;
     }
 
+#ifdef _WIN32
+    unsigned long long get_mask() const
+    {
+        return mask_;
+    }
+#else
     const cpu_set_t &native_handle() const
     {
         return cpuset_;
     }
+#endif
 
     std::string to_string() const
     {
@@ -186,7 +242,11 @@ class ThreadAffinity
     }
 
   private:
+#ifdef _WIN32
+    unsigned long long mask_;
+#else
     cpu_set_t cpuset_;
+#endif
 };
 
 /**
@@ -244,13 +304,28 @@ template <typename T, typename E> class result
 class SchedulerParams
 {
   public:
-    static result<
-        sched_param,
-        std::error_code>
-    create_for_policy(
-        SchedulingPolicy policy,
-        ThreadPriority   priority
-    )
+#ifdef _WIN32
+    // Windows doesn't use sched_param, but we'll define a compatible type
+    struct sched_param_win
+    {
+        int sched_priority;
+    };
+
+    static result<sched_param_win, std::error_code> create_for_policy(SchedulingPolicy policy, ThreadPriority priority)
+    {
+        sched_param_win param{};
+        // On Windows, priority is directly used
+        param.sched_priority = priority.value();
+        return param;
+    }
+
+    static result<int, std::error_code> get_priority_range(SchedulingPolicy policy)
+    {
+        // Windows thread priorities range from -15 to +15
+        return 30;
+    }
+#else
+    static result<sched_param, std::error_code> create_for_policy(SchedulingPolicy policy, ThreadPriority priority)
     {
         sched_param param{};
 
@@ -267,10 +342,7 @@ class SchedulerParams
         return param;
     }
 
-    static result<
-        int,
-        std::error_code>
-    get_priority_range(SchedulingPolicy policy)
+    static result<int, std::error_code> get_priority_range(SchedulingPolicy policy)
     {
         const int policy_int = static_cast<int>(policy);
         const int min_prio   = sched_get_priority_min(policy_int);
@@ -283,6 +355,7 @@ class SchedulerParams
 
         return max_prio - min_prio;
     }
+#endif
 };
 
 /**
@@ -302,7 +375,7 @@ std::string to_string(SchedulingPolicy policy)
         return "BATCH";
     case SchedulingPolicy::IDLE:
         return "IDLE";
-#ifdef SCHED_DEADLINE
+#if defined(SCHED_DEADLINE) && !defined(_WIN32)
     case SchedulingPolicy::DEADLINE:
         return "DEADLINE";
 #endif

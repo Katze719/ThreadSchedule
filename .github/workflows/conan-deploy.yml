@@ -1,0 +1,217 @@
+name: Conan Deploy
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 1.0.0)'
+        required: true
+      channel:
+        description: 'Conan channel'
+        required: false
+        default: 'stable'
+
+env:
+  CONAN_USERNAME: ${{ secrets.CONAN_USERNAME || 'threadschedule' }}
+  CONAN_CHANNEL: ${{ github.event.inputs.channel || 'stable' }}
+
+jobs:
+  # Build Conan package for multiple configurations
+  build-conan-package:
+    name: Build Conan Package (${{ matrix.os }}, C++${{ matrix.cpp_standard }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        cpp_standard: [17, 20, 23]
+        build_type: [Release]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install Conan
+      run: |
+        pip install conan
+        conan --version
+    
+    - name: Configure Conan profile
+      run: |
+        conan profile detect --force
+    
+    - name: Get version
+      id: get_version
+      shell: bash
+      run: |
+        if [ "${{ github.event_name }}" = "release" ]; then
+          VERSION=${GITHUB_REF#refs/tags/v}
+        else
+          VERSION="${{ github.event.inputs.version }}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
+    
+    - name: Create Conan package
+      run: |
+        conan create . \
+          --version=${{ steps.get_version.outputs.version }} \
+          --build=missing \
+          -s compiler.cppstd=${{ matrix.cpp_standard }} \
+          -s build_type=${{ matrix.build_type }}
+    
+    - name: Test Conan package
+      run: |
+        mkdir test_package_build
+        cd test_package_build
+        
+        cat > conanfile.txt << 'EOF'
+        [requires]
+        threadschedule/${{ steps.get_version.outputs.version }}@${{ env.CONAN_USERNAME }}/${{ env.CONAN_CHANNEL }}
+        
+        [generators]
+        CMakeDeps
+        CMakeToolchain
+        EOF
+        
+        cat > CMakeLists.txt << 'EOF'
+        cmake_minimum_required(VERSION 3.14)
+        project(TestPackage LANGUAGES CXX)
+        find_package(ThreadSchedule REQUIRED)
+        add_executable(test_app main.cpp)
+        target_link_libraries(test_app PRIVATE ThreadSchedule::ThreadSchedule)
+        EOF
+        
+        cat > main.cpp << 'EOF'
+        #include <threadschedule/threadschedule.hpp>
+        int main() {
+            using namespace threadschedule;
+            ThreadWrapper thread([]() {});
+            thread.join();
+            return 0;
+        }
+        EOF
+        
+        conan install . --build=missing
+        cmake -B build -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        cmake --build build
+    
+    - name: Export package info
+      run: |
+        conan list "threadschedule/${{ steps.get_version.outputs.version }}@*"
+
+  # Upload to Conan Center (or custom remote)
+  deploy-conan:
+    name: Deploy to Conan
+    runs-on: ubuntu-latest
+    needs: build-conan-package
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install Conan
+      run: |
+        pip install conan
+        conan --version
+    
+    - name: Configure Conan profile
+      run: |
+        conan profile detect --force
+    
+    - name: Get version
+      id: get_version
+      shell: bash
+      run: |
+        if [ "${{ github.event_name }}" = "release" ]; then
+          VERSION=${GITHUB_REF#refs/tags/v}
+        else
+          VERSION="${{ github.event.inputs.version }}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+    
+    - name: Create Conan package
+      run: |
+        conan create . \
+          --version=${{ steps.get_version.outputs.version }} \
+          --build=missing
+    
+    - name: Add Conan remote (if using custom remote)
+      if: secrets.CONAN_REMOTE_URL != ''
+      run: |
+        conan remote add custom_remote ${{ secrets.CONAN_REMOTE_URL }}
+        conan remote login custom_remote ${{ secrets.CONAN_LOGIN_USERNAME }} -p ${{ secrets.CONAN_PASSWORD }}
+    
+    - name: Upload to Conan remote
+      if: secrets.CONAN_REMOTE_URL != ''
+      run: |
+        conan upload "threadschedule/${{ steps.get_version.outputs.version }}@${{ env.CONAN_USERNAME }}/${{ env.CONAN_CHANNEL }}" \
+          --remote=custom_remote \
+          --confirm
+    
+    - name: Create Conan Center PR info
+      if: secrets.CONAN_REMOTE_URL == ''
+      run: |
+        echo "To upload to ConanCenter, create a PR at:"
+        echo "https://github.com/conan-io/conan-center-index"
+        echo ""
+        echo "Package info:"
+        conan list "threadschedule/${{ steps.get_version.outputs.version }}@*"
+
+  # Create GitHub release artifacts
+  create-artifacts:
+    name: Create Release Artifacts
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Get version
+      id: get_version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+    
+    - name: Create source archive
+      run: |
+        tar -czf threadschedule-${{ steps.get_version.outputs.version }}-source.tar.gz \
+          --exclude='.git' \
+          --exclude='build*' \
+          --exclude='.github' \
+          --transform "s,^,threadschedule-${{ steps.get_version.outputs.version }}/," \
+          include/ cmake/ examples/ tests/ benchmarks/ \
+          CMakeLists.txt conanfile.py README.md LICENSE \
+          INTEGRATION_NEW.md CMAKE_REFERENCE.md
+    
+    - name: Create header-only package
+      run: |
+        mkdir -p threadschedule-${{ steps.get_version.outputs.version }}-headers
+        cp -r include threadschedule-${{ steps.get_version.outputs.version }}-headers/
+        cp LICENSE threadschedule-${{ steps.get_version.outputs.version }}-headers/
+        cp README.md threadschedule-${{ steps.get_version.outputs.version }}-headers/
+        tar -czf threadschedule-${{ steps.get_version.outputs.version }}-headers.tar.gz \
+          threadschedule-${{ steps.get_version.outputs.version }}-headers/
+    
+    - name: Upload artifacts to release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          threadschedule-${{ steps.get_version.outputs.version }}-source.tar.gz
+          threadschedule-${{ steps.get_version.outputs.version }}-headers.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

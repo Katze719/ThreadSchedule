@@ -1,0 +1,104 @@
+name: Documentation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  # Check documentation
+  check-docs:
+    name: Check Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Check for broken links in markdown
+      uses: gaurav-nelson/github-action-markdown-link-check@v1
+      with:
+        use-quiet-mode: 'yes'
+        config-file: '.github/markdown-link-check-config.json'
+        folder-path: '.'
+        file-extension: '.md'
+    
+    - name: Check README examples
+      run: |
+        # Extract and validate code blocks from README
+        echo "Checking README.md code examples..."
+        
+        # Check that CMake examples are valid
+        if grep -q "cmake_minimum_required" README.md; then
+          echo "✓ Found CMake examples in README"
+        else
+          echo "✗ No CMake examples found in README"
+          exit 1
+        fi
+        
+        # Check that C++ examples are valid
+        if grep -q "#include <threadschedule/threadschedule.hpp>" README.md; then
+          echo "✓ Found C++ examples in README"
+        else
+          echo "✗ No C++ examples found in README"
+          exit 1
+        fi
+    
+    - name: Check integration documentation
+      run: |
+        # Verify integration guide exists and is comprehensive
+        if [ ! -f "INTEGRATION_NEW.md" ]; then
+          echo "✗ INTEGRATION_NEW.md not found"
+          exit 1
+        fi
+        
+        # Check for key sections
+        for section in "FetchContent" "CPM" "Conan" "add_subdirectory"; do
+          if grep -q "$section" INTEGRATION_NEW.md; then
+            echo "✓ Found $section section"
+          else
+            echo "✗ Missing $section section"
+            exit 1
+          fi
+        done
+    
+    - name: Validate CMake reference
+      run: |
+        if [ ! -f "CMAKE_REFERENCE.md" ]; then
+          echo "✗ CMAKE_REFERENCE.md not found"
+          exit 1
+        fi
+        
+        # Check for key options
+        for option in "THREADSCHEDULE_BUILD_EXAMPLES" "THREADSCHEDULE_BUILD_TESTS" "THREADSCHEDULE_INSTALL"; do
+          if grep -q "$option" CMAKE_REFERENCE.md; then
+            echo "✓ Found $option documentation"
+          else
+            echo "✗ Missing $option documentation"
+            exit 1
+          fi
+        done
+
+  # Generate documentation (if using Doxygen in future)
+  # generate-docs:
+  #   name: Generate Documentation
+  #   runs-on: ubuntu-latest
+  #   
+  #   steps:
+  #   - name: Checkout code
+  #     uses: actions/checkout@v4
+  #   
+  #   - name: Install Doxygen
+  #     run: sudo apt-get install -y doxygen graphviz
+  #   
+  #   - name: Generate documentation
+  #     run: doxygen Doxyfile
+  #   
+  #   - name: Deploy to GitHub Pages
+  #     if: github.ref == 'refs/heads/main'
+  #     uses: peaceiris/actions-gh-pages@v3
+  #     with:
+  #       github_token: ${{ secrets.GITHUB_TOKEN }}
+  #       publish_dir: ./docs/html

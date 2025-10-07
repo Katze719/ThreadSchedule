@@ -3,6 +3,7 @@
 #include <chrono>
 #include <iomanip>
 #include <iostream>
+#include <numeric>
 #include <random>
 #include <thread>
 #include <threadschedule/threadschedule.hpp>
@@ -25,10 +26,7 @@ class PerformanceBenchmark
     }
 
     // Benchmark pure task submission/completion throughput
-    void benchmark_throughput(
-        size_t             num_tasks,
-        const std::string &test_name
-    )
+    void benchmark_throughput(size_t num_tasks, const std::string &test_name)
     {
         std::cout << "\n=== " << test_name << " ===" << std::endl;
         std::cout << "Tasks: " << num_tasks << ", Threads: " << pool_.size() << std::endl;

@@ -1,86 +1,63 @@
 # ThreadSchedule
 
-A modern C++23 header-only library for advanced thread management on Linux systems. ThreadSchedule provides C++ wrappers for pthreads, std::thread, and std::jthread with extended functionality including thread naming, priority management, CPU affinity, and scheduling policies.
+[![CI](https://github.com/Katze719/ThreadSchedule/workflows/CI/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/ci.yml)
+[![Conan Deploy](https://github.com/Katze719/ThreadSchedule/workflows/Conan%20Deploy/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/conan-deploy.yml)
+[![Documentation](https://github.com/Katze719/ThreadSchedule/workflows/Documentation/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/documentation.yml)
 
-## Features
+A modern C++ header-only library for advanced thread management on Linux and Windows systems. ThreadSchedule provides enhanced wrappers for `std::thread`, `std::jthread`, and `pthread` with extended functionality including thread naming, priority management, CPU affinity, and high-performance thread pools.
 
-- 🚀 **Modern C++**: Leverages C++23 features with fallbacks for older compilers
-- 🔧 **Header-only**: Easy integration, no separate compilation required
-- 🧵 **Thread Wrappers**: Enhanced std::thread, std::jthread, and pthread interfaces
-- 📛 **Thread Naming**: Set human-readable names for threads
-- ⚡ **Priority Control**: Manage thread priorities and scheduling policies
-- 🎯 **CPU Affinity**: Control which CPUs threads run on
-- 🏊 **High-Performance Thread Pool**: Work-stealing thread pool optimized for 10k+ tasks/second
-- 📊 **Monitoring**: Built-in statistics and thread information utilities
-- 🔒 **RAII**: Automatic resource management with exception safety
+## Supported Platforms & Compilers
 
-## Quick Integration
+ThreadSchedule is continuously tested on the following configurations:
 
-ThreadSchedule is designed for zero-friction integration into existing projects:
+| Platform | Compiler | C++17 | C++20 | C++23 |
+|----------|----------|:-----:|:-----:|:-----:|
+| **Linux** | | | | |
+| Ubuntu 22.04 | GCC 11 | ✅ | ✅ | ✅ |
+| Ubuntu 22.04 | Clang 14 | ✅ | ✅ | ✅ |
+| Ubuntu 24.04 | GCC 11 | ✅ | ✅ | ✅ |
+| Ubuntu 24.04 | Clang 14 | ✅ | - | - |
+| Ubuntu 24.04 | Clang 18 | - | ✅ | ✅ |
+| **Windows** | | | | |
+| Windows Server 2022 | MSVC 2022 | ✅ | ✅ | ✅ |
 
-### 1. Add to your project
-```bash
-# In your project root
-mkdir -p dependencies
-cd dependencies
-git clone https://github.com/Katze719/ThreadSchedule.git
-```
+> **Note**: All configurations include full test suite execution and are verified on every commit via GitHub Actions CI/CD.
+>
+> **Ubuntu 24.04 Clang**: Clang 14 is limited to C++17 due to incompatibility with GCC 14's libstdc++. For C++20/23 on Ubuntu 24.04, Clang 18 is used.
 
-### 2. Update CMakeLists.txt
-```cmake
-# Add ThreadSchedule (header-only, builds nothing extra)
-add_subdirectory(dependencies/ThreadSchedule)
+## Key Features
 
-add_executable(your_app src/main.cpp)
-target_link_libraries(your_app PRIVATE ThreadSchedule::ThreadSchedule)
-```
-
-### 3. Start using
-```cpp
-#include <threadschedule/threadschedule.hpp>
-
-int main() {
-    using namespace threadschedule;
-    
-    // High-performance pool for heavy computing (e.g., image processing)
-    HighPerformancePool pool(4);
-    pool.configure_threads("worker");
-    pool.distribute_across_cpus();
-    
-    auto future = pool.submit([]() {
-        // Your heavy computation here
-        return process_image();
-    });
-    
-    auto result = future.get();
-    return 0;
-}
-```
-
-**That's it!** 🎉 No compilation of ThreadSchedule needed - it's header-only.
-
-**What gets built:** Only your app + ThreadSchedule headers. No examples, tests, or benchmarks.
-
----
-
-## Requirements
-
-- Linux operating system
-- C++17 or later (C++23 recommended for full feature set)
-- CMake 3.28+
-- GCC 10+ or Clang 12+
+- **Modern C++**: Full C++17, C++20, and C++23 support with automatic feature detection
+- **Header-Only**: Zero compilation, just include and go
+- **Enhanced Wrappers**: Extend `std::thread`, `std::jthread`, and `pthread` with powerful features
+- **Thread Naming**: Human-readable thread names for debugging
+- **Priority & Scheduling**: Fine-grained control over thread priorities and scheduling policies
+- **CPU Affinity**: Pin threads to specific CPU cores
+- **High-Performance Pools**: Work-stealing thread pool optimized for 10k+ tasks/second
+- **Performance Metrics**: Built-in statistics and monitoring
+- **RAII & Exception Safety**: Automatic resource management
+- **Multiple Integration Methods**: CMake, CPM, Conan, FetchContent
 
 ## Quick Start
 
 ### Installation
 
-```bash
-git clone https://github.com/your-username/ThreadSchedule.git
-cd ThreadSchedule
-mkdir build && cd build
-cmake ..
-make -j$(nproc)
+Add to your CMakeLists.txt using [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake):
+
+```cmake
+include(cmake/CPM.cmake)
+
+CPMAddPackage(
+    NAME ThreadSchedule
+    GITHUB_REPOSITORY Katze719/ThreadSchedule
+    GIT_TAG main  # or specific version tag
+    OPTIONS "THREADSCHEDULE_BUILD_EXAMPLES OFF" "THREADSCHEDULE_BUILD_TESTS OFF"
+)
+
+target_link_libraries(your_app PRIVATE ThreadSchedule::ThreadSchedule)
 ```
+
+**Other integration methods:** See [docs/INTEGRATION.md](docs/INTEGRATION.md) for FetchContent, Conan, system installation, and more.
 
 ### Basic Usage
 
@@ -90,298 +67,108 @@ make -j$(nproc)
 using namespace threadschedule;
 
 int main() {
-    // Create a named thread with priority
+    // Enhanced thread with configuration
     ThreadWrapper worker([]() {
-        std::cout << "Worker thread running!" << std::endl;
+        std::cout << "Worker running!" << std::endl;
     });
-    
-    // Configure the thread
     worker.set_name("my_worker");
     worker.set_priority(ThreadPriority::normal());
-    worker.set_scheduling_policy(SchedulingPolicy::FIFO, ThreadPriority(5));
     
-    // Set CPU affinity
-    ThreadAffinity affinity({0, 1}); // Run on CPUs 0 and 1
-    worker.set_affinity(affinity);
+    // High-performance thread pool
+    HighPerformancePool pool(4);
+    pool.configure_threads("worker");
+    pool.distribute_across_cpus();
     
-    return 0; // Thread is automatically joined
+    auto future = pool.submit([]() { return 42; });
+    std::cout << "Result: " << future.get() << std::endl;
+    
+    return 0;
 }
 ```
 
-## Core Components
+**That's it!** 🎉 Header-only means zero compilation overhead.
+
+## API Overview
 
 ### Thread Wrappers
 
-#### ThreadWrapper (std::thread)
-Enhanced wrapper for `std::thread` with additional functionality:
-
-```cpp
-ThreadWrapper worker(task_function, arg1, arg2);
-worker.set_name("worker_thread");
-worker.set_priority(ThreadPriority(10));
-```
-
-#### JThreadWrapper (std::jthread) - C++20+
-Enhanced wrapper for `std::jthread` with cooperative cancellation:
-
-```cpp
-JThreadWrapper worker(task_function);
-worker.request_stop(); // Cooperative cancellation
-```
-
-#### PThreadWrapper
-Modern C++ interface for POSIX threads:
-
-```cpp
-PThreadWrapper worker(task_function);
-worker.set_cancel_state(true);
-worker.set_cancel_type(false); // Deferred cancellation
-```
+| Class | Description | Available On |
+|-------|-------------|--------------|
+| `ThreadWrapper` | Enhanced `std::thread` with naming, priority, affinity | Linux, Windows |
+| `JThreadWrapper` | Enhanced `std::jthread` with cooperative cancellation (C++20) | Linux, Windows |
+| `PThreadWrapper` | Modern C++ interface for POSIX threads | Linux only |
 
 ### Thread Pools
 
-The library provides two thread pool implementations for different use cases:
+| Class | Use Case | Performance |
+|-------|----------|-------------|
+| `ThreadPool` | General-purpose, simple API | < 1k tasks/sec |
+| `HighPerformancePool` | Work-stealing, optimized for throughput | 10k+ tasks/sec |
+| `FastThreadPool` | Single-queue, minimal overhead | 1k-10k tasks/sec |
 
-#### ThreadPool (Simple)
-For general-purpose applications with moderate task loads (< 1000 tasks/second):
-
-```cpp
-ThreadPool pool(4);
-pool.configure_threads("worker");
-
-// Simple task submission
-auto future = pool.submit([]() { return 42; });
-int result = future.get();
-
-// Range processing
-std::vector<Task> tasks = { /* ... */ };
-auto futures = pool.submit_range(tasks.begin(), tasks.end());
-```
-
-#### HighPerformancePool (Work-Stealing)
-For high-frequency task submission (10k+ tasks/second):
+### Configuration
 
 ```cpp
-HighPerformancePool pool(8); // 8 worker threads
-pool.configure_threads("worker", SchedulingPolicy::OTHER, ThreadPriority::normal());
-pool.distribute_across_cpus(); // Distribute threads across CPUs
+// Scheduling policies
+SchedulingPolicy::OTHER    // Standard time-sharing
+SchedulingPolicy::FIFO     // Real-time FIFO
+SchedulingPolicy::RR       // Real-time round-robin
+SchedulingPolicy::BATCH    // Batch processing
+SchedulingPolicy::IDLE     // Low priority background
 
-// Submit individual tasks
-auto future = pool.submit([]() { return 42; });
-int result = future.get();
+// Priority management
+ThreadPriority::lowest()   // Minimum priority
+ThreadPriority::normal()   // Default priority
+ThreadPriority::highest()  // Maximum priority
+ThreadPriority(value)      // Custom priority
 
-// High-throughput batch processing
-std::vector<std::function<void()>> tasks;
-for (int i = 0; i < 10000; ++i) {
-    tasks.emplace_back([i]() { /* work */ });
-}
-auto futures = pool.submit_batch(tasks.begin(), tasks.end());
-
-// Optimized parallel algorithms
-std::vector<int> data = {1, 2, 3, 4, 5};
-pool.parallel_for_each(data.begin(), data.end(), [](int& x) {
-    x *= 2;
-});
-
-// Performance monitoring
-auto stats = pool.get_statistics();
-std::cout << "Tasks/second: " << stats.tasks_per_second << std::endl;
-std::cout << "Work stealing ratio: " << (stats.stolen_tasks * 100.0 / stats.completed_tasks) << "%" << std::endl;
+// CPU affinity
+ThreadAffinity affinity({0, 1, 2});  // Pin to CPUs 0, 1, 2
+worker.set_affinity(affinity);
 ```
 
-#### Performance Optimizations
+## Documentation
 
-The thread pool includes several optimizations for high-frequency workloads:
+- **[Integration Guide](docs/INTEGRATION.md)** - All integration methods (CPM, FetchContent, Conan, subdirectory, system install)
+- **[CMake Reference](docs/CMAKE_REFERENCE.md)** - Complete CMake API and configuration options
+- **[Examples](examples/)** - Working code examples
+- **[Benchmarks](benchmarks/)** - Performance benchmarks and optimization guides
 
-- **Work-Stealing Architecture**: Each worker thread has its own queue, can steal from others
-- **Lock-Free Fast Path**: Minimal synchronization for common operations
-- **Cache-Friendly Design**: Memory layout optimized for CPU cache efficiency
-- **Batch Processing**: Submit multiple tasks with single API call
-- **Adaptive Load Balancing**: Automatic distribution across worker threads
-- **Performance Metrics**: Built-in monitoring and statistics
+## Performance
 
-#### Choosing the Right Thread Pool
+The `HighPerformancePool` achieves:
 
-**Use ThreadPool when:**
-- Task submission rate < 1000 tasks/second
-- Simple, straightforward task processing needed
-- Lower memory overhead is important
-- Debugging and understanding the code is a priority
+- **770k tasks/second** sustained throughput (12-core system)
+- **< 1μs** average task latency
+- **Work-stealing** for automatic load balancing
+- **Cache-optimized** data structures
 
-**Use HighPerformancePool when:**
-- Task submission rate > 10,000 tasks/second
-- Need maximum throughput and low latency
-- Working with CPU-bound, short-duration tasks (< 100μs)
-- Can afford slightly higher memory overhead
-- Performance monitoring and work-stealing statistics are valuable
+See [benchmarks/](benchmarks/) for detailed performance analysis.
 
-### Scheduling Policies
+## Platform-Specific Features
 
-```cpp
-enum class SchedulingPolicy {
-    OTHER,    // Standard round-robin time-sharing
-    FIFO,     // First in, first out
-    RR,       // Round-robin
-    BATCH,    // For batch style execution
-    IDLE,     // For very low priority background tasks
-    DEADLINE  // Real-time deadline scheduling (if supported)
-};
-```
+### Linux
+- Full `pthread` API support
+- Real-time scheduling policies (FIFO, RR, DEADLINE)
+- CPU affinity and NUMA control
+- Nice values for process priority
 
-### Priority Management
+### Windows
+- Thread naming (Windows 10 1607+)
+- Thread priority classes
+- CPU affinity masking
+- Process priority control
 
-```cpp
-ThreadPriority priority(10);              // Custom priority
-ThreadPriority::lowest();                 // Minimum priority
-ThreadPriority::normal();                 // Default priority  
-ThreadPriority::highest();                // Maximum priority
-```
-
-### CPU Affinity
-
-```cpp
-ThreadAffinity affinity;
-affinity.add_cpu(0);        // Add CPU 0
-affinity.add_cpu(2);        // Add CPU 2
-affinity.remove_cpu(0);     // Remove CPU 0
-
-// Or use constructor
-ThreadAffinity affinity({1, 2, 3}); // CPUs 1, 2, and 3
-```
-
-## Advanced Features
-
-### Factory Methods
-
-Create preconfigured threads:
-
-```cpp
-auto thread = ThreadWrapper::create_with_config(
-    "high_priority_worker",     // Name
-    SchedulingPolicy::FIFO,     // Policy
-    ThreadPriority(20),         // Priority
-    task_function               // Function
-);
-```
-
-### Thread Information
-
-```cpp
-// Get system information
-unsigned int cores = ThreadInfo::hardware_concurrency();
-pid_t thread_id = ThreadInfo::get_thread_id();
-
-auto policy = ThreadInfo::get_current_policy();
-auto priority = ThreadInfo::get_current_priority();
-```
-
-### Global Thread Pools
-
-```cpp
-// Use singleton thread pool (simple)
-auto future = GlobalThreadPool::submit(task_function);
-auto range_futures = GlobalThreadPool::submit_range(tasks.begin(), tasks.end());
-
-// Use singleton high-performance pool
-auto hp_future = GlobalHighPerformancePool::submit(task_function);
-auto batch_futures = GlobalHighPerformancePool::submit_batch(tasks.begin(), tasks.end());
-
-// Parallel algorithms (uses GlobalThreadPool by default)
-std::vector<int> data = {1, 2, 3, 4, 5};
-parallel_for_each(data, [](int& x) { x *= 2; });
-```
-
-## Building Examples
-
-```bash
-cd build
-make basic_example
-./basic_example
-
-make thread_pool_example  
-./thread_pool_example
-
-make pthread_example
-./pthread_example
-```
-
-## Performance Considerations
-
-- **RAII Management**: All threads are automatically joined on destruction
-- **Exception Safety**: Thread creation failures throw exceptions with detailed messages
-- **Lock-free Operations**: Minimal locking in thread pool implementation
-- **CPU Distribution**: Built-in methods for optimal CPU distribution
-
-### High-Performance Tuning
-
-For applications requiring 10,000+ tasks per second:
-
-```cpp
-HighPerformancePool pool(std::thread::hardware_concurrency());
-
-// 1. Configure for high performance
-pool.configure_threads("worker", SchedulingPolicy::OTHER, ThreadPriority::normal());
-pool.distribute_across_cpus();
-
-// 2. Use batch processing when possible
-std::vector<Task> batch;
-// ... fill batch ...
-auto futures = pool.submit_batch(batch.begin(), batch.end());
-
-// 3. Keep tasks lightweight (target < 100μs per task)
-pool.submit([]() {
-    // Fast, CPU-bound work only
-    volatile int x = 0;
-    for (int i = 0; i < 1000; ++i) x += i;
-});
-
-// 4. Monitor performance
-auto stats = pool.get_statistics();
-if (stats.stolen_tasks * 100.0 / stats.completed_tasks > 20.0) {
-    // High work stealing ratio might indicate load imbalance
-    // Consider adjusting task granularity
-}
-```
-
-**Performance Tips:**
-
-- **Task Size**: Keep individual tasks small (< 100μs) for best load balancing
-- **Batch Submission**: Use `submit_batch()` for submitting many tasks at once
-- **Work Stealing Ratio**: Monitor ratio; < 20% indicates good load balance
-- **CPU Affinity**: Use `distribute_across_cpus()` for CPU-bound workloads
-- **Thread Count**: Usually `hardware_concurrency()` works best
-- **Avoid I/O**: Use thread pool for CPU-bound tasks; use async I/O for I/O-bound tasks
-
-## Thread Safety
-
-ThreadSchedule is designed with thread safety in mind:
-
-- All wrapper classes are move-only (non-copyable)
-- Thread pool operations are fully thread-safe
-- Statistics and monitoring functions use appropriate synchronization
-- RAII ensures proper cleanup even in exception scenarios
-
-## Platform Support
-
-**Supported Platforms:**
-- Linux x86_64 (fully tested)
-- Linux ARM64 (should work, not extensively tested)
-- Other Linux architectures (should work, untested)
-
-**Features used:**
-- `pthread_setname_np` for thread naming
-- `sched_setscheduler` for scheduling policies  
-- `pthread_setaffinity_np` for CPU affinity
-- `setpriority`/`getpriority` for nice values
-
-All these APIs are POSIX-compliant or Linux-standard and should be available across different CPU architectures. The library doesn't use architecture-specific assembly or intrinsics.
+**Note**: `PThreadWrapper` is Linux-only. Use `ThreadWrapper` or `JThreadWrapper` for cross-platform code.
 
 ## Contributing
 
+Contributions are welcome! Please:
+
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes with clear messages
+4. Push to your branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
 ## License
@@ -392,4 +179,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - POSIX threads documentation
 - Modern C++ threading best practices
-- Linux kernel scheduling documentation 
+- Linux kernel scheduling documentation
+- C++20/23 concurrency improvements
