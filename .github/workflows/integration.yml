@@ -1,0 +1,126 @@
+name: Integration
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+  workflow_dispatch:
+
+jobs:
+  integration-test:
+    name: Integration Test (${{ matrix.method }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [subdirectory, fetchcontent, cpm]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        path: ThreadSchedule
+    
+    - name: Test add_subdirectory
+      if: matrix.method == 'subdirectory'
+      run: |
+        mkdir test_project
+        cd test_project
+        
+        cat > CMakeLists.txt << 'EOF'
+        cmake_minimum_required(VERSION 3.14)
+        project(TestProject LANGUAGES CXX)
+        set(CMAKE_CXX_STANDARD 17)
+        add_subdirectory(../ThreadSchedule ThreadSchedule)
+        add_executable(test_app main.cpp)
+        target_link_libraries(test_app PRIVATE ThreadSchedule::ThreadSchedule)
+        EOF
+        
+        cat > main.cpp << 'EOF'
+        #include <threadschedule/threadschedule.hpp>
+        #include <iostream>
+        int main() {
+            using namespace threadschedule;
+            ThreadWrapper thread([]() { 
+                std::cout << "Thread running!" << std::endl; 
+            });
+            thread.set_name("test");
+            thread.join();
+            return 0;
+        }
+        EOF
+        
+        cmake -B build
+        cmake --build build
+        ./build/test_app
+    
+    - name: Test FetchContent
+      if: matrix.method == 'fetchcontent'
+      run: |
+        mkdir test_project
+        cd test_project
+        
+        cat > CMakeLists.txt << 'EOF'
+        cmake_minimum_required(VERSION 3.14)
+        project(TestProject LANGUAGES CXX)
+        set(CMAKE_CXX_STANDARD 17)
+        include(FetchContent)
+        FetchContent_Declare(ThreadSchedule SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../ThreadSchedule)
+        FetchContent_MakeAvailable(ThreadSchedule)
+        add_executable(test_app main.cpp)
+        target_link_libraries(test_app PRIVATE ThreadSchedule::ThreadSchedule)
+        EOF
+        
+        cat > main.cpp << 'EOF'
+        #include <threadschedule/threadschedule.hpp>
+        #include <iostream>
+        int main() {
+            using namespace threadschedule;
+            HighPerformancePool pool(2);
+            auto future = pool.submit([]() { return 42; });
+            std::cout << "Result: " << future.get() << std::endl;
+            return 0;
+        }
+        EOF
+        
+        cmake -B build
+        cmake --build build
+        ./build/test_app
+    
+    - name: Test CPM
+      if: matrix.method == 'cpm'
+      run: |
+        mkdir test_project
+        cd test_project
+        
+        cat > CMakeLists.txt << 'EOF'
+        cmake_minimum_required(VERSION 3.14)
+        project(TestProject LANGUAGES CXX)
+        set(CMAKE_CXX_STANDARD 17)
+        
+        # Download CPM
+        file(DOWNLOAD https://github.com/cpm-cmake/CPM.cmake/releases/download/v0.40.8/CPM.cmake
+             ${CMAKE_BINARY_DIR}/cmake/CPM.cmake)
+        include(${CMAKE_BINARY_DIR}/cmake/CPM.cmake)
+        
+        CPMAddPackage(NAME ThreadSchedule SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../ThreadSchedule)
+        
+        add_executable(test_app main.cpp)
+        target_link_libraries(test_app PRIVATE ThreadSchedule::ThreadSchedule)
+        EOF
+        
+        cat > main.cpp << 'EOF'
+        #include <threadschedule/threadschedule.hpp>
+        int main() {
+            using namespace threadschedule;
+            ThreadWrapper thread([]() {});
+            thread.join();
+            return 0;
+        }
+        EOF
+        
+        cmake -B build
+        cmake --build build
+        ./build/test_app
+

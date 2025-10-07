@@ -1,9 +1,9 @@
 # ThreadSchedule
 
-[![CI](https://github.com/Katze719/ThreadSchedule/workflows/CI/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/ci.yml)
-[![Linux Build](https://github.com/Katze719/ThreadSchedule/actions/workflows/ci.yml/badge.svg?event=push&job=linux-build)](https://github.com/Katze719/ThreadSchedule/actions/workflows/ci.yml)
-[![Windows Build](https://github.com/Katze719/ThreadSchedule/actions/workflows/ci.yml/badge.svg?event=push&job=windows-build)](https://github.com/Katze719/ThreadSchedule/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/github/actions/workflow/status/Katze719/ThreadSchedule/ci.yml?label=tests&logo=github)](https://github.com/Katze719/ThreadSchedule/actions/workflows/ci.yml)
+[![Build](https://github.com/Katze719/ThreadSchedule/workflows/Build/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/build.yml)
+[![Tests](https://github.com/Katze719/ThreadSchedule/workflows/Tests/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/tests.yml)
+[![Integration](https://github.com/Katze719/ThreadSchedule/workflows/Integration/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/integration.yml)
+[![Code Quality](https://github.com/Katze719/ThreadSchedule/workflows/Code%20Quality/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/code-quality.yml)
 [![Release](https://github.com/Katze719/ThreadSchedule/workflows/Release/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/release.yml)
 [![Documentation](https://github.com/Katze719/ThreadSchedule/workflows/Documentation/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/documentation.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
