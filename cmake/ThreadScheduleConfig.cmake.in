@@ -1,12 +1,30 @@
 @PACKAGE_INIT@
 
+# ThreadSchedule Package Configuration
+# Provides ThreadSchedule::ThreadSchedule interface target
+
 include(CMakeFindDependencyMacro)
 
-# Find dependencies
+# Find required dependencies
 find_dependency(Threads REQUIRED)
 
+# Platform-specific dependencies
+if(UNIX AND NOT APPLE AND NOT WIN32)
+    # Linux-specific libraries are linked directly, no additional find_dependency needed
+endif()
+
 # Include the exported targets
-include("${CMAKE_CURRENT_LIST_DIR}/ThreadScheduleTargets.cmake")
+if(NOT TARGET ThreadSchedule::ThreadSchedule)
+    include("${CMAKE_CURRENT_LIST_DIR}/ThreadScheduleTargets.cmake")
+endif()
 
 # Verify that targets exist
-check_required_components(ThreadSchedule) 
+check_required_components(ThreadSchedule)
+
+# Set usage requirements
+set(ThreadSchedule_FOUND TRUE)
+set(ThreadSchedule_VERSION "@PROJECT_VERSION@")
+set(ThreadSchedule_VERSION_MAJOR "@PROJECT_VERSION_MAJOR@")
+set(ThreadSchedule_VERSION_MINOR "@PROJECT_VERSION_MINOR@")
+set(ThreadSchedule_VERSION_PATCH "@PROJECT_VERSION_PATCH@")
+

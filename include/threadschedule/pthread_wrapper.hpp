@@ -7,12 +7,20 @@
 #include <functional>
 #include <memory>
 #include <optional>
-#include <pthread.h>
 #include <string>
+
+#ifdef _WIN32
+#include <windows.h>
+// PThreadWrapper is not available on Windows as it's POSIX-specific
+// Users should use ThreadWrapper or JThreadWrapper instead
+#else
+#include <pthread.h>
+#endif
 
 namespace threadschedule
 {
 
+#ifndef _WIN32
 /**
  * @brief RAII pthread wrapper with modern C++ interface
  */
@@ -22,21 +30,12 @@ class PThreadWrapper
     using native_handle_type = pthread_t;
     using id                 = pthread_t;
 
-    PThreadWrapper()
-        : thread_(0),
-          joined_(false)
+    PThreadWrapper() : thread_(0), joined_(false)
     {
     }
 
-    template <
-        typename F,
-        typename... Args>
-    explicit PThreadWrapper(
-        F &&func,
-        Args &&...args
-    )
-        : thread_(0),
-          joined_(false)
+    template <typename F, typename... Args>
+    explicit PThreadWrapper(F &&func, Args &&...args) : thread_(0), joined_(false)
     {
 
         // Store the callable in a way pthread can handle
@@ -56,9 +55,7 @@ class PThreadWrapper
     PThreadWrapper &operator=(const PThreadWrapper &) = delete;
 
     // Movable
-    PThreadWrapper(PThreadWrapper &&other) noexcept
-        : thread_(other.thread_),
-          joined_(other.joined_.load())
+    PThreadWrapper(PThreadWrapper &&other) noexcept : thread_(other.thread_), joined_(other.joined_.load())
     {
         other.thread_ = 0;
         other.joined_.store(true);
@@ -159,10 +156,7 @@ class PThreadWrapper
         return pthread_setschedparam(thread_, policy, &params_result.value()) == 0;
     }
 
-    bool set_scheduling_policy(
-        SchedulingPolicy policy,
-        ThreadPriority   priority
-    )
+    bool set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority)
     {
         const int policy_int    = static_cast<int>(policy);
         auto      params_result = SchedulerParams::create_for_policy(policy, priority);
@@ -211,15 +205,9 @@ class PThreadWrapper
     }
 
     // Factory methods
-    template <
-        typename F,
-        typename... Args>
+    template <typename F, typename... Args>
     static PThreadWrapper create_with_config(
-        const std::string &name,
-        SchedulingPolicy   policy,
-        ThreadPriority     priority,
-        F                &&f,
-        Args &&...args
+        const std::string &name, SchedulingPolicy policy, ThreadPriority priority, F &&f, Args &&...args
     )
     {
 
@@ -229,14 +217,8 @@ class PThreadWrapper
         return wrapper;
     }
 
-    template <
-        typename F,
-        typename... Args>
-    static PThreadWrapper create_with_attributes(
-        const pthread_attr_t &attr,
-        F                   &&func,
-        Args &&...args
-    )
+    template <typename F, typename... Args>
+    static PThreadWrapper create_with_attributes(const pthread_attr_t &attr, F &&func, Args &&...args)
     {
 
         PThreadWrapper wrapper;
@@ -465,5 +447,7 @@ class PThreadMutex
   private:
     pthread_mutex_t mutex_;
 };
+
+#endif // !_WIN32
 
 } // namespace threadschedule

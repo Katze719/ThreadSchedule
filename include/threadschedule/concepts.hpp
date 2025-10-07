@@ -10,6 +10,15 @@
 namespace threadschedule
 {
 
+// Custom duration trait for compatibility across all C++ versions
+template <typename T, typename = void> struct is_duration_impl : std::false_type
+{
+};
+
+template <typename T> struct is_duration_impl<T, std::void_t<typename T::rep, typename T::period>> : std::true_type
+{
+};
+
 // C++23 concepts (with fallbacks for older compilers)
 #if __cpp_concepts >= 201907L
 
@@ -60,7 +69,7 @@ template <typename F, typename... Args> constexpr bool ThreadCallable = std::is_
 template <typename T>
 constexpr bool ThreadIdentifiable = std::is_same_v<decltype(std::declval<T>().get_id()), std::thread::id>;
 
-template <typename T> constexpr bool Duration = std::chrono::__is_duration<T>::value;
+template <typename T> constexpr bool Duration = is_duration_impl<T>::value;
 
 template <typename T> constexpr bool PriorityType = std::is_integral_v<T>;
 
@@ -95,6 +104,6 @@ template <typename T> inline constexpr bool is_thread_like_v = is_thread_like<T>
  */
 template <typename T> using enable_if_thread_callable_t = std::enable_if_t<std::is_invocable_v<T>, int>;
 
-template <typename T> using enable_if_duration_t = std::enable_if_t<std::chrono::__is_duration<T>::value, int>;
+template <typename T> using enable_if_duration_t = std::enable_if_t<is_duration_impl<T>::value, int>;
 
 } // namespace threadschedule

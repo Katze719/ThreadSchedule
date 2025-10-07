@@ -35,7 +35,9 @@ namespace ts = threadschedule;
 using ts::FastThreadPool;
 using ts::HighPerformancePool;
 using ts::JThreadWrapper;
+#ifndef _WIN32
 using ts::PThreadWrapper;
+#endif
 using ts::SchedulingPolicy;
 using ts::ThreadAffinity;
 using ts::ThreadPool;
