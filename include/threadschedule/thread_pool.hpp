@@ -47,8 +47,7 @@ template <typename T> class WorkStealingDeque
 
   public:
     explicit WorkStealingDeque(size_t capacity = DEFAULT_CAPACITY)
-        : buffer_(std::make_unique<AlignedItem[]>(capacity)),
-          capacity_(capacity)
+        : buffer_(std::make_unique<AlignedItem[]>(capacity)), capacity_(capacity)
     {
     }
 
@@ -160,9 +159,7 @@ class HighPerformancePool
     };
 
     explicit HighPerformancePool(size_t num_threads = std::thread::hardware_concurrency())
-        : num_threads_(num_threads == 0 ? 1 : num_threads),
-          stop_(false),
-          next_victim_(0),
+        : num_threads_(num_threads == 0 ? 1 : num_threads), stop_(false), next_victim_(0),
           start_time_(std::chrono::steady_clock::now())
     {
         // Initialize per-thread work queues
@@ -192,16 +189,8 @@ class HighPerformancePool
     /**
      * @brief High-performance task submission (optimized hot path)
      */
-    template <
-        typename F,
-        typename... Args>
-    auto submit(
-        F &&f,
-        Args &&...args
-    )
-        -> std::future<std::invoke_result_t<
-            F,
-            Args...>>
+    template <typename F, typename... Args>
+    auto submit(F &&f, Args &&...args) -> std::future<std::invoke_result_t<F, Args...>>
     {
         using return_type = std::invoke_result_t<F, Args...>;
 
@@ -227,7 +216,7 @@ class HighPerformancePool
         }
 
         // If preferred queue is full, try a few random ones
-        for (size_t attempts = 0; attempts < std::min(num_threads_, size_t(3)); ++attempts)
+        for (size_t attempts = 0; attempts < (std::min)(num_threads_, size_t(3)); ++attempts)
         {
             const size_t idx = (preferred_queue + attempts + 1) % num_threads_;
             if (worker_queues_[idx]->push([task]() { (*task)(); }))
@@ -254,11 +243,7 @@ class HighPerformancePool
     /**
      * @brief Batch task submission for maximum throughput
      */
-    template <typename Iterator>
-    std::vector<std::future<void>> submit_batch(
-        Iterator begin,
-        Iterator end
-    )
+    template <typename Iterator> std::vector<std::future<void>> submit_batch(Iterator begin, Iterator end)
     {
         std::vector<std::future<void>> futures;
         const size_t                   batch_size = std::distance(begin, end);
@@ -305,26 +290,19 @@ class HighPerformancePool
     /**
      * @brief Optimized parallel for_each with work distribution
      */
-    template <
-        typename Iterator,
-        typename F>
-    void parallel_for_each(
-        Iterator begin,
-        Iterator end,
-        F      &&func
-    )
+    template <typename Iterator, typename F> void parallel_for_each(Iterator begin, Iterator end, F &&func)
     {
         const size_t total_items = std::distance(begin, end);
         if (total_items == 0)
             return;
 
         // Calculate optimal chunk size for cache efficiency
-        const size_t                   chunk_size = std::max(size_t(1), total_items / (num_threads_ * 4));
+        const size_t                   chunk_size = (std::max)(size_t(1), total_items / (num_threads_ * 4));
         std::vector<std::future<void>> futures;
 
         for (auto it = begin; it < end;)
         {
-            auto chunk_end = std::min(it + chunk_size, end);
+            auto chunk_end = (std::min)(it + chunk_size, end);
 
             futures.push_back(submit([func, it, chunk_end]() {
                 for (auto chunk_it = it; chunk_it != chunk_end; ++chunk_it)
@@ -519,21 +497,14 @@ class HighPerformancePool
 
     std::chrono::steady_clock::time_point start_time_;
 
-    // Random number generator for work stealing
-    thread_local static std::random_device rd;
-    thread_local static std::mt19937       gen;
-
     void worker_function(size_t worker_id)
     {
-        // Initialize thread-local random generator
-        if (!rd.entropy())
-        {
-            gen.seed(std::hash<std::thread::id>{}(std::this_thread::get_id()) + worker_id);
-        }
-        else
-        {
-            gen.seed(rd());
-        }
+        // Thread-local random number generator for work stealing
+        thread_local std::random_device rd;
+        thread_local std::mt19937       gen = []() {
+            std::random_device device;
+            return std::mt19937(device());
+        }();
 
         Task                                  task;
         std::uniform_int_distribution<size_t> dist(0, num_threads_ - 1);
@@ -550,7 +521,7 @@ class HighPerformancePool
             // 2. Try to steal from other workers (limit attempts to reduce contention)
             else
             {
-                const size_t max_steal_attempts = std::min(num_threads_, size_t(4));
+                const size_t max_steal_attempts = (std::min)(num_threads_, size_t(4));
                 for (size_t attempts = 0; attempts < max_steal_attempts; ++attempts)
                 {
                     const size_t victim_id = dist(gen);
@@ -615,10 +586,6 @@ class HighPerformancePool
     }
 };
 
-// Thread-local storage for random generators
-thread_local std::random_device HighPerformancePool::rd;
-thread_local std::mt19937       HighPerformancePool::gen(HighPerformancePool::rd());
-
 /**
  * @brief Simple high-performance thread pool using single queue with optimized locking
  *
@@ -641,9 +608,7 @@ class FastThreadPool
     };
 
     explicit FastThreadPool(size_t num_threads = std::thread::hardware_concurrency())
-        : num_threads_(num_threads == 0 ? 1 : num_threads),
-          stop_(false),
-          start_time_(std::chrono::steady_clock::now())
+        : num_threads_(num_threads == 0 ? 1 : num_threads), stop_(false), start_time_(std::chrono::steady_clock::now())
     {
         workers_.reserve(num_threads_);
 
@@ -665,16 +630,8 @@ class FastThreadPool
     /**
      * @brief Optimized task submission with minimal locking
      */
-    template <
-        typename F,
-        typename... Args>
-    auto submit(
-        F &&f,
-        Args &&...args
-    )
-        -> std::future<std::invoke_result_t<
-            F,
-            Args...>>
+    template <typename F, typename... Args>
+    auto submit(F &&f, Args &&...args) -> std::future<std::invoke_result_t<F, Args...>>
     {
         using return_type = std::invoke_result_t<F, Args...>;
 
@@ -700,11 +657,7 @@ class FastThreadPool
     /**
      * @brief Efficient batch processing
      */
-    template <typename Iterator>
-    std::vector<std::future<void>> submit_batch(
-        Iterator begin,
-        Iterator end
-    )
+    template <typename Iterator> std::vector<std::future<void>> submit_batch(Iterator begin, Iterator end)
     {
         std::vector<std::future<void>> futures;
         const size_t                   batch_size = std::distance(begin, end);
@@ -938,8 +891,7 @@ class ThreadPool
     };
 
     explicit ThreadPool(size_t num_threads = std::thread::hardware_concurrency())
-        : num_threads_(num_threads == 0 ? 1 : num_threads),
-          stop_(false)
+        : num_threads_(num_threads == 0 ? 1 : num_threads), stop_(false)
     {
         workers_.reserve(num_threads_);
 
@@ -961,16 +913,8 @@ class ThreadPool
     /**
      * @brief Submit a task to the thread pool
      */
-    template <
-        typename F,
-        typename... Args>
-    auto submit(
-        F &&f,
-        Args &&...args
-    )
-        -> std::future<std::invoke_result_t<
-            F,
-            Args...>>
+    template <typename F, typename... Args>
+    auto submit(F &&f, Args &&...args) -> std::future<std::invoke_result_t<F, Args...>>
     {
         using return_type = std::invoke_result_t<F, Args...>;
 
@@ -998,11 +942,7 @@ class ThreadPool
     /**
      * @brief Submit multiple tasks
      */
-    template <typename Iterator>
-    std::vector<std::future<void>> submit_range(
-        Iterator begin,
-        Iterator end
-    )
+    template <typename Iterator> std::vector<std::future<void>> submit_range(Iterator begin, Iterator end)
     {
         std::vector<std::future<void>> futures;
         futures.reserve(std::distance(begin, end));
@@ -1018,14 +958,7 @@ class ThreadPool
     /**
      * @brief Apply a function to a range of values in parallel
      */
-    template <
-        typename Iterator,
-        typename F>
-    void parallel_for_each(
-        Iterator begin,
-        Iterator end,
-        F      &&func
-    )
+    template <typename Iterator, typename F> void parallel_for_each(Iterator begin, Iterator end, F &&func)
     {
         std::vector<std::future<void>> futures;
         futures.reserve(std::distance(begin, end));
@@ -1221,34 +1154,17 @@ class GlobalThreadPool
         return pool;
     }
 
-    template <
-        typename F,
-        typename... Args>
-    static auto submit(
-        F &&f,
-        Args &&...args
-    )
+    template <typename F, typename... Args> static auto submit(F &&f, Args &&...args)
     {
         return instance().submit(std::forward<F>(f), std::forward<Args>(args)...);
     }
 
-    template <typename Iterator>
-    static auto submit_range(
-        Iterator begin,
-        Iterator end
-    )
+    template <typename Iterator> static auto submit_range(Iterator begin, Iterator end)
     {
         return instance().submit_range(begin, end);
     }
 
-    template <
-        typename Iterator,
-        typename F>
-    static void parallel_for_each(
-        Iterator begin,
-        Iterator end,
-        F      &&func
-    )
+    template <typename Iterator, typename F> static void parallel_for_each(Iterator begin, Iterator end, F &&func)
     {
         instance().parallel_for_each(begin, end, std::forward<F>(func));
     }
@@ -1269,34 +1185,17 @@ class GlobalHighPerformancePool
         return pool;
     }
 
-    template <
-        typename F,
-        typename... Args>
-    static auto submit(
-        F &&f,
-        Args &&...args
-    )
+    template <typename F, typename... Args> static auto submit(F &&f, Args &&...args)
     {
         return instance().submit(std::forward<F>(f), std::forward<Args>(args)...);
     }
 
-    template <typename Iterator>
-    static auto submit_batch(
-        Iterator begin,
-        Iterator end
-    )
+    template <typename Iterator> static auto submit_batch(Iterator begin, Iterator end)
     {
         return instance().submit_batch(begin, end);
     }
 
-    template <
-        typename Iterator,
-        typename F>
-    static void parallel_for_each(
-        Iterator begin,
-        Iterator end,
-        F      &&func
-    )
+    template <typename Iterator, typename F> static void parallel_for_each(Iterator begin, Iterator end, F &&func)
     {
         instance().parallel_for_each(begin, end, std::forward<F>(func));
     }
@@ -1308,13 +1207,7 @@ class GlobalHighPerformancePool
 /**
  * @brief Convenience function for parallel execution with containers
  */
-template <
-    typename Container,
-    typename F>
-void parallel_for_each(
-    Container &container,
-    F        &&func
-)
+template <typename Container, typename F> void parallel_for_each(Container &container, F &&func)
 {
     GlobalThreadPool::parallel_for_each(container.begin(), container.end(), std::forward<F>(func));
 }
