@@ -17,23 +17,6 @@ namespace threadschedule
 {
 
 #if THREADSCHEDULE_HAS_STD_EXPECTED
-
-template <typename T, typename E = std::error_code>
-class expected : public std::expected<T, E>
-{
-  public:
-    using std::expected<T, E>::expected; // inherit constructors
-    using std::expected<T, E>::operator=;
-};
-
-template <typename E>
-class expected<void, E> : public std::expected<void, E>
-{
-  public:
-    using std::expected<void, E>::expected;
-    using std::expected<void, E>::operator=;
-};
-
 template <typename E>
 using unexpected = std::unexpected<E>;
 using unexpect_t = std::unexpect_t;
