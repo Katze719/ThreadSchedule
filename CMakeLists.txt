@@ -1,8 +1,15 @@
 cmake_minimum_required(VERSION 3.14)
 
 # Project version
+# Determine project version from VERSION file (single source of truth)
+set(THREADSCHEDULE_VERSION "0.0.0")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" THREADSCHEDULE_VERSION)
+    string(STRIP "${THREADSCHEDULE_VERSION}" THREADSCHEDULE_VERSION)
+endif()
+
 project(ThreadSchedule 
-    VERSION 1.0.0 
+    VERSION ${THREADSCHEDULE_VERSION}
     DESCRIPTION "Modern C++ thread management library"
     HOMEPAGE_URL "https://github.com/Katze719/ThreadSchedule"
     LANGUAGES CXX
