@@ -1,6 +1,7 @@
 #pragma once
 
 #include "concepts.hpp"
+#include "expected.hpp"
 #include "scheduler_policy.hpp"
 #include <atomic>
 #include <exception>
@@ -126,11 +127,13 @@ class PThreadWrapper
     }
 
     // Extended pthread functionality
-    bool set_name(const std::string &name)
+    expected<void, std::error_code> set_name(const std::string &name)
     {
         if (name.length() > 15)
-            return false; // Linux limit
-        return pthread_setname_np(thread_, name.c_str()) == 0;
+            return expected<void, std::error_code>(unexpect, std::make_error_code(std::errc::invalid_argument));
+        if (pthread_setname_np(thread_, name.c_str()) == 0)
+            return expected<void, std::error_code>();
+        return expected<void, std::error_code>(unexpect, std::error_code(errno, std::generic_category()));
     }
 
     std::optional<std::string> get_name() const
@@ -143,35 +146,41 @@ class PThreadWrapper
         return std::nullopt;
     }
 
-    bool set_priority(ThreadPriority priority)
+    expected<void, std::error_code> set_priority(ThreadPriority priority)
     {
         const int policy = SCHED_OTHER;
         auto params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
 
         if (!params_result.has_value())
         {
-            return false;
+            return unexpected(params_result.error());
         }
 
-        return pthread_setschedparam(thread_, policy, &params_result.value()) == 0;
+        if (pthread_setschedparam(thread_, policy, &params_result.value()) == 0)
+            return {};
+        return unexpected(std::error_code(errno, std::generic_category()));
     }
 
-    bool set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority)
+    expected<void, std::error_code> set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority)
     {
         const int policy_int = static_cast<int>(policy);
         auto params_result = SchedulerParams::create_for_policy(policy, priority);
 
         if (!params_result.has_value())
         {
-            return false;
+            return unexpected(params_result.error());
         }
 
-        return pthread_setschedparam(thread_, policy_int, &params_result.value()) == 0;
+        if (pthread_setschedparam(thread_, policy_int, &params_result.value()) == 0)
+            return {};
+        return unexpected(std::error_code(errno, std::generic_category()));
     }
 
-    bool set_affinity(const ThreadAffinity &affinity)
+    expected<void, std::error_code> set_affinity(const ThreadAffinity &affinity)
     {
-        return pthread_setaffinity_np(thread_, sizeof(cpu_set_t), &affinity.native_handle()) == 0;
+        if (pthread_setaffinity_np(thread_, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
+            return {};
+        return unexpected(std::error_code(errno, std::generic_category()));
     }
 
     std::optional<ThreadAffinity> get_affinity() const
@@ -185,23 +194,29 @@ class PThreadWrapper
     }
 
     // Cancellation support
-    bool cancel()
+    expected<void, std::error_code> cancel()
     {
-        return pthread_cancel(thread_) == 0;
+        if (pthread_cancel(thread_) == 0)
+            return {};
+        return unexpected(std::error_code(errno, std::generic_category()));
     }
 
-    bool set_cancel_state(bool enabled)
+    expected<void, std::error_code> set_cancel_state(bool enabled)
     {
         const int state = enabled ? PTHREAD_CANCEL_ENABLE : PTHREAD_CANCEL_DISABLE;
         int old_state;
-        return pthread_setcancelstate(state, &old_state) == 0;
+        if (pthread_setcancelstate(state, &old_state) == 0)
+            return {};
+        return unexpected(std::error_code(errno, std::generic_category()));
     }
 
-    bool set_cancel_type(bool asynchronous)
+    expected<void, std::error_code> set_cancel_type(bool asynchronous)
     {
         const int type = asynchronous ? PTHREAD_CANCEL_ASYNCHRONOUS : PTHREAD_CANCEL_DEFERRED;
         int old_type;
-        return pthread_setcanceltype(type, &old_type) == 0;
+        if (pthread_setcanceltype(type, &old_type) == 0)
+            return {};
+        return unexpected(std::error_code(errno, std::generic_category()));
     }
 
     // Factory methods
@@ -211,8 +226,8 @@ class PThreadWrapper
     {
 
         PThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
-        wrapper.set_name(name);
-        wrapper.set_scheduling_policy(policy, priority);
+        (void)wrapper.set_name(name);
+        (void)wrapper.set_scheduling_policy(policy, priority);
         return wrapper;
     }
 

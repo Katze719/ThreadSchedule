@@ -280,6 +280,28 @@ cmake .. -DCMAKE_TOOLCHAIN_FILE=../mingw-toolchain.cmake
 cmake --build .
 ```
 
+### Native MinGW Build on Windows
+
+**Step 1**: Install MinGW-w64 via MSYS2
+```bash
+# Download and install MSYS2 from https://www.msys2.org/
+# Then in MSYS2 terminal:
+pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja
+```
+
+**Step 2**: Build with MinGW
+```bash
+# In MSYS2 MinGW64 shell:
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+
+**Notes**:
+- MinGW-w64 provides full Windows API support including thread naming (Windows 10+)
+- All ThreadSchedule features work with MinGW, including `SetThreadDescription`/`GetThreadDescription`
+- The library automatically sets `_WIN32_WINNT=0x0A00` for MinGW to enable Windows 10 APIs
+- Use the MSYS2 MinGW64 shell, not the MSYS shell, for native Windows builds
+
 ### ARM Cross-Compilation
 
 **Example**: Building for Raspberry Pi
@@ -367,6 +389,19 @@ wget https://github.com/cpm-cmake/CPM.cmake/releases/download/v0.40.8/CPM.cmake
 ```bash
 conan create . --build=missing
 ```
+
+### MinGW: Missing Windows APIs
+```
+undefined reference to `SetThreadDescription'
+```
+**Solution**: Ensure you're using a recent MinGW-w64 version (8.0+) and that `_WIN32_WINNT` is set to 0x0A00 or higher. ThreadSchedule does this automatically, but if you override compiler flags, you may need to add:
+```cmake
+target_compile_definitions(your_target PRIVATE _WIN32_WINNT=0x0A00)
+```
+
+### MinGW: Wrong Shell
+**Problem**: Build fails with strange errors on Windows with MinGW
+**Solution**: Make sure you're using the MSYS2 **MinGW64** shell (not MSYS or UCRT64) when building with MinGW-w64.
 
 ## Complete Integration Example
 

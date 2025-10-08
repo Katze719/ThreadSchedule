@@ -2,7 +2,7 @@ name: Release
 
 on:
   release:
-    types: [published, created]
+    types: [published]
   workflow_dispatch:
     inputs:
       version:
@@ -14,6 +14,8 @@ jobs:
   create-artifacts:
     name: Create Release Artifacts
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     
     steps:
     - name: Checkout code
@@ -49,7 +51,7 @@ jobs:
           threadschedule-${{ steps.get_version.outputs.version }}-headers/
     
     - name: Upload artifacts to release
-      if: github.event_name == 'release'
+      if: github.event_name == 'release' && github.event.action == 'published'
       uses: softprops/action-gh-release@v2
       with:
         files: |
