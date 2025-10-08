@@ -19,10 +19,11 @@ namespace threadschedule
 /**
  * @brief High-performance work-stealing deque for individual worker threads
  */
-template <typename T> class WorkStealingDeque
+template <typename T>
+class WorkStealingDeque
 {
   public:
-    static constexpr size_t CACHE_LINE_SIZE  = 64;
+    static constexpr size_t CACHE_LINE_SIZE = 64;
     static constexpr size_t DEFAULT_CAPACITY = 1024;
 
   private:
@@ -39,11 +40,11 @@ template <typename T> class WorkStealingDeque
     };
 
     std::unique_ptr<AlignedItem[]> buffer_;
-    size_t                         capacity_;
+    size_t capacity_;
 
-    alignas(CACHE_LINE_SIZE) std::atomic<size_t> top_{0}; // Owner pushes/pops here
+    alignas(CACHE_LINE_SIZE) std::atomic<size_t> top_{0};    // Owner pushes/pops here
     alignas(CACHE_LINE_SIZE) std::atomic<size_t> bottom_{0}; // Thieves steal here
-    alignas(CACHE_LINE_SIZE) mutable std::mutex mutex_; // For synchronization
+    alignas(CACHE_LINE_SIZE) mutable std::mutex mutex_;      // For synchronization
 
   public:
     explicit WorkStealingDeque(size_t capacity = DEFAULT_CAPACITY)
@@ -55,8 +56,8 @@ template <typename T> class WorkStealingDeque
     bool push(T &&item)
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        const size_t                t = top_.load(std::memory_order_relaxed);
-        const size_t                b = bottom_.load(std::memory_order_relaxed);
+        const size_t t = top_.load(std::memory_order_relaxed);
+        const size_t b = bottom_.load(std::memory_order_relaxed);
 
         if (t - b >= capacity_)
         {
@@ -71,8 +72,8 @@ template <typename T> class WorkStealingDeque
     bool push(const T &item)
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        const size_t                t = top_.load(std::memory_order_relaxed);
-        const size_t                b = bottom_.load(std::memory_order_relaxed);
+        const size_t t = top_.load(std::memory_order_relaxed);
+        const size_t b = bottom_.load(std::memory_order_relaxed);
 
         if (t - b >= capacity_)
         {
@@ -87,8 +88,8 @@ template <typename T> class WorkStealingDeque
     bool pop(T &item)
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        const size_t                t = top_.load(std::memory_order_relaxed);
-        const size_t                b = bottom_.load(std::memory_order_relaxed);
+        const size_t t = top_.load(std::memory_order_relaxed);
+        const size_t b = bottom_.load(std::memory_order_relaxed);
 
         if (t <= b)
         {
@@ -96,7 +97,7 @@ template <typename T> class WorkStealingDeque
         }
 
         const size_t new_top = t - 1;
-        item                 = std::move(buffer_[new_top % capacity_].item);
+        item = std::move(buffer_[new_top % capacity_].item);
         top_.store(new_top, std::memory_order_relaxed);
         return true;
     }
@@ -105,8 +106,8 @@ template <typename T> class WorkStealingDeque
     bool steal(T &item)
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        const size_t                b = bottom_.load(std::memory_order_relaxed);
-        const size_t                t = top_.load(std::memory_order_relaxed);
+        const size_t b = bottom_.load(std::memory_order_relaxed);
+        const size_t t = top_.load(std::memory_order_relaxed);
 
         if (b >= t)
         {
@@ -149,12 +150,12 @@ class HighPerformancePool
 
     struct Statistics
     {
-        size_t                    total_threads;
-        size_t                    active_threads;
-        size_t                    pending_tasks;
-        size_t                    completed_tasks;
-        size_t                    stolen_tasks;
-        double                    tasks_per_second;
+        size_t total_threads;
+        size_t active_threads;
+        size_t pending_tasks;
+        size_t completed_tasks;
+        size_t stolen_tasks;
+        double tasks_per_second;
         std::chrono::microseconds avg_task_time;
     };
 
@@ -178,7 +179,7 @@ class HighPerformancePool
         }
     }
 
-    HighPerformancePool(const HighPerformancePool &)            = delete;
+    HighPerformancePool(const HighPerformancePool &) = delete;
     HighPerformancePool &operator=(const HighPerformancePool &) = delete;
 
     ~HighPerformancePool()
@@ -195,8 +196,7 @@ class HighPerformancePool
         using return_type = std::invoke_result_t<F, Args...>;
 
         auto task = std::make_shared<std::packaged_task<return_type()>>(
-            std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-        );
+            std::bind(std::forward<F>(f), std::forward<Args>(args)...));
 
         std::future<return_type> result = task->get_future();
 
@@ -243,10 +243,11 @@ class HighPerformancePool
     /**
      * @brief Batch task submission for maximum throughput
      */
-    template <typename Iterator> std::vector<std::future<void>> submit_batch(Iterator begin, Iterator end)
+    template <typename Iterator>
+    std::vector<std::future<void>> submit_batch(Iterator begin, Iterator end)
     {
         std::vector<std::future<void>> futures;
-        const size_t                   batch_size = std::distance(begin, end);
+        const size_t batch_size = std::distance(begin, end);
         futures.reserve(batch_size);
 
         if (stop_.load(std::memory_order_acquire))
@@ -290,14 +291,15 @@ class HighPerformancePool
     /**
      * @brief Optimized parallel for_each with work distribution
      */
-    template <typename Iterator, typename F> void parallel_for_each(Iterator begin, Iterator end, F &&func)
+    template <typename Iterator, typename F>
+    void parallel_for_each(Iterator begin, Iterator end, F &&func)
     {
         const size_t total_items = std::distance(begin, end);
         if (total_items == 0)
             return;
 
         // Calculate optimal chunk size for cache efficiency
-        const size_t                   chunk_size = (std::max)(size_t(1), total_items / (num_threads_ * 4));
+        const size_t chunk_size = (std::max)(size_t(1), total_items / (num_threads_ * 4));
         std::vector<std::future<void>> futures;
 
         for (auto it = begin; it < end;)
@@ -342,11 +344,8 @@ class HighPerformancePool
     /**
      * @brief Configure all worker threads
      */
-    bool configure_threads(
-        const std::string &name_prefix,
-        SchedulingPolicy   policy   = SchedulingPolicy::OTHER,
-        ThreadPriority     priority = ThreadPriority::normal()
-    )
+    bool configure_threads(const std::string &name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
+                           ThreadPriority priority = ThreadPriority::normal())
     {
         bool success = true;
 
@@ -406,9 +405,8 @@ class HighPerformancePool
     void wait_for_tasks()
     {
         std::unique_lock<std::mutex> lock(completion_mutex_);
-        completion_condition_.wait(lock, [this] {
-            return pending_tasks() == 0 && active_tasks_.load(std::memory_order_acquire) == 0;
-        });
+        completion_condition_.wait(
+            lock, [this] { return pending_tasks() == 0 && active_tasks_.load(std::memory_order_acquire) == 0; });
     }
 
     void shutdown()
@@ -439,15 +437,15 @@ class HighPerformancePool
      */
     Statistics get_statistics() const
     {
-        const auto now     = std::chrono::steady_clock::now();
+        const auto now = std::chrono::steady_clock::now();
         const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_);
 
         Statistics stats;
-        stats.total_threads   = num_threads_;
-        stats.active_threads  = active_tasks_.load(std::memory_order_acquire);
-        stats.pending_tasks   = pending_tasks();
+        stats.total_threads = num_threads_;
+        stats.active_threads = active_tasks_.load(std::memory_order_acquire);
+        stats.pending_tasks = pending_tasks();
         stats.completed_tasks = completed_tasks_.load(std::memory_order_acquire);
-        stats.stolen_tasks    = stolen_tasks_.load(std::memory_order_acquire);
+        stats.stolen_tasks = stolen_tasks_.load(std::memory_order_acquire);
 
         if (elapsed.count() > 0)
         {
@@ -472,27 +470,27 @@ class HighPerformancePool
     }
 
   private:
-    size_t                                                num_threads_;
-    std::vector<ThreadWrapper>                            workers_;
+    size_t num_threads_;
+    std::vector<ThreadWrapper> workers_;
     std::vector<std::unique_ptr<WorkStealingDeque<Task>>> worker_queues_;
 
     // Overflow queue for when worker queues are full
-    std::queue<Task>   overflow_tasks_;
+    std::queue<Task> overflow_tasks_;
     mutable std::mutex overflow_mutex_;
 
     // Synchronization
-    std::atomic<bool>       stop_;
+    std::atomic<bool> stop_;
     std::condition_variable wakeup_condition_;
-    std::mutex              wakeup_mutex_;
+    std::mutex wakeup_mutex_;
 
     std::condition_variable completion_condition_;
-    std::mutex              completion_mutex_;
+    std::mutex completion_mutex_;
 
     // Load balancing and statistics
-    std::atomic<size_t>   next_victim_;
-    std::atomic<size_t>   active_tasks_{0};
-    std::atomic<size_t>   completed_tasks_{0};
-    std::atomic<size_t>   stolen_tasks_{0};
+    std::atomic<size_t> next_victim_;
+    std::atomic<size_t> active_tasks_{0};
+    std::atomic<size_t> completed_tasks_{0};
+    std::atomic<size_t> stolen_tasks_{0};
     std::atomic<uint64_t> total_task_time_{0}; // microseconds
 
     std::chrono::steady_clock::time_point start_time_;
@@ -501,12 +499,12 @@ class HighPerformancePool
     {
         // Thread-local random number generator for work stealing
         thread_local std::random_device rd;
-        thread_local std::mt19937       gen = []() {
+        thread_local std::mt19937 gen = []() {
             std::random_device device;
             return std::mt19937(device());
         }();
 
-        Task                                  task;
+        Task task;
         std::uniform_int_distribution<size_t> dist(0, num_threads_ - 1);
 
         while (true)
@@ -599,11 +597,11 @@ class FastThreadPool
 
     struct Statistics
     {
-        size_t                    total_threads;
-        size_t                    active_threads;
-        size_t                    pending_tasks;
-        size_t                    completed_tasks;
-        double                    tasks_per_second;
+        size_t total_threads;
+        size_t active_threads;
+        size_t pending_tasks;
+        size_t completed_tasks;
+        double tasks_per_second;
         std::chrono::microseconds avg_task_time;
     };
 
@@ -619,7 +617,7 @@ class FastThreadPool
         }
     }
 
-    FastThreadPool(const FastThreadPool &)            = delete;
+    FastThreadPool(const FastThreadPool &) = delete;
     FastThreadPool &operator=(const FastThreadPool &) = delete;
 
     ~FastThreadPool()
@@ -636,8 +634,7 @@ class FastThreadPool
         using return_type = std::invoke_result_t<F, Args...>;
 
         auto task = std::make_shared<std::packaged_task<return_type()>>(
-            std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-        );
+            std::bind(std::forward<F>(f), std::forward<Args>(args)...));
 
         std::future<return_type> result = task->get_future();
 
@@ -657,10 +654,11 @@ class FastThreadPool
     /**
      * @brief Efficient batch processing
      */
-    template <typename Iterator> std::vector<std::future<void>> submit_batch(Iterator begin, Iterator end)
+    template <typename Iterator>
+    std::vector<std::future<void>> submit_batch(Iterator begin, Iterator end)
     {
         std::vector<std::future<void>> futures;
-        const size_t                   batch_size = std::distance(begin, end);
+        const size_t batch_size = std::distance(begin, end);
         futures.reserve(batch_size);
 
         {
@@ -705,11 +703,8 @@ class FastThreadPool
         workers_.clear();
     }
 
-    bool configure_threads(
-        const std::string &name_prefix,
-        SchedulingPolicy   policy   = SchedulingPolicy::OTHER,
-        ThreadPriority     priority = ThreadPriority::normal()
-    )
+    bool configure_threads(const std::string &name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
+                           ThreadPriority priority = ThreadPriority::normal())
     {
         bool success = true;
 
@@ -764,14 +759,14 @@ class FastThreadPool
 
     Statistics get_statistics() const
     {
-        const auto now     = std::chrono::steady_clock::now();
+        const auto now = std::chrono::steady_clock::now();
         const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_);
 
         std::lock_guard<std::mutex> lock(queue_mutex_);
-        Statistics                  stats;
-        stats.total_threads   = num_threads_;
-        stats.active_threads  = active_tasks_.load(std::memory_order_acquire);
-        stats.pending_tasks   = tasks_.size();
+        Statistics stats;
+        stats.total_threads = num_threads_;
+        stats.active_threads = active_tasks_.load(std::memory_order_acquire);
+        stats.pending_tasks = tasks_.size();
         stats.completed_tasks = completed_tasks_.load(std::memory_order_acquire);
 
         if (elapsed.count() > 0)
@@ -797,16 +792,16 @@ class FastThreadPool
     }
 
   private:
-    size_t                     num_threads_;
+    size_t num_threads_;
     std::vector<ThreadWrapper> workers_;
-    std::queue<Task>           tasks_;
+    std::queue<Task> tasks_;
 
-    mutable std::mutex      queue_mutex_;
+    mutable std::mutex queue_mutex_;
     std::condition_variable condition_;
-    std::atomic<bool>       stop_;
-    std::atomic<size_t>     active_tasks_{0};
-    std::atomic<size_t>     completed_tasks_{0};
-    std::atomic<uint64_t>   total_task_time_{0}; // microseconds
+    std::atomic<bool> stop_;
+    std::atomic<size_t> active_tasks_{0};
+    std::atomic<size_t> completed_tasks_{0};
+    std::atomic<uint64_t> total_task_time_{0}; // microseconds
 
     std::chrono::steady_clock::time_point start_time_;
 
@@ -821,9 +816,8 @@ class FastThreadPool
                 std::unique_lock<std::mutex> lock(queue_mutex_);
 
                 // Use timeout to avoid indefinite blocking
-                if (condition_.wait_for(lock, std::chrono::milliseconds(10), [this] {
-                        return stop_ || !tasks_.empty();
-                    }))
+                if (condition_.wait_for(lock, std::chrono::milliseconds(10),
+                                        [this] { return stop_ || !tasks_.empty(); }))
                 {
                     if (stop_ && tasks_.empty())
                     {
@@ -902,7 +896,7 @@ class ThreadPool
         }
     }
 
-    ThreadPool(const ThreadPool &)            = delete;
+    ThreadPool(const ThreadPool &) = delete;
     ThreadPool &operator=(const ThreadPool &) = delete;
 
     ~ThreadPool()
@@ -919,8 +913,7 @@ class ThreadPool
         using return_type = std::invoke_result_t<F, Args...>;
 
         auto task = std::make_shared<std::packaged_task<return_type()>>(
-            std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-        );
+            std::bind(std::forward<F>(f), std::forward<Args>(args)...));
 
         std::future<return_type> result = task->get_future();
 
@@ -942,7 +935,8 @@ class ThreadPool
     /**
      * @brief Submit multiple tasks
      */
-    template <typename Iterator> std::vector<std::future<void>> submit_range(Iterator begin, Iterator end)
+    template <typename Iterator>
+    std::vector<std::future<void>> submit_range(Iterator begin, Iterator end)
     {
         std::vector<std::future<void>> futures;
         futures.reserve(std::distance(begin, end));
@@ -958,7 +952,8 @@ class ThreadPool
     /**
      * @brief Apply a function to a range of values in parallel
      */
-    template <typename Iterator, typename F> void parallel_for_each(Iterator begin, Iterator end, F &&func)
+    template <typename Iterator, typename F>
+    void parallel_for_each(Iterator begin, Iterator end, F &&func)
     {
         std::vector<std::future<void>> futures;
         futures.reserve(std::distance(begin, end));
@@ -989,11 +984,8 @@ class ThreadPool
     /**
      * @brief Configure thread properties
      */
-    bool configure_threads(
-        const std::string &name_prefix,
-        SchedulingPolicy   policy   = SchedulingPolicy::OTHER,
-        ThreadPriority     priority = ThreadPriority::normal()
-    )
+    bool configure_threads(const std::string &name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
+                           ThreadPriority priority = ThreadPriority::normal())
     {
         bool success = true;
 
@@ -1081,25 +1073,25 @@ class ThreadPool
     Statistics get_statistics() const
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
-        Statistics                  stats;
-        stats.total_threads   = num_threads_;
-        stats.active_threads  = active_tasks_;
-        stats.pending_tasks   = tasks_.size();
+        Statistics stats;
+        stats.total_threads = num_threads_;
+        stats.active_threads = active_tasks_;
+        stats.pending_tasks = tasks_.size();
         stats.completed_tasks = completed_tasks_;
         return stats;
     }
 
   private:
-    size_t                     num_threads_;
+    size_t num_threads_;
     std::vector<ThreadWrapper> workers_;
-    std::queue<Task>           tasks_;
+    std::queue<Task> tasks_;
 
-    mutable std::mutex      queue_mutex_;
+    mutable std::mutex queue_mutex_;
     std::condition_variable condition_;
     std::condition_variable task_finished_condition_;
-    std::atomic<bool>       stop_;
-    std::atomic<size_t>     active_tasks_{0};
-    std::atomic<size_t>     completed_tasks_{0};
+    std::atomic<bool> stop_;
+    std::atomic<size_t> active_tasks_{0};
+    std::atomic<size_t> completed_tasks_{0};
 
     void worker_function()
     {
@@ -1154,17 +1146,20 @@ class GlobalThreadPool
         return pool;
     }
 
-    template <typename F, typename... Args> static auto submit(F &&f, Args &&...args)
+    template <typename F, typename... Args>
+    static auto submit(F &&f, Args &&...args)
     {
         return instance().submit(std::forward<F>(f), std::forward<Args>(args)...);
     }
 
-    template <typename Iterator> static auto submit_range(Iterator begin, Iterator end)
+    template <typename Iterator>
+    static auto submit_range(Iterator begin, Iterator end)
     {
         return instance().submit_range(begin, end);
     }
 
-    template <typename Iterator, typename F> static void parallel_for_each(Iterator begin, Iterator end, F &&func)
+    template <typename Iterator, typename F>
+    static void parallel_for_each(Iterator begin, Iterator end, F &&func)
     {
         instance().parallel_for_each(begin, end, std::forward<F>(func));
     }
@@ -1185,17 +1180,20 @@ class GlobalHighPerformancePool
         return pool;
     }
 
-    template <typename F, typename... Args> static auto submit(F &&f, Args &&...args)
+    template <typename F, typename... Args>
+    static auto submit(F &&f, Args &&...args)
     {
         return instance().submit(std::forward<F>(f), std::forward<Args>(args)...);
     }
 
-    template <typename Iterator> static auto submit_batch(Iterator begin, Iterator end)
+    template <typename Iterator>
+    static auto submit_batch(Iterator begin, Iterator end)
     {
         return instance().submit_batch(begin, end);
     }
 
-    template <typename Iterator, typename F> static void parallel_for_each(Iterator begin, Iterator end, F &&func)
+    template <typename Iterator, typename F>
+    static void parallel_for_each(Iterator begin, Iterator end, F &&func)
     {
         instance().parallel_for_each(begin, end, std::forward<F>(func));
     }
@@ -1207,7 +1205,8 @@ class GlobalHighPerformancePool
 /**
  * @brief Convenience function for parallel execution with containers
  */
-template <typename Container, typename F> void parallel_for_each(Container &container, F &&func)
+template <typename Container, typename F>
+void parallel_for_each(Container &container, F &&func)
 {
     GlobalThreadPool::parallel_for_each(container.begin(), container.end(), std::forward<F>(func));
 }

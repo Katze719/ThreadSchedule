@@ -21,13 +21,14 @@ namespace threadschedule
 /**
  * @brief Base thread wrapper with common functionality
  */
-template <typename ThreadType> class BaseThreadWrapper
+template <typename ThreadType>
+class BaseThreadWrapper
 {
   public:
     using native_handle_type = typename ThreadType::native_handle_type;
-    using id                 = typename ThreadType::id;
+    using id = typename ThreadType::id;
 
-    BaseThreadWrapper()          = default;
+    BaseThreadWrapper() = default;
     virtual ~BaseThreadWrapper() = default;
 
     // Thread management
@@ -65,9 +66,9 @@ template <typename ThreadType> class BaseThreadWrapper
     {
 #ifdef _WIN32
         // Windows supports longer thread names
-        const auto   handle = native_handle();
+        const auto handle = native_handle();
         std::wstring wide_name(name.begin(), name.end());
-        HRESULT      hr = SetThreadDescription(handle, wide_name.c_str());
+        HRESULT hr = SetThreadDescription(handle, wide_name.c_str());
         return SUCCEEDED(hr);
 #else
         if (name.length() > 15)
@@ -82,8 +83,8 @@ template <typename ThreadType> class BaseThreadWrapper
     {
 #ifdef _WIN32
         const auto handle = const_cast<BaseThreadWrapper *>(this)->native_handle();
-        PWSTR      thread_name;
-        HRESULT    hr = GetThreadDescription(handle, &thread_name);
+        PWSTR thread_name;
+        HRESULT hr = GetThreadDescription(handle, &thread_name);
         if (SUCCEEDED(hr))
         {
             // Convert wide string to narrow string
@@ -99,7 +100,7 @@ template <typename ThreadType> class BaseThreadWrapper
         }
         return std::nullopt;
 #else
-        char       name[16]; // Linux limit + 1
+        char name[16]; // Linux limit + 1
         const auto handle = const_cast<BaseThreadWrapper *>(this)->native_handle();
 
         if (pthread_getname_np(handle, name, sizeof(name)) == 0)
@@ -152,7 +153,7 @@ template <typename ThreadType> class BaseThreadWrapper
         return SetThreadPriority(handle, win_priority) != 0;
 #else
         const auto handle = native_handle();
-        const int  policy = SCHED_OTHER;
+        const int policy = SCHED_OTHER;
 
         auto params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
 
@@ -172,8 +173,8 @@ template <typename ThreadType> class BaseThreadWrapper
         // We'll just set the priority and return success
         return set_priority(priority);
 #else
-        const auto handle     = native_handle();
-        const int  policy_int = static_cast<int>(policy);
+        const auto handle = native_handle();
+        const int policy_int = static_cast<int>(policy);
 
         auto params_result = SchedulerParams::create_for_policy(policy, priority);
         if (!params_result.has_value())
@@ -207,7 +208,7 @@ template <typename ThreadType> class BaseThreadWrapper
         return std::nullopt;
 #else
         ThreadAffinity affinity;
-        const auto     handle = const_cast<BaseThreadWrapper *>(this)->native_handle();
+        const auto handle = const_cast<BaseThreadWrapper *>(this)->native_handle();
 
         if (pthread_getaffinity_np(handle, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
         {
@@ -277,7 +278,7 @@ template <typename ThreadType> class BaseThreadWrapper
             return 0;
         }
 #else
-        errno          = 0;
+        errno = 0;
         const int nice = getpriority(PRIO_PROCESS, 0);
         if (errno == 0)
         {
@@ -299,12 +300,13 @@ class ThreadWrapper : public BaseThreadWrapper<std::thread>
   public:
     ThreadWrapper() = default;
 
-    template <typename F, typename... Args> explicit ThreadWrapper(F &&f, Args &&...args) : BaseThreadWrapper()
+    template <typename F, typename... Args>
+    explicit ThreadWrapper(F &&f, Args &&...args) : BaseThreadWrapper()
     {
         thread_ = std::thread(std::forward<F>(f), std::forward<Args>(args)...);
     }
 
-    ThreadWrapper(const ThreadWrapper &)            = delete;
+    ThreadWrapper(const ThreadWrapper &) = delete;
     ThreadWrapper &operator=(const ThreadWrapper &) = delete;
 
     ThreadWrapper(ThreadWrapper &&other) noexcept : BaseThreadWrapper()
@@ -335,9 +337,8 @@ class ThreadWrapper : public BaseThreadWrapper<std::thread>
 
     // Factory methods
     template <typename F, typename... Args>
-    static ThreadWrapper create_with_config(
-        const std::string &name, SchedulingPolicy policy, ThreadPriority priority, F &&f, Args &&...args
-    )
+    static ThreadWrapper create_with_config(const std::string &name, SchedulingPolicy policy, ThreadPriority priority,
+                                            F &&f, Args &&...args)
     {
 
         ThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
@@ -356,12 +357,13 @@ class JThreadWrapper : public BaseThreadWrapper<std::jthread>
   public:
     JThreadWrapper() = default;
 
-    template <typename F, typename... Args> explicit JThreadWrapper(F &&f, Args &&...args) : BaseThreadWrapper()
+    template <typename F, typename... Args>
+    explicit JThreadWrapper(F &&f, Args &&...args) : BaseThreadWrapper()
     {
         thread_ = std::jthread(std::forward<F>(f), std::forward<Args>(args)...);
     }
 
-    JThreadWrapper(const JThreadWrapper &)            = delete;
+    JThreadWrapper(const JThreadWrapper &) = delete;
     JThreadWrapper &operator=(const JThreadWrapper &) = delete;
 
     JThreadWrapper(JThreadWrapper &&other) noexcept : BaseThreadWrapper()
@@ -398,9 +400,8 @@ class JThreadWrapper : public BaseThreadWrapper<std::jthread>
 
     // Factory methods
     template <typename F, typename... Args>
-    static JThreadWrapper create_with_config(
-        const std::string &name, SchedulingPolicy policy, ThreadPriority priority, F &&f, Args &&...args
-    )
+    static JThreadWrapper create_with_config(const std::string &name, SchedulingPolicy policy, ThreadPriority priority,
+                                             F &&f, Args &&...args)
     {
 
         JThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
@@ -451,8 +452,8 @@ class ThreadInfo
     static std::optional<int> get_current_priority()
     {
 #ifdef _WIN32
-        HANDLE thread   = GetCurrentThread();
-        int    priority = GetThreadPriority(thread);
+        HANDLE thread = GetCurrentThread();
+        int priority = GetThreadPriority(thread);
         if (priority == THREAD_PRIORITY_ERROR_RETURN)
         {
             return std::nullopt;

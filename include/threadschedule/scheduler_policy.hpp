@@ -27,16 +27,16 @@ enum class SchedulingPolicy
     // Windows doesn't have the same scheduling policies as Linux
     // We'll use generic values
     OTHER = 0, ///< Standard scheduling
-    FIFO  = 1, ///< First in, first out
-    RR    = 2, ///< Round-robin
+    FIFO = 1,  ///< First in, first out
+    RR = 2,    ///< Round-robin
     BATCH = 3, ///< For batch style execution
-    IDLE  = 4 ///< For very low priority background tasks
+    IDLE = 4   ///< For very low priority background tasks
 #else
     OTHER = SCHED_OTHER, ///< Standard round-robin time-sharing
-    FIFO  = SCHED_FIFO, ///< First in, first out
-    RR    = SCHED_RR, ///< Round-robin
+    FIFO = SCHED_FIFO,   ///< First in, first out
+    RR = SCHED_RR,       ///< Round-robin
     BATCH = SCHED_BATCH, ///< For batch style execution
-    IDLE  = SCHED_IDLE, ///< For very low priority background tasks
+    IDLE = SCHED_IDLE,   ///< For very low priority background tasks
 #ifdef SCHED_DEADLINE
     DEADLINE = SCHED_DEADLINE ///< Real-time deadline scheduling
 #endif
@@ -112,7 +112,7 @@ class ThreadPriority
   private:
     static constexpr int min_priority = -20;
     static constexpr int max_priority = 19;
-    int                  priority_;
+    int priority_;
 };
 
 /**
@@ -228,7 +228,7 @@ class ThreadAffinity
 
     std::string to_string() const
     {
-        auto               cpus = get_cpus();
+        auto cpus = get_cpus();
         std::ostringstream oss;
         oss << "ThreadAffinity({";
         for (size_t i = 0; i < cpus.size(); ++i)
@@ -252,7 +252,8 @@ class ThreadAffinity
 /**
  * @brief Simple result type as std::expected replacement
  */
-template <typename T, typename E> class result
+template <typename T, typename E>
+class result
 {
   public:
     result(const T &value) : has_value_(true)
@@ -330,8 +331,8 @@ class SchedulerParams
         sched_param param{};
 
         const int policy_int = static_cast<int>(policy);
-        const int min_prio   = sched_get_priority_min(policy_int);
-        const int max_prio   = sched_get_priority_max(policy_int);
+        const int min_prio = sched_get_priority_min(policy_int);
+        const int max_prio = sched_get_priority_max(policy_int);
 
         if (min_prio == -1 || max_prio == -1)
         {
@@ -345,8 +346,8 @@ class SchedulerParams
     static result<int, std::error_code> get_priority_range(SchedulingPolicy policy)
     {
         const int policy_int = static_cast<int>(policy);
-        const int min_prio   = sched_get_priority_min(policy_int);
-        const int max_prio   = sched_get_priority_max(policy_int);
+        const int min_prio = sched_get_priority_min(policy_int);
+        const int max_prio = sched_get_priority_max(policy_int);
 
         if (min_prio == -1 || max_prio == -1)
         {
