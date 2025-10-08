@@ -23,8 +23,11 @@ ThreadSchedule is continuously tested on the following configurations:
 | Ubuntu 24.04 | Clang 18 | - | ✅ | ✅ |
 | **Windows** | | | | |
 | Windows Server 2022 | MSVC 2022 | ✅ | ✅ | ✅ |
+| Windows Server 2022 | MinGW-w64 (GCC) | ✅ | ✅ | ✅ |
 
 > **Ubuntu 24.04 Clang**: Clang 14 is limited to C++17 due to incompatibility with GCC 14's libstdc++. For C++20/23 on Ubuntu 24.04, Clang 18 is used.
+> 
+> **MinGW**: MinGW-w64 provides full Windows API support including thread naming (requires Windows 10+).
 
 ## Key Features
 
