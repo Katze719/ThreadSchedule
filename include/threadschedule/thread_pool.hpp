@@ -1,6 +1,7 @@
 #pragma once
 
 #include "concepts.hpp"
+#include "expected.hpp"
 #include "scheduler_policy.hpp"
 #include "thread_wrapper.hpp"
 #include <algorithm>
@@ -344,8 +345,9 @@ class HighPerformancePool
     /**
      * @brief Configure all worker threads
      */
-    bool configure_threads(const std::string &name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
-                           ThreadPriority priority = ThreadPriority::normal())
+    expected<void, std::error_code> configure_threads(const std::string &name_prefix,
+                                                      SchedulingPolicy policy = SchedulingPolicy::OTHER,
+                                                      ThreadPriority priority = ThreadPriority::normal())
     {
         bool success = true;
 
@@ -353,53 +355,56 @@ class HighPerformancePool
         {
             const std::string thread_name = name_prefix + "_" + std::to_string(i);
 
-            if (!workers_[i].set_name(thread_name))
+            if (!workers_[i].set_name(thread_name).has_value())
             {
                 success = false;
             }
 
-            if (!workers_[i].set_scheduling_policy(policy, priority))
+            if (!workers_[i].set_scheduling_policy(policy, priority).has_value())
             {
                 success = false;
             }
         }
-
-        return success;
+        if (success)
+            return {};
+        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
     }
 
-    bool set_affinity(const ThreadAffinity &affinity)
+    expected<void, std::error_code> set_affinity(const ThreadAffinity &affinity)
     {
         bool success = true;
 
         for (auto &worker : workers_)
         {
-            if (!worker.set_affinity(affinity))
+            if (!worker.set_affinity(affinity).has_value())
             {
                 success = false;
             }
         }
-
-        return success;
+        if (success)
+            return {};
+        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
     }
 
-    bool distribute_across_cpus()
+    expected<void, std::error_code> distribute_across_cpus()
     {
         const auto cpu_count = std::thread::hardware_concurrency();
         if (cpu_count == 0)
-            return false;
+            return unexpected(std::make_error_code(std::errc::invalid_argument));
 
         bool success = true;
 
         for (size_t i = 0; i < workers_.size(); ++i)
         {
             ThreadAffinity affinity({static_cast<int>(i % cpu_count)});
-            if (!workers_[i].set_affinity(affinity))
+            if (!workers_[i].set_affinity(affinity).has_value())
             {
                 success = false;
             }
         }
-
-        return success;
+        if (success)
+            return {};
+        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
     }
 
     void wait_for_tasks()

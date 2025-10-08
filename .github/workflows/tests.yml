@@ -79,6 +79,32 @@ jobs:
         cd build
         ctest --output-on-failure --parallel
 
+  # Test on macOS with Apple Clang across standards
+  macos:
+    name: macOS (C++${{ matrix.cpp_standard }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-13, macos-14]
+        cpp_standard: [17, 20, 23]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Configure CMake
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }} \
+          -DTHREADSCHEDULE_BUILD_EXAMPLES=ON \
+          -DTHREADSCHEDULE_BUILD_TESTS=ON
+    - name: Build
+      run: cmake --build build --parallel
+    - name: Run tests
+      run: |
+        cd build
+        ctest --output-on-failure --parallel
+
   # Test on Windows
   windows:
     name: Windows (C++${{ matrix.cpp_standard }}, ${{ matrix.compiler }})
