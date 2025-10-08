@@ -11,11 +11,13 @@ namespace threadschedule
 {
 
 // Custom duration trait for compatibility across all C++ versions
-template <typename T, typename = void> struct is_duration_impl : std::false_type
+template <typename T, typename = void>
+struct is_duration_impl : std::false_type
 {
 };
 
-template <typename T> struct is_duration_impl<T, std::void_t<typename T::rep, typename T::period>> : std::true_type
+template <typename T>
+struct is_duration_impl<T, std::void_t<typename T::rep, typename T::period>> : std::true_type
 {
 };
 
@@ -64,14 +66,17 @@ concept CPUSetType = requires(T t) {
 #else
 
 // Fallback using SFINAE for older compilers
-template <typename F, typename... Args> constexpr bool ThreadCallable = std::is_invocable_v<F, Args...>;
+template <typename F, typename... Args>
+constexpr bool ThreadCallable = std::is_invocable_v<F, Args...>;
 
 template <typename T>
 constexpr bool ThreadIdentifiable = std::is_same_v<decltype(std::declval<T>().get_id()), std::thread::id>;
 
-template <typename T> constexpr bool Duration = is_duration_impl<T>::value;
+template <typename T>
+constexpr bool Duration = is_duration_impl<T>::value;
 
-template <typename T> constexpr bool PriorityType = std::is_integral_v<T>;
+template <typename T>
+constexpr bool PriorityType = std::is_integral_v<T>;
 
 // For CPU set types, we'll use a simple trait
 template <typename T>
@@ -82,28 +87,34 @@ constexpr bool CPUSetType = std::is_same_v<T, std::vector<int>> || std::is_same_
 /**
  * @brief Type trait for thread-like objects
  */
-template <typename T> struct is_thread_like : std::false_type
+template <typename T>
+struct is_thread_like : std::false_type
 {
 };
 
-template <> struct is_thread_like<std::thread> : std::true_type
+template <>
+struct is_thread_like<std::thread> : std::true_type
 {
 };
 
 // Only include jthread if C++20 is available
 #if __cplusplus >= 202002L
-template <> struct is_thread_like<std::jthread> : std::true_type
+template <>
+struct is_thread_like<std::jthread> : std::true_type
 {
 };
 #endif
 
-template <typename T> inline constexpr bool is_thread_like_v = is_thread_like<T>::value;
+template <typename T>
+inline constexpr bool is_thread_like_v = is_thread_like<T>::value;
 
 /**
  * @brief Helper type traits for thread operations
  */
-template <typename T> using enable_if_thread_callable_t = std::enable_if_t<std::is_invocable_v<T>, int>;
+template <typename T>
+using enable_if_thread_callable_t = std::enable_if_t<std::is_invocable_v<T>, int>;
 
-template <typename T> using enable_if_duration_t = std::enable_if_t<is_duration_impl<T>::value, int>;
+template <typename T>
+using enable_if_duration_t = std::enable_if_t<is_duration_impl<T>::value, int>;
 
 } // namespace threadschedule

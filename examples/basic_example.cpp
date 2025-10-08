@@ -16,7 +16,7 @@ void demonstrate_simple_threadpool()
     ThreadPool pool(4); // Simple thread pool
     pool.configure_threads("SimpleWorker");
 
-    const size_t        num_tasks = 100;
+    const size_t num_tasks = 100;
     std::atomic<size_t> completed{0};
 
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -64,7 +64,7 @@ void demonstrate_high_performance_pool()
     pool.configure_threads("HighPerf", SchedulingPolicy::OTHER, ThreadPriority::normal());
     pool.distribute_across_cpus();
 
-    const size_t        num_tasks = 10000;
+    const size_t num_tasks = 10000;
     std::atomic<size_t> completed_counter{0};
 
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -116,9 +116,9 @@ void demonstrate_batch_processing()
 
     HighPerformancePool pool(std::thread::hardware_concurrency());
 
-    const size_t                       batch_size = 5000;
+    const size_t batch_size = 5000;
     std::vector<std::function<void()>> tasks;
-    std::atomic<size_t>                counter{0};
+    std::atomic<size_t> counter{0};
 
     // Prepare batch
     tasks.reserve(batch_size);
