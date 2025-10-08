@@ -40,6 +40,7 @@ ThreadSchedule is continuously tested on the following configurations:
 - **Modern C++**: Full C++17, C++20, and C++23 support with automatic feature detection
 - **Header-Only**: Zero compilation, just include and go
 - **Enhanced Wrappers**: Extend `std::thread`, `std::jthread`, and `pthread` with powerful features
+- **Non-owning Views**: Zero-overhead views to configure existing threads or find by name (Linux)
 - **Thread Naming**: Human-readable thread names for debugging
 - **Priority & Scheduling**: Fine-grained control over thread priorities and scheduling policies
 - **CPU Affinity**: Pin threads to specific CPU cores
@@ -111,6 +112,44 @@ int main() {
 
 **That's it!** 🎉 Header-only means zero compilation overhead.
 
+### Non-owning Thread Views
+
+Operate on existing threads without owning their lifetime.
+
+```cpp
+#include <threadschedule/threadschedule.hpp>
+using namespace threadschedule;
+
+std::thread t([]{ /* work */ });
+
+// Configure existing std::thread
+ThreadWrapperView v(t);
+v.set_name("worker_0");
+v.set_affinity(ThreadAffinity({0}));
+v.join(); // joins the underlying t
+```
+
+`std::jthread` (C++20):
+
+```cpp
+std::jthread jt([](std::stop_token st){ /* work */ });
+JThreadWrapperView jv(jt);
+jv.set_name("jworker");
+jv.request_stop();
+jv.join();
+```
+
+Find by name (Linux):
+
+```cpp
+ThreadByNameView by_name("th_1");
+if (by_name.found()) {
+    by_name.set_name("new_name");
+    ThreadAffinity one_core; one_core.add_cpu(0);
+    by_name.set_affinity(one_core);
+}
+```
+
 ### Error handling with expected
 
 ThreadSchedule uses `threadschedule::expected<T, std::error_code>` (and `expected<void, std::error_code>`), which aliases to `std::expected` when available and otherwise uses a compatible fallback. Recommended usage:
@@ -133,6 +172,16 @@ auto value = pool.submit([]{ return 42; }); // standard future-based API remains
 | `ThreadWrapper` | Enhanced `std::thread` with naming, priority, affinity | Linux, Windows |
 | `JThreadWrapper` | Enhanced `std::jthread` with cooperative cancellation (C++20) | Linux, Windows |
 | `PThreadWrapper` | Modern C++ interface for POSIX threads | Linux only |
+
+### Thread Views (non-owning)
+
+Zero-overhead helpers to operate on existing threads without taking ownership.
+
+| Class | Description | Available On |
+|-------|-------------|--------------|
+| `ThreadWrapperView` | View over an existing `std::thread` | Linux, Windows |
+| `JThreadWrapperView` | View over an existing `std::jthread` (C++20) | Linux, Windows |
+| `ThreadByNameView` | Locate and control a thread by its name | Linux only |
 
 ### Thread Pools
 
