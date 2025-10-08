@@ -87,19 +87,33 @@ jobs:
       fail-fast: false
       matrix:
         cpp_standard: [17, 20, 23]
-        compiler: [msvc]
+        compiler: [msvc, mingw]
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
     
     - name: Setup MSVC
+      if: matrix.compiler == 'msvc'
       uses: ilammy/msvc-dev-cmd@v1
     
-    - name: Install Ninja
+    - name: Setup MinGW
+      if: matrix.compiler == 'mingw'
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-ninja
+    
+    - name: Install Ninja (MSVC)
+      if: matrix.compiler == 'msvc'
       run: choco install ninja
     
-    - name: Configure CMake
+    - name: Configure CMake (MSVC)
+      if: matrix.compiler == 'msvc'
       run: |
         $extraFlags = ""
         if ("${{ matrix.cpp_standard }}" -eq "17") {
@@ -107,10 +121,34 @@ jobs:
         }
         cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }} -DTHREADSCHEDULE_BUILD_EXAMPLES=ON -DTHREADSCHEDULE_BUILD_TESTS=ON $extraFlags
     
-    - name: Build
+    - name: Configure CMake (MinGW)
+      if: matrix.compiler == 'mingw'
+      shell: msys2 {0}
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }} \
+          -DTHREADSCHEDULE_BUILD_EXAMPLES=ON \
+          -DTHREADSCHEDULE_BUILD_TESTS=ON
+    
+    - name: Build (MSVC)
+      if: matrix.compiler == 'msvc'
       run: cmake --build build --parallel
     
-    - name: Run tests
+    - name: Build (MinGW)
+      if: matrix.compiler == 'mingw'
+      shell: msys2 {0}
+      run: cmake --build build --parallel
+    
+    - name: Run tests (MSVC)
+      if: matrix.compiler == 'msvc'
+      run: |
+        cd build
+        ctest --output-on-failure --parallel
+    
+    - name: Run tests (MinGW)
+      if: matrix.compiler == 'mingw'
+      shell: msys2 {0}
       run: |
         cd build
         ctest --output-on-failure --parallel
