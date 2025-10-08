@@ -14,15 +14,11 @@ using namespace threadschedule;
 
 struct CacheLineBenchmark
 {
-    static constexpr size_t CACHE_LINE_SIZE     = 64;
+    static constexpr size_t CACHE_LINE_SIZE = 64;
     static constexpr size_t INTS_PER_CACHE_LINE = CACHE_LINE_SIZE / sizeof(int);
 
     // Test cache-friendly access patterns
-    static void cache_friendly_task(
-        std::vector<int> &data,
-        size_t            start_idx,
-        size_t            count
-    )
+    static void cache_friendly_task(std::vector<int> &data, size_t start_idx, size_t count)
     {
         for (size_t i = 0; i < count; ++i)
         {
@@ -31,12 +27,7 @@ struct CacheLineBenchmark
     }
 
     // Test cache-unfriendly access patterns (strided access)
-    static void cache_unfriendly_task(
-        std::vector<int> &data,
-        size_t            start_idx,
-        size_t            stride,
-        size_t            count
-    )
+    static void cache_unfriendly_task(std::vector<int> &data, size_t start_idx, size_t stride, size_t count)
     {
         for (size_t i = 0; i < count; ++i)
         {
@@ -48,14 +39,14 @@ struct CacheLineBenchmark
 static void BM_CacheFriendly_HighPerformancePool(benchmark::State &state)
 {
     const size_t num_threads = state.range(0);
-    const size_t data_size   = 1000000; // 1M integers
+    const size_t data_size = 1000000; // 1M integers
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("cache_bench");
     pool.distribute_across_cpus();
 
     std::vector<int> data(data_size, 1);
-    const size_t     chunk_size = data_size / (num_threads * 4); // Optimize for cache
+    const size_t chunk_size = data_size / (num_threads * 4); // Optimize for cache
 
     for (auto _ : state)
     {
@@ -64,9 +55,8 @@ static void BM_CacheFriendly_HighPerformancePool(benchmark::State &state)
         for (size_t i = 0; i < data_size; i += chunk_size)
         {
             const size_t end_idx = std::min(i + chunk_size, data_size);
-            futures.push_back(pool.submit([&data, i, end_idx]() {
-                CacheLineBenchmark::cache_friendly_task(data, i, end_idx - i);
-            }));
+            futures.push_back(
+                pool.submit([&data, i, end_idx]() { CacheLineBenchmark::cache_friendly_task(data, i, end_idx - i); }));
         }
 
         for (auto &future : futures)
@@ -84,14 +74,14 @@ static void BM_CacheFriendly_HighPerformancePool(benchmark::State &state)
 static void BM_CacheUnfriendly_HighPerformancePool(benchmark::State &state)
 {
     const size_t num_threads = state.range(0);
-    const size_t data_size   = 1000000;
+    const size_t data_size = 1000000;
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("cache_unfriendly_bench");
 
     std::vector<int> data(data_size, 1);
-    const size_t     stride              = 64; // Jump by cache lines
-    const size_t     elements_per_thread = data_size / (num_threads * stride);
+    const size_t stride = 64; // Jump by cache lines
+    const size_t elements_per_thread = data_size / (num_threads * stride);
 
     for (auto _ : state)
     {
@@ -122,7 +112,7 @@ static void BM_CacheUnfriendly_HighPerformancePool(benchmark::State &state)
 
 static void BM_MemoryAllocation_TaskCreation(benchmark::State &state)
 {
-    const size_t num_threads     = state.range(0);
+    const size_t num_threads = state.range(0);
     const size_t num_allocations = state.range(1);
 
     HighPerformancePool pool(num_threads);
@@ -163,7 +153,7 @@ static void BM_MemoryAllocation_TaskCreation(benchmark::State &state)
 static void BM_NUMA_LocalMemory(benchmark::State &state)
 {
     const size_t num_threads = state.range(0);
-    const size_t data_size   = 10000000; // 10M integers
+    const size_t data_size = 10000000; // 10M integers
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("numa_bench");
@@ -203,7 +193,7 @@ struct FalseSharingTest
 
 static void BM_FalseSharing_Avoided(benchmark::State &state)
 {
-    const size_t num_threads           = state.range(0);
+    const size_t num_threads = state.range(0);
     const size_t increments_per_thread = 100000;
 
     HighPerformancePool pool(num_threads);
@@ -272,26 +262,11 @@ BENCHMARK(BM_CacheUnfriendly_HighPerformancePool)
     ->Unit(benchmark::kMillisecond);
 
 BENCHMARK(BM_MemoryAllocation_TaskCreation)
-    ->Args(
-        {4,
-         1000}
-    )
-    ->Args(
-        {8,
-         1000}
-    )
-    ->Args(
-        {16,
-         1000}
-    )
-    ->Args(
-        {4,
-         5000}
-    )
-    ->Args(
-        {8,
-         5000}
-    )
+    ->Args({4, 1000})
+    ->Args({8, 1000})
+    ->Args({16, 1000})
+    ->Args({4, 5000})
+    ->Args({8, 5000})
     ->Unit(benchmark::kMillisecond);
 
 BENCHMARK(BM_NUMA_LocalMemory)->Args({1})->Args({2})->Args({4})->Args({8})->Args({16})->Unit(benchmark::kMillisecond);

@@ -28,7 +28,7 @@ class PThreadWrapper
 {
   public:
     using native_handle_type = pthread_t;
-    using id                 = pthread_t;
+    using id = pthread_t;
 
     PThreadWrapper() : thread_(0), joined_(false)
     {
@@ -51,7 +51,7 @@ class PThreadWrapper
     }
 
     // Non-copyable
-    PThreadWrapper(const PThreadWrapper &)            = delete;
+    PThreadWrapper(const PThreadWrapper &) = delete;
     PThreadWrapper &operator=(const PThreadWrapper &) = delete;
 
     // Movable
@@ -90,7 +90,7 @@ class PThreadWrapper
     {
         if (joinable())
         {
-            void     *retval;
+            void *retval;
             const int result = pthread_join(thread_, &retval);
             if (result == 0)
             {
@@ -145,8 +145,8 @@ class PThreadWrapper
 
     bool set_priority(ThreadPriority priority)
     {
-        const int policy        = SCHED_OTHER;
-        auto      params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
+        const int policy = SCHED_OTHER;
+        auto params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
 
         if (!params_result.has_value())
         {
@@ -158,8 +158,8 @@ class PThreadWrapper
 
     bool set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority)
     {
-        const int policy_int    = static_cast<int>(policy);
-        auto      params_result = SchedulerParams::create_for_policy(policy, priority);
+        const int policy_int = static_cast<int>(policy);
+        auto params_result = SchedulerParams::create_for_policy(policy, priority);
 
         if (!params_result.has_value())
         {
@@ -193,22 +193,21 @@ class PThreadWrapper
     bool set_cancel_state(bool enabled)
     {
         const int state = enabled ? PTHREAD_CANCEL_ENABLE : PTHREAD_CANCEL_DISABLE;
-        int       old_state;
+        int old_state;
         return pthread_setcancelstate(state, &old_state) == 0;
     }
 
     bool set_cancel_type(bool asynchronous)
     {
         const int type = asynchronous ? PTHREAD_CANCEL_ASYNCHRONOUS : PTHREAD_CANCEL_DEFERRED;
-        int       old_type;
+        int old_type;
         return pthread_setcanceltype(type, &old_type) == 0;
     }
 
     // Factory methods
     template <typename F, typename... Args>
-    static PThreadWrapper create_with_config(
-        const std::string &name, SchedulingPolicy policy, ThreadPriority priority, F &&f, Args &&...args
-    )
+    static PThreadWrapper create_with_config(const std::string &name, SchedulingPolicy policy, ThreadPriority priority,
+                                             F &&f, Args &&...args)
     {
 
         PThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
@@ -222,7 +221,7 @@ class PThreadWrapper
     {
 
         PThreadWrapper wrapper;
-        auto           callable =
+        auto callable =
             std::make_unique<std::function<void()>>(std::bind(std::forward<F>(func), std::forward<Args>(args)...));
 
         const int result = pthread_create(&wrapper.thread_, &attr, thread_function, callable.release());
@@ -236,7 +235,7 @@ class PThreadWrapper
     }
 
   private:
-    pthread_t         thread_;
+    pthread_t thread_;
     std::atomic<bool> joined_;
 
     static void *thread_function(void *arg)
@@ -276,7 +275,7 @@ class PThreadAttributes
     }
 
     // Non-copyable
-    PThreadAttributes(const PThreadAttributes &)            = delete;
+    PThreadAttributes(const PThreadAttributes &) = delete;
     PThreadAttributes &operator=(const PThreadAttributes &) = delete;
 
     // Movable
@@ -415,7 +414,7 @@ class PThreadMutex
         pthread_mutex_destroy(&mutex_);
     }
 
-    PThreadMutex(const PThreadMutex &)            = delete;
+    PThreadMutex(const PThreadMutex &) = delete;
     PThreadMutex &operator=(const PThreadMutex &) = delete;
 
     void lock()

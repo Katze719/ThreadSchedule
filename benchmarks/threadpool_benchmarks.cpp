@@ -60,7 +60,7 @@ struct BenchmarkWorkloads
 static void BM_ThreadPool_MinimalTasks(benchmark::State &state)
 {
     const size_t num_threads = state.range(0);
-    const size_t num_tasks   = state.range(1);
+    const size_t num_tasks = state.range(1);
 
     ThreadPool pool(num_threads);
     pool.configure_threads("bench");
@@ -82,7 +82,7 @@ static void BM_ThreadPool_MinimalTasks(benchmark::State &state)
             future.wait();
         }
 
-        auto end     = std::chrono::high_resolution_clock::now();
+        auto end = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
         state.SetIterationTime(elapsed.count() / 1e9);
     }
@@ -94,7 +94,7 @@ static void BM_ThreadPool_MinimalTasks(benchmark::State &state)
 static void BM_ThreadPool_LightTasks(benchmark::State &state)
 {
     const size_t num_threads = state.range(0);
-    const size_t num_tasks   = state.range(1);
+    const size_t num_tasks = state.range(1);
 
     ThreadPool pool(num_threads);
     pool.configure_threads("bench");
@@ -126,7 +126,7 @@ static void BM_ThreadPool_LightTasks(benchmark::State &state)
 static void BM_FastThreadPool_MinimalTasks(benchmark::State &state)
 {
     const size_t num_threads = state.range(0);
-    const size_t num_tasks   = state.range(1);
+    const size_t num_tasks = state.range(1);
 
     FastThreadPool pool(num_threads);
     pool.configure_threads("bench");
@@ -148,7 +148,7 @@ static void BM_FastThreadPool_MinimalTasks(benchmark::State &state)
             future.wait();
         }
 
-        auto end     = std::chrono::high_resolution_clock::now();
+        auto end = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
         state.SetIterationTime(elapsed.count() / 1e9);
     }
@@ -160,7 +160,7 @@ static void BM_FastThreadPool_MinimalTasks(benchmark::State &state)
 static void BM_FastThreadPool_BatchProcessing(benchmark::State &state)
 {
     const size_t num_threads = state.range(0);
-    const size_t batch_size  = state.range(1);
+    const size_t batch_size = state.range(1);
 
     FastThreadPool pool(num_threads);
     pool.configure_threads("bench");
@@ -192,7 +192,7 @@ static void BM_FastThreadPool_BatchProcessing(benchmark::State &state)
 static void BM_HighPerformancePool_MinimalTasks(benchmark::State &state)
 {
     const size_t num_threads = state.range(0);
-    const size_t num_tasks   = state.range(1);
+    const size_t num_tasks = state.range(1);
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("bench", SchedulingPolicy::OTHER, ThreadPriority::normal());
@@ -215,12 +215,12 @@ static void BM_HighPerformancePool_MinimalTasks(benchmark::State &state)
             future.wait();
         }
 
-        auto end     = std::chrono::high_resolution_clock::now();
+        auto end = std::chrono::high_resolution_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
         state.SetIterationTime(elapsed.count() / 1e9);
     }
 
-    auto stats                         = pool.get_statistics();
+    auto stats = pool.get_statistics();
     state.counters["work_steal_ratio"] = 100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1));
     state.SetItemsProcessed(state.iterations() * num_tasks);
     state.SetLabel("threads=" + std::to_string(num_threads) + " tasks=" + std::to_string(num_tasks));
@@ -229,7 +229,7 @@ static void BM_HighPerformancePool_MinimalTasks(benchmark::State &state)
 static void BM_HighPerformancePool_BatchProcessing(benchmark::State &state)
 {
     const size_t num_threads = state.range(0);
-    const size_t batch_size  = state.range(1);
+    const size_t batch_size = state.range(1);
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("bench", SchedulingPolicy::OTHER, ThreadPriority::normal());
@@ -251,7 +251,7 @@ static void BM_HighPerformancePool_BatchProcessing(benchmark::State &state)
         }
     }
 
-    auto stats                         = pool.get_statistics();
+    auto stats = pool.get_statistics();
     state.counters["work_steal_ratio"] = 100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1));
     state.counters["tasks_per_second"] = stats.tasks_per_second;
     state.SetItemsProcessed(state.iterations() * batch_size);
@@ -261,7 +261,7 @@ static void BM_HighPerformancePool_BatchProcessing(benchmark::State &state)
 static void BM_HighPerformancePool_ParallelForEach(benchmark::State &state)
 {
     const size_t num_threads = state.range(0);
-    const size_t data_size   = state.range(1);
+    const size_t data_size = state.range(1);
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("bench", SchedulingPolicy::OTHER, ThreadPriority::normal());
@@ -274,9 +274,8 @@ static void BM_HighPerformancePool_ParallelForEach(benchmark::State &state)
     {
         std::atomic<long long> sum{0};
 
-        pool.parallel_for_each(data.begin(), data.end(), [&sum](int value) {
-            sum.fetch_add(value * value, std::memory_order_relaxed);
-        });
+        pool.parallel_for_each(data.begin(), data.end(),
+                               [&sum](int value) { sum.fetch_add(value * value, std::memory_order_relaxed); });
 
         benchmark::DoNotOptimize(sum.load());
     }
@@ -292,8 +291,8 @@ static void BM_HighPerformancePool_ParallelForEach(benchmark::State &state)
 static void BM_ComparePoolTypes_LightWorkload(benchmark::State &state)
 {
     const size_t num_threads = 4; // Fixed for fair comparison
-    const size_t num_tasks   = state.range(0);
-    const int    pool_type   = state.range(1); // 0=ThreadPool, 1=FastThreadPool, 2=HighPerformancePool
+    const size_t num_tasks = state.range(0);
+    const int pool_type = state.range(1); // 0=ThreadPool, 1=FastThreadPool, 2=HighPerformancePool
 
     for (auto _ : state)
     {
@@ -363,359 +362,113 @@ static void BM_ComparePoolTypes_LightWorkload(benchmark::State &state)
 
 // Basic throughput tests for each pool type
 BENCHMARK(BM_ThreadPool_MinimalTasks)
-    ->Args(
-        {1,
-         100}
-    )
-    ->Args(
-        {2,
-         100}
-    )
-    ->Args(
-        {4,
-         100}
-    )
-    ->Args(
-        {8,
-         100}
-    )
-    ->Args(
-        {1,
-         1000}
-    )
-    ->Args(
-        {2,
-         1000}
-    )
-    ->Args(
-        {4,
-         1000}
-    )
-    ->Args(
-        {8,
-         1000}
-    )
-    ->Args(
-        {1,
-         10000}
-    )
-    ->Args(
-        {4,
-         10000}
-    )
-    ->Args(
-        {8,
-         10000}
-    )
+    ->Args({1, 100})
+    ->Args({2, 100})
+    ->Args({4, 100})
+    ->Args({8, 100})
+    ->Args({1, 1000})
+    ->Args({2, 1000})
+    ->Args({4, 1000})
+    ->Args({8, 1000})
+    ->Args({1, 10000})
+    ->Args({4, 10000})
+    ->Args({8, 10000})
     ->UseManualTime()
     ->Unit(benchmark::kMicrosecond);
 
 BENCHMARK(BM_ThreadPool_LightTasks)
-    ->Args(
-        {1,
-         100}
-    )
-    ->Args(
-        {2,
-         100}
-    )
-    ->Args(
-        {4,
-         100}
-    )
-    ->Args(
-        {8,
-         100}
-    )
-    ->Args(
-        {1,
-         1000}
-    )
-    ->Args(
-        {4,
-         1000}
-    )
-    ->Args(
-        {8,
-         1000}
-    )
+    ->Args({1, 100})
+    ->Args({2, 100})
+    ->Args({4, 100})
+    ->Args({8, 100})
+    ->Args({1, 1000})
+    ->Args({4, 1000})
+    ->Args({8, 1000})
     ->Unit(benchmark::kMillisecond);
 
 BENCHMARK(BM_FastThreadPool_MinimalTasks)
-    ->Args(
-        {1,
-         100}
-    )
-    ->Args(
-        {2,
-         100}
-    )
-    ->Args(
-        {4,
-         100}
-    )
-    ->Args(
-        {8,
-         100}
-    )
-    ->Args(
-        {1,
-         1000}
-    )
-    ->Args(
-        {2,
-         1000}
-    )
-    ->Args(
-        {4,
-         1000}
-    )
-    ->Args(
-        {8,
-         1000}
-    )
-    ->Args(
-        {1,
-         10000}
-    )
-    ->Args(
-        {4,
-         10000}
-    )
-    ->Args(
-        {8,
-         10000}
-    )
+    ->Args({1, 100})
+    ->Args({2, 100})
+    ->Args({4, 100})
+    ->Args({8, 100})
+    ->Args({1, 1000})
+    ->Args({2, 1000})
+    ->Args({4, 1000})
+    ->Args({8, 1000})
+    ->Args({1, 10000})
+    ->Args({4, 10000})
+    ->Args({8, 10000})
     ->UseManualTime()
     ->Unit(benchmark::kMicrosecond);
 
 BENCHMARK(BM_FastThreadPool_BatchProcessing)
-    ->Args(
-        {1,
-         1000}
-    )
-    ->Args(
-        {2,
-         1000}
-    )
-    ->Args(
-        {4,
-         1000}
-    )
-    ->Args(
-        {8,
-         1000}
-    )
-    ->Args(
-        {4,
-         5000}
-    )
-    ->Args(
-        {8,
-         5000}
-    )
-    ->Args(
-        {4,
-         10000}
-    )
-    ->Args(
-        {8,
-         10000}
-    )
+    ->Args({1, 1000})
+    ->Args({2, 1000})
+    ->Args({4, 1000})
+    ->Args({8, 1000})
+    ->Args({4, 5000})
+    ->Args({8, 5000})
+    ->Args({4, 10000})
+    ->Args({8, 10000})
     ->Unit(benchmark::kMillisecond);
 
 BENCHMARK(BM_HighPerformancePool_MinimalTasks)
-    ->Args(
-        {1,
-         100}
-    )
-    ->Args(
-        {2,
-         100}
-    )
-    ->Args(
-        {4,
-         100}
-    )
-    ->Args(
-        {8,
-         100}
-    )
-    ->Args(
-        {1,
-         1000}
-    )
-    ->Args(
-        {2,
-         1000}
-    )
-    ->Args(
-        {4,
-         1000}
-    )
-    ->Args(
-        {8,
-         1000}
-    )
-    ->Args(
-        {1,
-         10000}
-    )
-    ->Args(
-        {4,
-         10000}
-    )
-    ->Args(
-        {8,
-         10000}
-    )
-    ->Args(
-        {16,
-         10000}
-    )
-    ->Args(
-        {4,
-         100000}
-    )
-    ->Args(
-        {8,
-         100000}
-    )
-    ->Args(
-        {16,
-         100000}
-    )
+    ->Args({1, 100})
+    ->Args({2, 100})
+    ->Args({4, 100})
+    ->Args({8, 100})
+    ->Args({1, 1000})
+    ->Args({2, 1000})
+    ->Args({4, 1000})
+    ->Args({8, 1000})
+    ->Args({1, 10000})
+    ->Args({4, 10000})
+    ->Args({8, 10000})
+    ->Args({16, 10000})
+    ->Args({4, 100000})
+    ->Args({8, 100000})
+    ->Args({16, 100000})
     ->UseManualTime()
     ->Unit(benchmark::kMicrosecond);
 
 BENCHMARK(BM_HighPerformancePool_BatchProcessing)
-    ->Args(
-        {1,
-         1000}
-    )
-    ->Args(
-        {2,
-         1000}
-    )
-    ->Args(
-        {4,
-         1000}
-    )
-    ->Args(
-        {8,
-         1000}
-    )
-    ->Args(
-        {4,
-         5000}
-    )
-    ->Args(
-        {8,
-         5000}
-    )
-    ->Args(
-        {16,
-         5000}
-    )
-    ->Args(
-        {4,
-         10000}
-    )
-    ->Args(
-        {8,
-         10000}
-    )
-    ->Args(
-        {16,
-         10000}
-    )
-    ->Args(
-        {8,
-         50000}
-    )
-    ->Args(
-        {16,
-         50000}
-    )
+    ->Args({1, 1000})
+    ->Args({2, 1000})
+    ->Args({4, 1000})
+    ->Args({8, 1000})
+    ->Args({4, 5000})
+    ->Args({8, 5000})
+    ->Args({16, 5000})
+    ->Args({4, 10000})
+    ->Args({8, 10000})
+    ->Args({16, 10000})
+    ->Args({8, 50000})
+    ->Args({16, 50000})
     ->Unit(benchmark::kMillisecond);
 
 BENCHMARK(BM_HighPerformancePool_ParallelForEach)
-    ->Args(
-        {1,
-         10000}
-    )
-    ->Args(
-        {2,
-         10000}
-    )
-    ->Args(
-        {4,
-         10000}
-    )
-    ->Args(
-        {8,
-         10000}
-    )
-    ->Args(
-        {4,
-         100000}
-    )
-    ->Args(
-        {8,
-         100000}
-    )
-    ->Args(
-        {16,
-         100000}
-    )
-    ->Args(
-        {8,
-         1000000}
-    )
-    ->Args(
-        {16,
-         1000000}
-    )
+    ->Args({1, 10000})
+    ->Args({2, 10000})
+    ->Args({4, 10000})
+    ->Args({8, 10000})
+    ->Args({4, 100000})
+    ->Args({8, 100000})
+    ->Args({16, 100000})
+    ->Args({8, 1000000})
+    ->Args({16, 1000000})
     ->Unit(benchmark::kMillisecond);
 
 // Pool comparison benchmarks
 BENCHMARK(BM_ComparePoolTypes_LightWorkload)
-    ->Args(
-        {100,
-         0}
-    )
-    ->Args(
-        {100,
-         1}
-    )
-    ->Args(
-        {100,
-         2}
-    ) // 100 tasks, different pools
-    ->Args(
-        {1000,
-         0}
-    )
-    ->Args(
-        {1000,
-         1}
-    )
-    ->Args(
-        {1000,
-         2}
-    ) // 1K tasks, different pools
-    ->Args(
-        {10000,
-         0}
-    )
-    ->Args(
-        {10000,
-         1}
-    )
-    ->Args(
-        {10000,
-         2}
-    ) // 10K tasks, different pools
+    ->Args({100, 0})
+    ->Args({100, 1})
+    ->Args({100, 2}) // 100 tasks, different pools
+    ->Args({1000, 0})
+    ->Args({1000, 1})
+    ->Args({1000, 2}) // 1K tasks, different pools
+    ->Args({10000, 0})
+    ->Args({10000, 1})
+    ->Args({10000, 2}) // 10K tasks, different pools
     ->Unit(benchmark::kMillisecond);
 
 BENCHMARK_MAIN();

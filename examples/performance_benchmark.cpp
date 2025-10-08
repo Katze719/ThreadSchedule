@@ -111,8 +111,8 @@ class PerformanceBenchmark
         std::cout << "\n=== Variable Workload Benchmark ===" << std::endl;
         std::cout << "Tasks: " << num_tasks << " (variable duration)" << std::endl;
 
-        std::random_device                 rd;
-        std::mt19937                       gen(rd());
+        std::random_device rd;
+        std::mt19937 gen(rd());
         std::uniform_int_distribution<int> work_dist(10, 200); // 10-200 iterations
 
         auto start_time = std::chrono::high_resolution_clock::now();
@@ -157,7 +157,7 @@ class PerformanceBenchmark
     {
         std::cout << "\n=== Parallel Algorithm Benchmark ===" << std::endl;
 
-        const size_t     data_size = 10000000; // 10M elements
+        const size_t data_size = 10000000; // 10M elements
         std::vector<int> data(data_size);
 
         // Fill with test data
@@ -167,9 +167,8 @@ class PerformanceBenchmark
 
         auto start_time = std::chrono::high_resolution_clock::now();
 
-        pool_.parallel_for_each(data.begin(), data.end(), [&sum](int value) {
-            sum.fetch_add(value * value, std::memory_order_relaxed);
-        });
+        pool_.parallel_for_each(data.begin(), data.end(),
+                                [&sum](int value) { sum.fetch_add(value * value, std::memory_order_relaxed); });
 
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
