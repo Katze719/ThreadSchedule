@@ -14,7 +14,7 @@ using namespace threadschedule;
 
 static void BM_HighThroughput_HighPerformancePool(benchmark::State &state)
 {
-    const size_t num_threads         = state.range(0);
+    const size_t num_threads = state.range(0);
     const size_t tasks_per_iteration = state.range(1);
 
     HighPerformancePool pool(num_threads);
@@ -42,7 +42,7 @@ static void BM_HighThroughput_HighPerformancePool(benchmark::State &state)
         }
     }
 
-    auto stats                         = pool.get_statistics();
+    auto stats = pool.get_statistics();
     state.counters["tasks_per_second"] = benchmark::Counter(stats.tasks_per_second);
     state.counters["work_steal_ratio"] =
         benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
@@ -51,7 +51,7 @@ static void BM_HighThroughput_HighPerformancePool(benchmark::State &state)
 
 static void BM_HighThroughput_FastThreadPool(benchmark::State &state)
 {
-    const size_t num_threads         = state.range(0);
+    const size_t num_threads = state.range(0);
     const size_t tasks_per_iteration = state.range(1);
 
     FastThreadPool pool(num_threads);
@@ -73,7 +73,7 @@ static void BM_HighThroughput_FastThreadPool(benchmark::State &state)
         }
     }
 
-    auto stats                         = pool.get_statistics();
+    auto stats = pool.get_statistics();
     state.counters["tasks_per_second"] = benchmark::Counter(stats.tasks_per_second);
     state.SetItemsProcessed(state.iterations() * tasks_per_iteration);
 }
@@ -85,15 +85,15 @@ static void BM_HighThroughput_FastThreadPool(benchmark::State &state)
 static void BM_Scalability_WorkStealing(benchmark::State &state)
 {
     const size_t num_threads = state.range(0);
-    const size_t num_tasks   = 50000; // Fixed task count
+    const size_t num_tasks = 50000; // Fixed task count
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("scale_bench", SchedulingPolicy::OTHER, ThreadPriority::normal());
     pool.distribute_across_cpus();
 
     // Create variable workload to encourage work stealing
-    std::random_device                 rd;
-    std::mt19937                       gen(rd());
+    std::random_device rd;
+    std::mt19937 gen(rd());
     std::uniform_int_distribution<int> work_dist(50, 500);
 
     for (auto _ : state)
@@ -133,7 +133,7 @@ static void BM_Scalability_WorkStealing(benchmark::State &state)
 
 static void BM_Contention_SubmissionStorm(benchmark::State &state)
 {
-    const size_t num_threads    = state.range(0);
+    const size_t num_threads = state.range(0);
     const size_t num_submitters = state.range(1); // Number of threads submitting tasks
 
     HighPerformancePool pool(num_threads);
@@ -141,8 +141,8 @@ static void BM_Contention_SubmissionStorm(benchmark::State &state)
 
     for (auto _ : state)
     {
-        std::atomic<size_t>      submitted_tasks{0};
-        std::atomic<size_t>      completed_tasks{0};
+        std::atomic<size_t> submitted_tasks{0};
+        std::atomic<size_t> completed_tasks{0};
         std::vector<std::thread> submitters;
 
         const size_t tasks_per_submitter = 1000;
@@ -156,9 +156,8 @@ static void BM_Contention_SubmissionStorm(benchmark::State &state)
 
                 for (size_t j = 0; j < tasks_per_submitter; ++j)
                 {
-                    futures.push_back(pool.submit([&completed_tasks]() {
-                        completed_tasks.fetch_add(1, std::memory_order_relaxed);
-                    }));
+                    futures.push_back(
+                        pool.submit([&completed_tasks]() { completed_tasks.fetch_add(1, std::memory_order_relaxed); }));
                     submitted_tasks.fetch_add(1, std::memory_order_relaxed);
                 }
 
@@ -186,7 +185,7 @@ static void BM_Contention_SubmissionStorm(benchmark::State &state)
 static void BM_MemoryAccess_Sequential(benchmark::State &state)
 {
     const size_t num_threads = state.range(0);
-    const size_t data_size   = 1000000; // 1M elements
+    const size_t data_size = 1000000; // 1M elements
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("mem_bench");
@@ -198,9 +197,8 @@ static void BM_MemoryAccess_Sequential(benchmark::State &state)
     {
         std::atomic<long long> sum{0};
 
-        pool.parallel_for_each(data.begin(), data.end(), [&sum](int value) {
-            sum.fetch_add(value, std::memory_order_relaxed);
-        });
+        pool.parallel_for_each(data.begin(), data.end(),
+                               [&sum](int value) { sum.fetch_add(value, std::memory_order_relaxed); });
 
         benchmark::DoNotOptimize(sum.load());
     }
@@ -212,28 +210,27 @@ static void BM_MemoryAccess_Sequential(benchmark::State &state)
 static void BM_MemoryAccess_Random(benchmark::State &state)
 {
     const size_t num_threads = state.range(0);
-    const size_t data_size   = 1000000;
+    const size_t data_size = 1000000;
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("mem_rand_bench");
 
-    std::vector<int>    data(data_size);
+    std::vector<int> data(data_size);
     std::vector<size_t> indices(data_size);
     std::iota(data.begin(), data.end(), 1);
     std::iota(indices.begin(), indices.end(), 0);
 
     // Shuffle indices for random access pattern
     std::random_device rd;
-    std::mt19937       gen(rd());
+    std::mt19937 gen(rd());
     std::shuffle(indices.begin(), indices.end(), gen);
 
     for (auto _ : state)
     {
         std::atomic<long long> sum{0};
 
-        pool.parallel_for_each(indices.begin(), indices.end(), [&sum, &data](size_t idx) {
-            sum.fetch_add(data[idx], std::memory_order_relaxed);
-        });
+        pool.parallel_for_each(indices.begin(), indices.end(),
+                               [&sum, &data](size_t idx) { sum.fetch_add(data[idx], std::memory_order_relaxed); });
 
         benchmark::DoNotOptimize(sum.load());
     }
@@ -248,114 +245,42 @@ static void BM_MemoryAccess_Random(benchmark::State &state)
 
 // High throughput tests
 BENCHMARK(BM_HighThroughput_HighPerformancePool)
-    ->Args(
-        {1,
-         10000}
-    )
-    ->Args(
-        {2,
-         10000}
-    )
-    ->Args(
-        {4,
-         10000}
-    )
-    ->Args(
-        {8,
-         10000}
-    )
-    ->Args(
-        {4,
-         50000}
-    )
-    ->Args(
-        {8,
-         50000}
-    )
-    ->Args(
-        {16,
-         50000}
-    )
-    ->Args(
-        {8,
-         100000}
-    )
-    ->Args(
-        {16,
-         100000}
-    )
+    ->Args({1, 10000})
+    ->Args({2, 10000})
+    ->Args({4, 10000})
+    ->Args({8, 10000})
+    ->Args({4, 50000})
+    ->Args({8, 50000})
+    ->Args({16, 50000})
+    ->Args({8, 100000})
+    ->Args({16, 100000})
     ->Unit(benchmark::kMillisecond);
 
 BENCHMARK(BM_HighThroughput_FastThreadPool)
-    ->Args(
-        {1,
-         10000}
-    )
-    ->Args(
-        {2,
-         10000}
-    )
-    ->Args(
-        {4,
-         10000}
-    )
-    ->Args(
-        {8,
-         10000}
-    )
-    ->Args(
-        {4,
-         50000}
-    )
-    ->Args(
-        {8,
-         50000}
-    )
+    ->Args({1, 10000})
+    ->Args({2, 10000})
+    ->Args({4, 10000})
+    ->Args({8, 10000})
+    ->Args({4, 50000})
+    ->Args({8, 50000})
     ->Unit(benchmark::kMillisecond);
 
 // Scalability tests
 BENCHMARK(BM_Scalability_WorkStealing)
-    ->DenseRange(
-        1,
-        16,
-        1
-    ) // 1 to 16 threads
+    ->DenseRange(1, 16,
+                 1) // 1 to 16 threads
     ->Unit(benchmark::kMillisecond);
 
 // Contention tests
 BENCHMARK(BM_Contention_SubmissionStorm)
-    ->Args(
-        {4,
-         1}
-    )
-    ->Args(
-        {4,
-         2}
-    )
-    ->Args(
-        {4,
-         4}
-    )
-    ->Args(
-        {4,
-         8}
-    ) // 4 worker threads, varying submitters
-    ->Args(
-        {8,
-         1}
-    )
-    ->Args(
-        {8,
-         2}
-    )
-    ->Args(
-        {8,
-         4}
-    )
-    ->Args(
-        {8,
-         8}
-    ) // 8 worker threads, varying submitters
+    ->Args({4, 1})
+    ->Args({4, 2})
+    ->Args({4, 4})
+    ->Args({4, 8}) // 4 worker threads, varying submitters
+    ->Args({8, 1})
+    ->Args({8, 2})
+    ->Args({8, 4})
+    ->Args({8, 8}) // 8 worker threads, varying submitters
     ->Unit(benchmark::kMillisecond);
 
 // Memory access patterns
