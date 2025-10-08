@@ -22,12 +22,18 @@ ThreadSchedule is continuously tested on the following configurations:
 | Ubuntu 24.04 | Clang 14 | ✅ | - | - |
 | Ubuntu 24.04 | Clang 18 | - | ✅ | ✅ |
 | **Windows** | | | | |
-| Windows Server 2022 | MSVC 2022 | ✅ | ✅ | ✅ |
-| Windows Server 2022 | MinGW-w64 (GCC) | ✅ | ✅ | ✅ |
+| windows-latest (2022) | MSVC 2022 | ✅ | ✅ | ✅ |
+| windows-latest (2022) | MinGW-w64 (GCC) | ✅ | ✅ | ✅ |
+| windows-2025 | MSVC 2022 | ✅ | ✅ | ✅ |
+| windows-2025 | MinGW-w64 (GCC) | ✅ | ✅ | ✅ |
 
-> **Ubuntu 24.04 Clang**: Clang 14 is limited to C++17 due to incompatibility with GCC 14's libstdc++. For C++20/23 on Ubuntu 24.04, Clang 18 is used.
-> 
-> **MinGW**: MinGW-w64 provides full Windows API support including thread naming (requires Windows 10+).
+> **Ubuntu 24.04 Clang**: Clang 14 is limited to C++17 on 24.04; for C++20/23, Clang 19 is used.
+>
+> **Windows images**: CI runs on `windows-latest` and `windows-2025` with MSVC 2022 and MinGW-w64.
+>
+> **MinGW**: MinGW-w64 provides full Windows API support including thread naming (Windows 10+).
+
+> ⚠️ Warning (Ubuntu 24.04): Clang 18 with C++23 does not build reliably on Ubuntu 24.04 due to toolchain/libstdc++ incompatibilities. Use Clang 19 for C++23 on Ubuntu 24.04.
 
 ## Key Features
 
@@ -75,13 +81,26 @@ int main() {
     ThreadWrapper worker([]() {
         std::cout << "Worker running!" << std::endl;
     });
-    worker.set_name("my_worker");
-    worker.set_priority(ThreadPriority::normal());
+    // Most configuration functions return expected<void, std::error_code>
+    auto set_name_result = worker.set_name("my_worker");
+    if (!set_name_result) {
+        std::cerr << "set_name failed: " << set_name_result.error().message() << std::endl;
+    }
+    auto set_prio_result = worker.set_priority(ThreadPriority::normal());
+    if (!set_prio_result) {
+        std::cerr << "set_priority failed: " << set_prio_result.error().message() << std::endl;
+    }
     
     // High-performance thread pool
     HighPerformancePool pool(4);
-    pool.configure_threads("worker");
-    pool.distribute_across_cpus();
+    auto cfg = pool.configure_threads("worker");
+    if (!cfg) {
+        std::cerr << "configure_threads failed: " << cfg.error().message() << std::endl;
+    }
+    auto dist = pool.distribute_across_cpus();
+    if (!dist) {
+        std::cerr << "distribute_across_cpus failed: " << dist.error().message() << std::endl;
+    }
     
     auto future = pool.submit([]() { return 42; });
     std::cout << "Result: " << future.get() << std::endl;
@@ -91,6 +110,19 @@ int main() {
 ```
 
 **That's it!** 🎉 Header-only means zero compilation overhead.
+
+### Error handling with expected
+
+ThreadSchedule uses `threadschedule::expected<T, std::error_code>` (and `expected<void, std::error_code>`), which aliases to `std::expected` when available and otherwise uses a compatible fallback. Recommended usage:
+
+```cpp
+auto r = worker.set_name("my_worker");
+if (!r) {
+    // Inspect r.error() (std::error_code)
+}
+
+auto value = pool.submit([]{ return 42; }); // standard future-based API remains unchanged
+```
 
 ## API Overview
 
