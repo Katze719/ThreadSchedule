@@ -16,6 +16,15 @@ if(TARGET gtest)
     )
     add_test(NAME ThreadWrapperTest COMMAND thread_wrapper_test)
 
+    # ThreadWrapperView tests
+    add_executable(thread_wrapper_view_test thread_wrapper_view_test.cpp)
+    target_link_libraries(thread_wrapper_view_test 
+        ThreadSchedule::ThreadSchedule 
+        gtest 
+        gtest_main
+    )
+    add_test(NAME ThreadWrapperViewTest COMMAND thread_wrapper_view_test)
+
     # ThreadConfig tests (Priority, Affinity, SchedulingPolicy)
     add_executable(thread_config_test thread_config_test.cpp)
     target_link_libraries(thread_config_test 
@@ -44,7 +53,7 @@ if(TARGET gtest)
     add_test(NAME ExpectedTest COMMAND expected_test)
 
     # Set test properties for better output
-    set_tests_properties(ThreadWrapperTest ThreadConfigTest ThreadPoolTest
+    set_tests_properties(ThreadWrapperTest ThreadWrapperViewTest ThreadConfigTest ThreadPoolTest
         PROPERTIES
         TIMEOUT 120
     )
