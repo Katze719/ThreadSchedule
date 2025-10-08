@@ -90,10 +90,20 @@ find_package(Threads REQUIRED)
 add_library(ThreadSchedule INTERFACE)
 add_library(ThreadSchedule::ThreadSchedule ALIAS ThreadSchedule)
 
-# Set target properties
-set_target_properties(ThreadSchedule PROPERTIES
-    INTERFACE_COMPILE_FEATURES cxx_std_17
-)
+# Set target properties based on selected C++ standard
+if(CMAKE_CXX_STANDARD GREATER_EQUAL 23)
+    set_target_properties(ThreadSchedule PROPERTIES
+        INTERFACE_COMPILE_FEATURES cxx_std_23
+    )
+elseif(CMAKE_CXX_STANDARD GREATER_EQUAL 20)
+    set_target_properties(ThreadSchedule PROPERTIES
+        INTERFACE_COMPILE_FEATURES cxx_std_20
+    )
+else()
+    set_target_properties(ThreadSchedule PROPERTIES
+        INTERFACE_COMPILE_FEATURES cxx_std_17
+    )
+endif()
 
 # Include directories
 target_include_directories(ThreadSchedule INTERFACE
@@ -103,6 +113,13 @@ target_include_directories(ThreadSchedule INTERFACE
 
 # Link libraries
 target_link_libraries(ThreadSchedule INTERFACE Threads::Threads)
+
+# Windows: ensure modern API availability macros
+if(WIN32)
+    target_compile_definitions(ThreadSchedule INTERFACE
+        $<BUILD_INTERFACE:_WIN32_WINNT=0x0A00>
+    )
+endif()
 
 # Platform-specific libraries
 if(UNIX AND NOT APPLE AND NOT WIN32)
@@ -117,15 +134,15 @@ if(THREADSCHEDULE_IS_TOPLEVEL_PROJECT)
         target_compile_options(ThreadSchedule INTERFACE
             $<BUILD_INTERFACE:-Wall -Wextra -Wpedantic>
         )
-        # MinGW-specific: Ensure Windows 10+ API compatibility for thread naming
-        if(MINGW)
-            target_compile_definitions(ThreadSchedule INTERFACE
-                $<BUILD_INTERFACE:_WIN32_WINNT=0x0A00>  # Windows 10
+        # MinGW (GCC): allow permissive mode for broader compatibility when requested
+        if(MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(ThreadSchedule INTERFACE
+                $<BUILD_INTERFACE:-fpermissive>
             )
         endif()
     elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
         target_compile_options(ThreadSchedule INTERFACE
-            $<BUILD_INTERFACE:/W4>
+            $<BUILD_INTERFACE:/W4 /permissive- /Zc:preprocessor /EHsc>
         )
     endif()
 endif()
