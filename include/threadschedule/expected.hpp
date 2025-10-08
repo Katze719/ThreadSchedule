@@ -14,7 +14,21 @@ namespace threadschedule
 #if defined(__cpp_lib_expected) && __cpp_lib_expected >= 202202L
 
 template <typename T, typename E = std::error_code>
-using expected = std::expected<T, E>;
+class expected : public std::expected<T, E>
+{
+  public:
+    using std::expected<T, E>::expected; // inherit constructors
+    using std::expected<T, E>::operator=;
+};
+
+template <typename E>
+class expected<void, E> : public std::expected<void, E>
+{
+  public:
+    using std::expected<void, E>::expected;
+    using std::expected<void, E>::operator=;
+};
+
 template <typename E>
 using unexpected = std::unexpected<E>;
 using unexpect_t = std::unexpect_t;
@@ -223,7 +237,14 @@ class expected<void, E>
 
 #endif // std::expected fallback
 
-template <typename T, typename E = std::error_code>
-using result = expected<T, E>;
+// Class template argument deduction guides so "expected r = f();" works
+template <typename T, typename E>
+expected(const expected<T, E> &) -> expected<T, E>;
+template <typename T, typename E>
+expected(expected<T, E> &&) -> expected<T, E>;
+template <typename E>
+expected(const expected<void, E> &) -> expected<void, E>;
+template <typename E>
+expected(expected<void, E> &&) -> expected<void, E>;
 
 } // namespace threadschedule

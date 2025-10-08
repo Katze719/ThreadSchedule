@@ -61,7 +61,8 @@ TEST_F(ThreadWrapperTest, ThreadNaming)
 {
     ThreadWrapper thread([]() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
 
-    bool name_set = thread.set_name("test_thread");
+    auto set_name_result = thread.set_name("test_thread");
+    const bool name_set = set_name_result.has_value();
 
 #ifdef _WIN32
     // On Windows, naming might fail if not Windows 10+
@@ -89,13 +90,29 @@ TEST_F(ThreadWrapperTest, ThreadNaming)
     thread.join();
 }
 
+#ifndef _WIN32
+// POSIX: long names (>15) should fail with invalid_argument
+TEST_F(ThreadWrapperTest, ThreadNamingTooLongFails)
+{
+    ThreadWrapper thread([]() { std::this_thread::sleep_for(std::chrono::milliseconds(10)); });
+    std::string long_name(16, 'x');
+    auto res = thread.set_name(long_name);
+    EXPECT_FALSE(res.has_value());
+    if (!res.has_value())
+    {
+        EXPECT_EQ(res.error(), std::make_error_code(std::errc::invalid_argument));
+    }
+    thread.join();
+}
+#endif
+
 // Test thread priority
 TEST_F(ThreadWrapperTest, ThreadPriority)
 {
     ThreadWrapper thread([]() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
 
     // Set priority should not crash
-    bool priority_set = thread.set_priority(ThreadPriority::normal());
+    [[maybe_unused]] bool priority_set = thread.set_priority(ThreadPriority::normal()).has_value();
     // Priority setting may fail depending on permissions
     // Just ensure it doesn't crash
 
@@ -192,7 +209,7 @@ TEST_F(ThreadWrapperTest, ThreadAffinity)
     ThreadAffinity affinity;
     affinity.add_cpu(0);
 
-    thread.set_affinity(affinity);
+    [[maybe_unused]] auto affinity_result = thread.set_affinity(affinity);
     // Affinity setting may fail depending on system/permissions
     // Just ensure it doesn't crash
 

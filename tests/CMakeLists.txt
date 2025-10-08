@@ -34,6 +34,15 @@ if(TARGET gtest)
     )
     add_test(NAME ThreadPoolTest COMMAND thread_pool_test)
 
+    # Expected tests
+    add_executable(expected_test expected_test.cpp)
+    target_link_libraries(expected_test 
+        ThreadSchedule::ThreadSchedule 
+        gtest 
+        gtest_main
+    )
+    add_test(NAME ExpectedTest COMMAND expected_test)
+
     # Set test properties for better output
     set_tests_properties(ThreadWrapperTest ThreadConfigTest ThreadPoolTest
         PROPERTIES

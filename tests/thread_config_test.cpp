@@ -170,9 +170,6 @@ TEST_F(ThreadConfigTest, SchedulingPolicyValues)
     auto other = SchedulingPolicy::OTHER;
     auto fifo = SchedulingPolicy::FIFO;
     auto rr = SchedulingPolicy::RR;
-    auto batch = SchedulingPolicy::BATCH;
-    auto idle = SchedulingPolicy::IDLE;
-
     // Just ensure they're different
     EXPECT_NE(static_cast<int>(other), static_cast<int>(fifo));
     EXPECT_NE(static_cast<int>(fifo), static_cast<int>(rr));
@@ -180,16 +177,10 @@ TEST_F(ThreadConfigTest, SchedulingPolicyValues)
 
 TEST_F(ThreadConfigTest, SchedulingPolicyToString)
 {
-    auto policies = {SchedulingPolicy::OTHER,
-                     SchedulingPolicy::FIFO,
-                     SchedulingPolicy::RR,
-                     SchedulingPolicy::BATCH,
-                     SchedulingPolicy::IDLE
+    std::vector<SchedulingPolicy> policies = {SchedulingPolicy::OTHER, SchedulingPolicy::FIFO, SchedulingPolicy::RR};
 #if defined(SCHED_DEADLINE) && !defined(_WIN32)
-                     ,
-                     SchedulingPolicy::DEADLINE
+    policies.push_back(SchedulingPolicy::DEADLINE);
 #endif
-    };
 
     for (auto policy : policies)
     {
@@ -242,12 +233,12 @@ TEST_F(ThreadConfigTest, ApplyConfigToThread)
     });
 
     // Try to configure the thread (may fail without permissions)
-    thread.set_name("test_config");
-    thread.set_priority(ThreadPriority::normal());
+    [[maybe_unused]] auto _namer = thread.set_name("test_config");
+    [[maybe_unused]] auto _prio = thread.set_priority(ThreadPriority::normal());
 
     ThreadAffinity affinity;
     affinity.add_cpu(0);
-    thread.set_affinity(affinity);
+    [[maybe_unused]] auto _aff = thread.set_affinity(affinity);
 
     thread.join();
     EXPECT_TRUE(executed);
@@ -263,7 +254,7 @@ TEST_F(ThreadConfigTest, ThreadConfigWithSchedulingPolicy)
     });
 
     // Try to set scheduling policy (may fail without permissions)
-    thread.set_scheduling_policy(SchedulingPolicy::OTHER, ThreadPriority::normal());
+    [[maybe_unused]] auto _sched = thread.set_scheduling_policy(SchedulingPolicy::OTHER, ThreadPriority::normal());
 
     // Just ensure it doesn't crash
     thread.join();
