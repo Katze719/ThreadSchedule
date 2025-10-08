@@ -1,7 +1,6 @@
 #include <atomic>
 #include <chrono>
 #include <gtest/gtest.h>
-#include <numeric>
 #include <threadschedule/threadschedule.hpp>
 #include <vector>
 
@@ -154,7 +153,7 @@ TEST_F(ThreadPoolTest, HighPerformancePoolConfigureThreads)
     HighPerformancePool pool(2);
 
     // Configure threads (may fail without permissions)
-    pool.configure_threads("worker");
+    [[maybe_unused]] auto _cfg = pool.configure_threads("worker");
 
     std::atomic<bool> executed{false};
     pool.submit([&executed]() { executed = true; });
@@ -168,7 +167,7 @@ TEST_F(ThreadPoolTest, HighPerformancePoolDistributeAcrossCPUs)
     HighPerformancePool pool(4);
 
     // Try to distribute (may fail without permissions)
-    pool.distribute_across_cpus();
+    [[maybe_unused]] auto _dist = pool.distribute_across_cpus();
 
     std::atomic<int> counter{0};
     for (int i = 0; i < 10; ++i)
@@ -264,11 +263,11 @@ TEST_F(ThreadPoolTest, PerformanceComparisonSimpleTasks)
     constexpr int num_tasks = 1000;
     constexpr int num_threads = 4;
 
-    auto test_pool = [num_tasks](auto &pool) {
+    auto test_pool = [](auto &pool) {
         std::atomic<int> counter{0};
         auto start = std::chrono::high_resolution_clock::now();
 
-        for (int i = 0; i < num_tasks; ++i)
+        for (int i = 0; i < 1000; ++i)
         {
             pool.submit([&counter]() { counter++; });
         }
@@ -466,7 +465,7 @@ TEST_F(ThreadPoolTest, ProperCleanupOnDestruction)
 TEST_F(ThreadPoolTest, NoTaskLeakage)
 {
     std::atomic<int> task_executed{0};
-    std::atomic<int> task_destroyed{0};
+    // removed unused tracker 'task_destroyed'
 
     {
         HighPerformancePool pool(2);
@@ -475,7 +474,7 @@ TEST_F(ThreadPoolTest, NoTaskLeakage)
         for (int i = 0; i < 10; ++i)
         {
             auto counter = std::make_shared<std::atomic<int>>(0);
-            pool.submit([counter, &task_executed, &task_destroyed]() {
+            pool.submit([counter, &task_executed]() {
                 task_executed++;
                 // Task executed
             });
