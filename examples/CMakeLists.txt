@@ -7,3 +7,7 @@ target_link_libraries(basic_example ThreadSchedule::ThreadSchedule)
 # Performance benchmark for high-performance ThreadPool
 add_executable(performance_benchmark performance_benchmark.cpp)
 target_link_libraries(performance_benchmark ThreadSchedule::ThreadSchedule) 
+
+# Thread registry example
+add_executable(registry_example registry_example.cpp)
+target_link_libraries(registry_example ThreadSchedule::ThreadSchedule)
