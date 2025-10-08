@@ -27,14 +27,14 @@ jobs:
             cxx: clang++-14
           - os: ubuntu-24.04
             cpp_standard: 20
-            compiler: clang-18
-            cc: clang-18
-            cxx: clang++-18
+            compiler: clang-19
+            cc: clang-19
+            cxx: clang++-19
           - os: ubuntu-24.04
             cpp_standard: 23
-            compiler: clang-18
-            cc: clang-18
-            cxx: clang++-18
+            compiler: clang-19
+            cc: clang-19
+            cxx: clang++-19
         exclude:
           # Clang 14 is too old for GCC 14's libstdc++ on Ubuntu 24.04 with C++20/23
           - os: ubuntu-24.04
@@ -54,8 +54,8 @@ jobs:
         sudo apt-get install -y cmake ninja-build
         if [ "${{ matrix.compiler }}" = "gcc" ]; then
           sudo apt-get install -y g++-11 g++-12 g++-13
-        elif [ "${{ matrix.compiler }}" = "clang-18" ]; then
-          sudo apt-get install -y clang-18
+        elif [ "${{ matrix.compiler }}" = "clang-19" ]; then
+          sudo apt-get install -y clang-19
         else
           sudo apt-get install -y clang-14 clang-15
         fi
