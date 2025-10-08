@@ -1,8 +1,15 @@
 cmake_minimum_required(VERSION 3.14)
 
 # Project version
+# Determine project version from VERSION file (single source of truth)
+set(THREADSCHEDULE_VERSION "0.0.0")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" THREADSCHEDULE_VERSION)
+    string(STRIP "${THREADSCHEDULE_VERSION}" THREADSCHEDULE_VERSION)
+endif()
+
 project(ThreadSchedule 
-    VERSION 1.0.0 
+    VERSION ${THREADSCHEDULE_VERSION}
     DESCRIPTION "Modern C++ thread management library"
     HOMEPAGE_URL "https://github.com/Katze719/ThreadSchedule"
     LANGUAGES CXX
@@ -43,8 +50,8 @@ option(THREADSCHEDULE_BUILD_TESTS "Build tests" OFF)
 option(THREADSCHEDULE_BUILD_BENCHMARKS "Build benchmarks" OFF)
 option(THREADSCHEDULE_INSTALL "Generate install target" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
 
-# CPM support (optional, only download if building benchmarks)
-if(THREADSCHEDULE_BUILD_BENCHMARKS)
+# CPM support (optional, download if building tests or benchmarks)
+if(THREADSCHEDULE_BUILD_TESTS OR THREADSCHEDULE_BUILD_BENCHMARKS)
     # Download CPM.cmake if not already available
     if(NOT EXISTS "${CMAKE_CURRENT_BINARY_DIR}/cmake/CPM.cmake")
         file(
@@ -55,8 +62,22 @@ if(THREADSCHEDULE_BUILD_BENCHMARKS)
         )
     endif()
     include(${CMAKE_CURRENT_BINARY_DIR}/cmake/CPM.cmake)
+endif()
 
-    # Add Google Benchmark dependency
+# Add Google Test dependency (for tests)
+if(THREADSCHEDULE_BUILD_TESTS)
+    CPMAddPackage(
+        NAME googletest
+        GITHUB_REPOSITORY google/googletest
+        VERSION 1.14.0
+        OPTIONS
+            "INSTALL_GTEST OFF"
+            "BUILD_GMOCK OFF"
+    )
+endif()
+
+# Add Google Benchmark dependency (for benchmarks)
+if(THREADSCHEDULE_BUILD_BENCHMARKS)
     CPMAddPackage(
         NAME benchmark
         GITHUB_REPOSITORY google/benchmark
@@ -76,10 +97,20 @@ find_package(Threads REQUIRED)
 add_library(ThreadSchedule INTERFACE)
 add_library(ThreadSchedule::ThreadSchedule ALIAS ThreadSchedule)
 
-# Set target properties
-set_target_properties(ThreadSchedule PROPERTIES
-    INTERFACE_COMPILE_FEATURES cxx_std_17
-)
+# Set target properties based on selected C++ standard
+if(CMAKE_CXX_STANDARD GREATER_EQUAL 23)
+    set_target_properties(ThreadSchedule PROPERTIES
+        INTERFACE_COMPILE_FEATURES cxx_std_23
+    )
+elseif(CMAKE_CXX_STANDARD GREATER_EQUAL 20)
+    set_target_properties(ThreadSchedule PROPERTIES
+        INTERFACE_COMPILE_FEATURES cxx_std_20
+    )
+else()
+    set_target_properties(ThreadSchedule PROPERTIES
+        INTERFACE_COMPILE_FEATURES cxx_std_17
+    )
+endif()
 
 # Include directories
 target_include_directories(ThreadSchedule INTERFACE
@@ -90,11 +121,19 @@ target_include_directories(ThreadSchedule INTERFACE
 # Link libraries
 target_link_libraries(ThreadSchedule INTERFACE Threads::Threads)
 
+# Windows: ensure modern API availability macros
+if(WIN32)
+    target_compile_definitions(ThreadSchedule INTERFACE
+        $<BUILD_INTERFACE:_WIN32_WINNT=0x0A00>
+    )
+endif()
+
 # Platform-specific libraries
 if(UNIX AND NOT APPLE AND NOT WIN32)
     # Linux-specific libraries
     target_link_libraries(ThreadSchedule INTERFACE pthread rt)
 endif()
+# Windows (MSVC and MinGW) use Threads::Threads which is already linked above
 
 # Compiler-specific warnings and flags (only for top-level project to avoid polluting parent)
 if(THREADSCHEDULE_IS_TOPLEVEL_PROJECT)
@@ -102,9 +141,15 @@ if(THREADSCHEDULE_IS_TOPLEVEL_PROJECT)
         target_compile_options(ThreadSchedule INTERFACE
             $<BUILD_INTERFACE:-Wall -Wextra -Wpedantic>
         )
+        # MinGW (GCC): allow permissive mode for broader compatibility when requested
+        if(MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(ThreadSchedule INTERFACE
+                $<BUILD_INTERFACE:-fpermissive>
+            )
+        endif()
     elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
         target_compile_options(ThreadSchedule INTERFACE
-            $<BUILD_INTERFACE:/W4>
+            $<BUILD_INTERFACE:/W4 /permissive- /Zc:preprocessor /EHsc>
         )
     endif()
 endif()
@@ -127,7 +172,9 @@ endif()
 
 if(THREADSCHEDULE_BUILD_TESTS)
     enable_testing()
-    add_subdirectory(tests)
+    if(TARGET gtest)
+        add_subdirectory(tests)
+    endif()
 endif()
 
 if(THREADSCHEDULE_BUILD_BENCHMARKS AND TARGET benchmark::benchmark)

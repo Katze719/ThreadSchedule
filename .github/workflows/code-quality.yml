@@ -10,28 +10,48 @@ on:
 jobs:
   code-quality:
     name: Code Quality
-    runs-on: ubuntu-latest
-    
+    runs-on: ubuntu-24.04
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
-    - name: Install clang-format
-      run: sudo apt-get install -y clang-format-14
-    
-    - name: Check formatting
+
+    - name: Install clang-format (prefer 19, fallback to 18 or default)
       run: |
-        find include -name "*.hpp" -o -name "*.cpp" | xargs clang-format-14 --dry-run --Werror
-    
+        sudo apt-get update
+        sudo apt-get install -y clang-format-19 || sudo apt-get install -y clang-format-18 || sudo apt-get install -y clang-format
+        clang-format --version || clang-format-19 --version || clang-format-18 --version
+
+    - name: Check C/C++ formatting
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Pick the best available clang-format
+        CF=clang-format
+        command -v clang-format-19 >/dev/null 2>&1 && CF=clang-format-19
+        command -v clang-format-18 >/dev/null 2>&1 && CF=${CF}
+        echo "Using $CF"
+        FILES=$(git ls-files '*.hpp' '*.h' '*.cpp' '*.cc' '*.cxx')
+        if [ -z "$FILES" ]; then
+          echo "No source files to check."
+          exit 0
+        fi
+        # Use project .clang-format if present; otherwise fallback LLVM
+        STYLE_OPT="--style=file --fallback-style=LLVM"
+        $CF --version
+        echo "$FILES" | xargs -n 1 $CF --dry-run --Werror $STYLE_OPT
+
     - name: Check CMake formatting
+      shell: bash
       run: |
+        set -euo pipefail
         # Basic checks for CMake files
-        for file in CMakeLists.txt */CMakeLists.txt; do
+        MAP=(CMakeLists.txt $(git ls-files "*/CMakeLists.txt"))
+        for file in "${MAP[@]}"; do
           if [ -f "$file" ]; then
             echo "Checking $file"
-            # Check for tabs (spaces preferred in CMake)
+            # Enforce spaces over tabs
             if grep -q $'\t' "$file"; then
-              echo "ERROR: Found tabs in $file, please use spaces"
+              echo "ERROR: Found tabs in $file, please use spaces" >&2
               exit 1
             fi
           fi

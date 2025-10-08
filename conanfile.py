@@ -6,7 +6,8 @@ import os
 
 class ThreadScheduleConan(ConanFile):
     name = "threadschedule"
-    version = "1.0.0"
+    # Version will be resolved from VERSION file or env/recipe override
+    version = None
     license = "MIT"
     author = "Katze719"
     url = "https://github.com/Katze719/ThreadSchedule"
@@ -43,6 +44,14 @@ class ThreadScheduleConan(ConanFile):
         cmake_layout(self)
     
     def generate(self):
+        # Resolve version from VERSION file if not provided by recipe/CLI
+        if not self.version:
+            version_file = os.path.join(self.recipe_folder, "VERSION")
+            if os.path.exists(version_file):
+                with open(version_file, "r", encoding="utf-8") as f:
+                    self.version = f.read().strip()
+            else:
+                self.version = "0.0.0"
         tc = CMakeToolchain(self)
         tc.variables["THREADSCHEDULE_BUILD_EXAMPLES"] = self.options.build_examples
         tc.variables["THREADSCHEDULE_BUILD_TESTS"] = self.options.build_tests
