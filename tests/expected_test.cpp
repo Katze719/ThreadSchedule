@@ -2,6 +2,9 @@
 #include <system_error>
 #include <threadschedule/expected.hpp>
 
+using threadschedule::expected;
+using threadschedule::unexpected;
+
 using namespace threadschedule;
 
 namespace
