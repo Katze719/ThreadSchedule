@@ -1,17 +1,22 @@
 #pragma once
 
-#include <new>
 #include <system_error>
 #include <type_traits>
 #include <utility>
-#if __has_include(<expected>)
+#if (defined(__cplusplus) && __cplusplus >= 202302L) || (defined(_MSVC_LANG) && _MSVC_LANG >= 202302L)
 #include <expected>
+#define THREADSCHEDULE_HAS_STD_EXPECTED 1
+#elif defined(__cpp_lib_expected) && __cpp_lib_expected >= 202202L
+#include <expected>
+#define THREADSCHEDULE_HAS_STD_EXPECTED 1
+#else
+#define THREADSCHEDULE_HAS_STD_EXPECTED 0
 #endif
 
 namespace threadschedule
 {
 
-#if defined(__cpp_lib_expected) && __cpp_lib_expected >= 202202L
+#if THREADSCHEDULE_HAS_STD_EXPECTED
 
 template <typename T, typename E = std::error_code>
 class expected : public std::expected<T, E>

@@ -79,47 +79,24 @@ jobs:
         cd build
         ctest --output-on-failure --parallel
 
-  # Test on macOS with Apple Clang across standards
-  macos:
-    name: macOS (C++${{ matrix.cpp_standard }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-13, macos-14]
-        cpp_standard: [17, 20, 23]
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    - name: Configure CMake
-      run: |
-        cmake -B build -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }} \
-          -DTHREADSCHEDULE_BUILD_EXAMPLES=ON \
-          -DTHREADSCHEDULE_BUILD_TESTS=ON
-    - name: Build
-      run: cmake --build build --parallel
-    - name: Run tests
-      run: |
-        cd build
-        ctest --output-on-failure --parallel
+  # Removed macOS job per request
 
   # Test on Windows
   windows:
-    name: Windows (C++${{ matrix.cpp_standard }}, ${{ matrix.compiler }})
-    runs-on: windows-latest
+    name: Windows (C++${{ matrix.cpp_standard }}, ${{ matrix.compiler }}, ${{ matrix.image }})
+    runs-on: ${{ matrix.image }}
     strategy:
       fail-fast: false
       matrix:
         cpp_standard: [17, 20, 23]
         compiler: [msvc, mingw]
+        image: [windows-2019, windows-latest]
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Setup MSVC
+    - name: Setup MSVC (Developer Command Prompt)
       if: matrix.compiler == 'msvc'
       uses: ilammy/msvc-dev-cmd@v1
     
@@ -136,16 +113,12 @@ jobs:
     
     - name: Install Ninja (MSVC)
       if: matrix.compiler == 'msvc'
-      run: choco install ninja
+      run: choco install ninja --no-progress --yes
     
     - name: Configure CMake (MSVC)
       if: matrix.compiler == 'msvc'
       run: |
-        $extraFlags = ""
-        if ("${{ matrix.cpp_standard }}" -eq "17") {
-          $extraFlags = "-DCMAKE_CXX_FLAGS=/permissive-"
-        }
-        cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }} -DTHREADSCHEDULE_BUILD_EXAMPLES=ON -DTHREADSCHEDULE_BUILD_TESTS=ON $extraFlags
+        cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }} -DTHREADSCHEDULE_BUILD_EXAMPLES=ON -DTHREADSCHEDULE_BUILD_TESTS=ON -Dgtest_force_shared_crt=ON
     
     - name: Configure CMake (MinGW)
       if: matrix.compiler == 'mingw'
