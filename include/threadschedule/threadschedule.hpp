@@ -32,16 +32,19 @@ namespace threadschedule
 namespace ts = threadschedule;
 
 // Re-export main types for convenience
-using ts::FastThreadPool;
-using ts::HighPerformancePool;
-using ts::JThreadWrapper;
 #ifndef _WIN32
 using ts::PThreadWrapper;
 #endif
+using ts::FastThreadPool;
+using ts::HighPerformancePool;
+using ts::JThreadWrapper;
+using ts::JThreadWrapperView;
 using ts::SchedulingPolicy;
 using ts::ThreadAffinity;
+using ts::ThreadByNameView;
 using ts::ThreadPool;
 using ts::ThreadPriority;
 using ts::ThreadWrapper;
+using ts::ThreadWrapperView;
 
 } // namespace threadschedule

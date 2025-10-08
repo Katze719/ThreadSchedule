@@ -584,9 +584,9 @@ class JThreadWrapperView : public BaseThreadWrapper<std::jthread, detail::NonOwn
 #else
 // Fallback for compilers without C++20 support
 using JThreadWrapper = ThreadWrapper;
+using JThreadWrapperView = ThreadWrapperView;
 #endif
 
-// ================= Named thread view (locate thread by name, no std::thread ref required) =================
 class ThreadByNameView
 {
   public:
