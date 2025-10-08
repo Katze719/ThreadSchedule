@@ -10,6 +10,8 @@
 #include <libloaderapi.h>
 #include <windows.h>
 #else
+#include <dirent.h>
+#include <fstream>
 #include <sys/prctl.h>
 #include <sys/resource.h>
 #include <sys/syscall.h>
@@ -19,47 +21,106 @@
 namespace threadschedule
 {
 
+namespace detail
+{
+struct OwningTag
+{
+};
+struct NonOwningTag
+{
+};
+
+template <typename ThreadType, typename OwnershipTag>
+class ThreadStorage;
+
+// Owning storage: no extra overhead
+template <typename ThreadType>
+class ThreadStorage<ThreadType, OwningTag>
+{
+  protected:
+    ThreadStorage() = default;
+
+    [[nodiscard]] ThreadType &underlying() noexcept
+    {
+        return thread_;
+    }
+    [[nodiscard]] const ThreadType &underlying() const noexcept
+    {
+        return thread_;
+    }
+
+  protected:
+    ThreadType thread_;
+};
+
+// Non-owning storage: reference to external thread
+template <typename ThreadType>
+class ThreadStorage<ThreadType, NonOwningTag>
+{
+  protected:
+    ThreadStorage() = default;
+    explicit ThreadStorage(ThreadType &t) : external_thread_(&t)
+    {
+    }
+
+    [[nodiscard]] ThreadType &underlying() noexcept
+    {
+        return *external_thread_;
+    }
+    [[nodiscard]] const ThreadType &underlying() const noexcept
+    {
+        return *external_thread_;
+    }
+
+  protected:
+    ThreadType *external_thread_ = nullptr; // non-owning
+};
+} // namespace detail
+
 /**
  * @brief Base thread wrapper with common functionality
  */
-template <typename ThreadType>
-class BaseThreadWrapper
+template <typename ThreadType, typename OwnershipTag = detail::OwningTag>
+class BaseThreadWrapper : protected detail::ThreadStorage<ThreadType, OwnershipTag>
 {
   public:
     using native_handle_type = typename ThreadType::native_handle_type;
     using id = typename ThreadType::id;
 
     BaseThreadWrapper() = default;
+    explicit BaseThreadWrapper(ThreadType &t) : detail::ThreadStorage<ThreadType, OwnershipTag>(t)
+    {
+    }
     virtual ~BaseThreadWrapper() = default;
 
     // Thread management
     void join()
     {
-        if (thread_.joinable())
+        if (underlying().joinable())
         {
-            thread_.join();
+            underlying().join();
         }
     }
 
     void detach()
     {
-        if (thread_.joinable())
+        if (underlying().joinable())
         {
-            thread_.detach();
+            underlying().detach();
         }
     }
 
     [[nodiscard]] bool joinable() const noexcept
     {
-        return thread_.joinable();
+        return underlying().joinable();
     }
     [[nodiscard]] id get_id() const noexcept
     {
-        return thread_.get_id();
+        return underlying().get_id();
     }
     [[nodiscard]] native_handle_type native_handle() noexcept
     {
-        return thread_.native_handle();
+        return underlying().native_handle();
     }
 
     // Extended functionality
@@ -343,21 +404,28 @@ class BaseThreadWrapper
     }
 
   protected:
-    ThreadType thread_;
+    using detail::ThreadStorage<ThreadType, OwnershipTag>::underlying;
+    using detail::ThreadStorage<ThreadType, OwnershipTag>::ThreadStorage;
 };
 
 /**
  * @brief Enhanced std::thread wrapper
  */
-class ThreadWrapper : public BaseThreadWrapper<std::thread>
+class ThreadWrapper : public BaseThreadWrapper<std::thread, detail::OwningTag>
 {
   public:
     ThreadWrapper() = default;
 
+    // Construct by taking ownership of an existing std::thread (move)
+    explicit ThreadWrapper(std::thread &&t) noexcept : BaseThreadWrapper()
+    {
+        this->underlying() = std::move(t);
+    }
+
     template <typename F, typename... Args>
     explicit ThreadWrapper(F &&f, Args &&...args) : BaseThreadWrapper()
     {
-        thread_ = std::thread(std::forward<F>(f), std::forward<Args>(args)...);
+        this->underlying() = std::thread(std::forward<F>(f), std::forward<Args>(args)...);
     }
 
     ThreadWrapper(const ThreadWrapper &) = delete;
@@ -365,27 +433,27 @@ class ThreadWrapper : public BaseThreadWrapper<std::thread>
 
     ThreadWrapper(ThreadWrapper &&other) noexcept : BaseThreadWrapper()
     {
-        thread_ = std::move(other.thread_);
+        this->underlying() = std::move(other.underlying());
     }
 
     ThreadWrapper &operator=(ThreadWrapper &&other) noexcept
     {
         if (this != &other)
         {
-            if (thread_.joinable())
+            if (this->underlying().joinable())
             {
-                thread_.join();
+                this->underlying().join();
             }
-            thread_ = std::move(other.thread_);
+            this->underlying() = std::move(other.underlying());
         }
         return *this;
     }
 
     ~ThreadWrapper()
     {
-        if (thread_.joinable())
+        if (this->underlying().joinable())
         {
-            thread_.join();
+            this->underlying().join();
         }
     }
 
@@ -396,9 +464,22 @@ class ThreadWrapper : public BaseThreadWrapper<std::thread>
     {
 
         ThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
-        (void)wrapper.set_name(name);
-        (void)wrapper.set_scheduling_policy(policy, priority);
+        if (auto r = wrapper.set_name(name); !r.has_value())
+        {
+        }
+        if (auto r = wrapper.set_scheduling_policy(policy, priority); !r.has_value())
+        {
+        }
         return wrapper;
+    }
+};
+
+// Non-owning view over std::thread
+class ThreadWrapperView : public BaseThreadWrapper<std::thread, detail::NonOwningTag>
+{
+  public:
+    explicit ThreadWrapperView(std::thread &t) : BaseThreadWrapper<std::thread, detail::NonOwningTag>(t)
+    {
     }
 };
 
@@ -406,15 +487,21 @@ class ThreadWrapper : public BaseThreadWrapper<std::thread>
  * @brief Enhanced std::jthread wrapper (C++20)
  */
 #if __cplusplus >= 202002L
-class JThreadWrapper : public BaseThreadWrapper<std::jthread>
+class JThreadWrapper : public BaseThreadWrapper<std::jthread, detail::OwningTag>
 {
   public:
     JThreadWrapper() = default;
 
+    // Construct by taking ownership of an existing std::jthread (move)
+    explicit JThreadWrapper(std::jthread &&t) noexcept : BaseThreadWrapper()
+    {
+        this->underlying() = std::move(t);
+    }
+
     template <typename F, typename... Args>
     explicit JThreadWrapper(F &&f, Args &&...args) : BaseThreadWrapper()
     {
-        thread_ = std::jthread(std::forward<F>(f), std::forward<Args>(args)...);
+        this->underlying() = std::jthread(std::forward<F>(f), std::forward<Args>(args)...);
     }
 
     JThreadWrapper(const JThreadWrapper &) = delete;
@@ -422,14 +509,14 @@ class JThreadWrapper : public BaseThreadWrapper<std::jthread>
 
     JThreadWrapper(JThreadWrapper &&other) noexcept : BaseThreadWrapper()
     {
-        thread_ = std::move(other.thread_);
+        this->underlying() = std::move(other.underlying());
     }
 
     JThreadWrapper &operator=(JThreadWrapper &&other) noexcept
     {
         if (this != &other)
         {
-            thread_ = std::move(other.thread_);
+            this->underlying() = std::move(other.underlying());
         }
         return *this;
     }
@@ -437,19 +524,19 @@ class JThreadWrapper : public BaseThreadWrapper<std::jthread>
     // jthread-specific functionality
     void request_stop()
     {
-        thread_.request_stop();
+        this->underlying().request_stop();
     }
     bool stop_requested()
     {
-        return thread_.get_stop_token().stop_requested();
+        return this->underlying().get_stop_token().stop_requested();
     }
     std::stop_token get_stop_token() const
     {
-        return thread_.get_stop_token();
+        return this->underlying().get_stop_token();
     }
     std::stop_source get_stop_source()
     {
-        return thread_.get_stop_source();
+        return this->underlying().get_stop_source();
     }
 
     // Factory methods
@@ -459,15 +546,198 @@ class JThreadWrapper : public BaseThreadWrapper<std::jthread>
     {
 
         JThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
-        (void)wrapper.set_name(name);
-        (void)wrapper.set_scheduling_policy(policy, priority);
+        if (auto r = wrapper.set_name(name); !r.has_value())
+        {
+        }
+        if (auto r = wrapper.set_scheduling_policy(policy, priority); !r.has_value())
+        {
+        }
         return wrapper;
+    }
+};
+
+// Non-owning view over std::jthread (C++20)
+class JThreadWrapperView : public BaseThreadWrapper<std::jthread, detail::NonOwningTag>
+{
+  public:
+    explicit JThreadWrapperView(std::jthread &t) : BaseThreadWrapper<std::jthread, detail::NonOwningTag>(t)
+    {
+    }
+
+    void request_stop()
+    {
+        this->underlying().request_stop();
+    }
+    bool stop_requested()
+    {
+        return this->underlying().get_stop_token().stop_requested();
+    }
+    std::stop_token get_stop_token() const
+    {
+        return this->underlying().get_stop_token();
+    }
+    std::stop_source get_stop_source()
+    {
+        return this->underlying().get_stop_source();
     }
 };
 #else
 // Fallback for compilers without C++20 support
 using JThreadWrapper = ThreadWrapper;
+using JThreadWrapperView = ThreadWrapperView;
 #endif
+
+class ThreadByNameView
+{
+  public:
+#ifdef _WIN32
+    using native_handle_type = void *; // unsupported placeholder
+#else
+    using native_handle_type = pid_t; // Linux TID
+#endif
+
+    explicit ThreadByNameView(const std::string &name)
+    {
+#ifdef _WIN32
+        // Not supported on Windows in this implementation
+        (void)name;
+#else
+        DIR *dir = opendir("/proc/self/task");
+        if (!dir)
+            return;
+        struct dirent *entry = nullptr;
+        while ((entry = readdir(dir)) != nullptr)
+        {
+            if (entry->d_name[0] == '.')
+                continue;
+            std::string tid_str(entry->d_name);
+            std::string path = std::string("/proc/self/task/") + tid_str + "/comm";
+            std::ifstream in(path);
+            if (!in)
+                continue;
+            std::string current;
+            std::getline(in, current);
+            if (!current.empty() && current.back() == '\n')
+                current.pop_back();
+            if (current == name)
+            {
+                handle_ = static_cast<pid_t>(std::stoi(tid_str));
+                break;
+            }
+        }
+        closedir(dir);
+#endif
+    }
+
+    [[nodiscard]] bool found() const noexcept
+    {
+#ifdef _WIN32
+        return false;
+#else
+        return handle_ > 0;
+#endif
+    }
+
+    [[nodiscard]] expected<void, std::error_code> set_name(const std::string &name)
+    {
+#ifdef _WIN32
+        return unexpected(std::make_error_code(std::errc::function_not_supported));
+#else
+        if (!found())
+            return unexpected(std::make_error_code(std::errc::no_such_process));
+        if (name.length() > 15)
+            return unexpected(std::make_error_code(std::errc::invalid_argument));
+        std::string path = std::string("/proc/self/task/") + std::to_string(handle_) + "/comm";
+        std::ofstream out(path);
+        if (!out)
+            return unexpected(std::error_code(errno, std::generic_category()));
+        out << name;
+        out.flush();
+        if (!out)
+            return unexpected(std::error_code(errno, std::generic_category()));
+        return {};
+#endif
+    }
+
+    [[nodiscard]] std::optional<std::string> get_name() const
+    {
+#ifdef _WIN32
+        return std::nullopt;
+#else
+        if (!found())
+            return std::nullopt;
+        std::string path = std::string("/proc/self/task/") + std::to_string(handle_) + "/comm";
+        std::ifstream in(path);
+        if (!in)
+            return std::nullopt;
+        std::string current;
+        std::getline(in, current);
+        if (!current.empty() && current.back() == '\n')
+            current.pop_back();
+        return current;
+#endif
+    }
+
+    [[nodiscard]] native_handle_type native_handle() const noexcept
+    {
+        return handle_;
+    }
+
+    [[nodiscard]] expected<void, std::error_code> set_priority(ThreadPriority priority)
+    {
+#ifdef _WIN32
+        return unexpected(std::make_error_code(std::errc::function_not_supported));
+#else
+        if (!found())
+            return unexpected(std::make_error_code(std::errc::no_such_process));
+        const int policy = SCHED_OTHER;
+        auto params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
+        if (!params_result.has_value())
+            return unexpected(params_result.error());
+        if (sched_setscheduler(handle_, policy, &params_result.value()) == 0)
+            return {};
+        return unexpected(std::error_code(errno, std::generic_category()));
+#endif
+    }
+
+    [[nodiscard]] expected<void, std::error_code> set_scheduling_policy(SchedulingPolicy policy,
+                                                                        ThreadPriority priority)
+    {
+#ifdef _WIN32
+        return unexpected(std::make_error_code(std::errc::function_not_supported));
+#else
+        if (!found())
+            return unexpected(std::make_error_code(std::errc::no_such_process));
+        int policy_int = static_cast<int>(policy);
+        auto params_result = SchedulerParams::create_for_policy(policy, priority);
+        if (!params_result.has_value())
+            return unexpected(params_result.error());
+        if (sched_setscheduler(handle_, policy_int, &params_result.value()) == 0)
+            return {};
+        return unexpected(std::error_code(errno, std::generic_category()));
+#endif
+    }
+
+    [[nodiscard]] expected<void, std::error_code> set_affinity(const ThreadAffinity &affinity)
+    {
+#ifdef _WIN32
+        return unexpected(std::make_error_code(std::errc::function_not_supported));
+#else
+        if (!found())
+            return unexpected(std::make_error_code(std::errc::no_such_process));
+        if (sched_setaffinity(handle_, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
+            return {};
+        return unexpected(std::error_code(errno, std::generic_category()));
+#endif
+    }
+
+  private:
+#ifdef _WIN32
+    native_handle_type handle_ = nullptr;
+#else
+    native_handle_type handle_ = 0;
+#endif
+};
 
 // Static hardware information
 class ThreadInfo
