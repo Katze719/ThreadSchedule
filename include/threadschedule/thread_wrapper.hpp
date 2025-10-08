@@ -459,8 +459,8 @@ class JThreadWrapper : public BaseThreadWrapper<std::jthread>
     {
 
         JThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
-        wrapper.set_name(name);
-        wrapper.set_scheduling_policy(policy, priority);
+        (void)wrapper.set_name(name);
+        (void)wrapper.set_scheduling_policy(policy, priority);
         return wrapper;
     }
 };
