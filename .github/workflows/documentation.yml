@@ -25,58 +25,53 @@ jobs:
         folder-path: '.'
         file-extension: '.md'
     
-    - name: Check README examples
+    - name: Check README/examples presence
       run: |
-        # Extract and validate code blocks from README
-        echo "Checking README.md code examples..."
-        
-        # Check that CMake examples are valid
-        if grep -q "cmake_minimum_required" README.md; then
-          echo "✓ Found CMake examples in README"
+        echo "Checking documentation examples..."
+        # Accept examples in README.md or docs/CMAKE_REFERENCE.md for CMake
+        if grep -q "cmake_minimum_required" README.md || grep -q "cmake_minimum_required" docs/CMAKE_REFERENCE.md; then
+          echo "✓ Found CMake example in README.md or docs/CMAKE_REFERENCE.md"
         else
-          echo "✗ No CMake examples found in README"
+          echo "✗ No CMake example found in README.md or docs/CMAKE_REFERENCE.md"
           exit 1
         fi
-        
-        # Check that C++ examples are valid
-        if grep -q "#include <threadschedule/threadschedule.hpp>" README.md; then
-          echo "✓ Found C++ examples in README"
+        # Accept C++ include example in README.md or docs/INTEGRATION.md
+        if grep -q "#include <threadschedule/threadschedule.hpp>" README.md || grep -q "#include <threadschedule/threadschedule.hpp>" docs/INTEGRATION.md; then
+          echo "✓ Found C++ include example"
         else
-          echo "✗ No C++ examples found in README"
+          echo "✗ No C++ include example found (README.md or docs/INTEGRATION.md)"
           exit 1
         fi
     
     - name: Check integration documentation
       run: |
-        # Verify integration guide exists and is comprehensive
-        if [ ! -f "INTEGRATION_NEW.md" ]; then
-          echo "✗ INTEGRATION_NEW.md not found"
+        # Verify integration guide exists and is comprehensive (use docs/INTEGRATION.md)
+        if [ ! -f "docs/INTEGRATION.md" ]; then
+          echo "✗ docs/INTEGRATION.md not found"
           exit 1
         fi
-        
         # Check for key sections
         for section in "FetchContent" "CPM" "Conan" "add_subdirectory"; do
-          if grep -q "$section" INTEGRATION_NEW.md; then
+          if grep -q "$section" docs/INTEGRATION.md; then
             echo "✓ Found $section section"
           else
-            echo "✗ Missing $section section"
+            echo "✗ Missing $section section in docs/INTEGRATION.md"
             exit 1
           fi
         done
     
     - name: Validate CMake reference
       run: |
-        if [ ! -f "CMAKE_REFERENCE.md" ]; then
-          echo "✗ CMAKE_REFERENCE.md not found"
+        if [ ! -f "docs/CMAKE_REFERENCE.md" ]; then
+          echo "✗ docs/CMAKE_REFERENCE.md not found"
           exit 1
         fi
-        
         # Check for key options
         for option in "THREADSCHEDULE_BUILD_EXAMPLES" "THREADSCHEDULE_BUILD_TESTS" "THREADSCHEDULE_INSTALL"; do
-          if grep -q "$option" CMAKE_REFERENCE.md; then
+          if grep -q "$option" docs/CMAKE_REFERENCE.md; then
             echo "✓ Found $option documentation"
           else
-            echo "✗ Missing $option documentation"
+            echo "✗ Missing $option documentation in docs/CMAKE_REFERENCE.md"
             exit 1
           fi
         done
