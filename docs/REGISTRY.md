@@ -21,6 +21,53 @@ The registry provides a process-wide view of running threads and APIs to control
   - If components statically include ThreadSchedule: Use `set_external_registry(&appRegistry)` in `main()` and register threads to that instance everywhere.
   - If isolated registries are desired for components: Each component uses its own `ThreadRegistry`, and the app merges them using `CompositeThreadRegistry`.
 
+### Header-only builds and multiple DSOs
+
+Because ThreadSchedule is header-only, each DSO that includes it may get its own internal `registry()` singleton. To obtain a unified process-wide view, use one of these patterns:
+
+- App injection (unify to a single app-owned registry)
+  - The app creates a `ThreadRegistry appReg;` and injects it into itself and into every DSO using a small setter exported by each DSO.
+
+DSO side (libX):
+
+```cpp
+// libX_api.cpp
+#include <threadschedule/thread_registry.hpp>
+using namespace threadschedule;
+
+// Allow the host application to inject a registry pointer
+void libX_set_registry(ThreadRegistry* reg) {
+  set_external_registry(reg);
+}
+```
+
+App side:
+
+```cpp
+#include <threadschedule/thread_registry.hpp>
+using namespace threadschedule;
+
+// From each DSO's public header
+void libA_set_registry(ThreadRegistry*);
+void libB_set_registry(ThreadRegistry*);
+
+int main() {
+  ThreadRegistry appReg;
+  // App uses the same registry for its own calls
+  set_external_registry(&appReg);
+  // Propagate the same pointer into all DSOs
+  libA_set_registry(&appReg);
+  libB_set_registry(&appReg);
+  // ... start threads in app and DSOs ...
+}
+```
+
+- Composite merge (keep DSOs isolated and merge views in the app)
+  - Each DSO exposes `ThreadRegistry& libX_registry();` and registers its threads into that local registry. The app builds a `CompositeThreadRegistry` and attaches all of them. See example below.
+
+- Dynamic discovery (no headers)
+  - On POSIX, you can `dlsym` exported symbols (e.g., `libX_registry`, `libX_set_registry`) from each DSO at runtime and call them to either attach or inject a registry pointer.
+
 ### Examples
 
 #### 1) Basic app usage with the default registry
@@ -64,22 +111,48 @@ void component_worker() {
 
 #### 3) Multiple DSOs with isolated registries, merged by the app
 
-In each DSO, threads register into a local `ThreadRegistry`:
+In each DSO, define and expose a local `ThreadRegistry` accessor. Threads inside the DSO register to that local registry.
+
+libA (compiled into `libA.so`):
 
 ```cpp
-// in libA.so
+// libA.cpp
+#include <threadschedule/thread_registry.hpp>
+#include <threadschedule/thread_wrapper.hpp>
+using namespace threadschedule;
+
 static ThreadRegistry regA;
-void start_A() {
+
+// exported accessor (C++ symbol if you ship a header)
+ThreadRegistry& libA_registry() {
+  return regA;
+}
+
+// start function used by the app
+void libA_start() {
   ThreadWrapper t([]{
     AutoRegisterCurrentThread guard(regA, "a-1","A");
     // ... work ...
   });
   t.detach();
 }
+```
 
-// in libB.so
+libB (compiled into `libB.so`) is analogous:
+
+```cpp
+// libB.cpp
+#include <threadschedule/thread_registry.hpp>
+#include <threadschedule/thread_wrapper.hpp>
+using namespace threadschedule;
+
 static ThreadRegistry regB;
-void start_B() {
+
+ThreadRegistry& libB_registry() {
+  return regB;
+}
+
+void libB_start() {
   ThreadWrapper t([]{
     AutoRegisterCurrentThread guard(regB, "b-1","B");
     // ... work ...
@@ -88,19 +161,25 @@ void start_B() {
 }
 ```
 
-In the app, merge registries via `CompositeThreadRegistry`:
+In the app, include the DSOs' headers (recommended) and merge via `CompositeThreadRegistry`:
 
 ```cpp
+// app.cpp
 #include <threadschedule/thread_registry.hpp>
 using namespace threadschedule;
 
-extern ThreadRegistry& libA_registry();
-extern ThreadRegistry& libB_registry();
+// from libA_api.hpp and libB_api.hpp provided by the DSOs
+ThreadRegistry& libA_registry();
+ThreadRegistry& libB_registry();
 
-void control_all() {
+int main() {
+  libA_start();
+  libB_start();
+
   CompositeThreadRegistry composite;
   composite.attach(&libA_registry());
   composite.attach(&libB_registry());
+
   composite.apply_all(
     [](const RegisteredThreadInfo&){ return true; },
     [&](const RegisteredThreadInfo& e){ (void)registry().set_priority(e.tid, ThreadPriority{0}); }
