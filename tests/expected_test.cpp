@@ -16,11 +16,6 @@ enum class parse_error
     overflow = 2
 };
 
-std::error_code make_parse_error(parse_error e)
-{
-    return std::make_error_code(std::errc::invalid_argument);
-}
-
 expected<int, std::error_code> parse_int_ok()
 {
     return 42;
@@ -28,7 +23,7 @@ expected<int, std::error_code> parse_int_ok()
 
 expected<int, std::error_code> parse_int_fail()
 {
-    return unexpected(std::make_error_code(std::errc::invalid_argument));
+    return threadschedule::unexpected(std::make_error_code(std::errc::invalid_argument));
 }
 
 expected<void, std::error_code> do_void_ok()
@@ -38,7 +33,7 @@ expected<void, std::error_code> do_void_ok()
 
 expected<void, std::error_code> do_void_fail()
 {
-    return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+    return threadschedule::unexpected(std::make_error_code(std::errc::operation_not_permitted));
 }
 
 } // namespace

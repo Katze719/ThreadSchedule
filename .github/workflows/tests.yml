@@ -90,7 +90,7 @@ jobs:
       matrix:
         cpp_standard: [17, 20, 23]
         compiler: [msvc, mingw]
-        image: [windows-2019, windows-latest]
+        image: [windows-latest, windows-2025]
     
     steps:
     - name: Checkout code
