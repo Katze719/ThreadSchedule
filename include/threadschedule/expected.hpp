@@ -21,6 +21,8 @@ template <typename E>
 using unexpected = std::unexpected<E>;
 using unexpect_t = std::unexpect_t;
 inline constexpr unexpect_t unexpect{};
+template <typename T, typename E = std::error_code>
+using expected = std::expected<T, E>;
 
 #else
 
@@ -224,15 +226,5 @@ class expected<void, E>
 };
 
 #endif // std::expected fallback
-
-// Class template argument deduction guides so "expected r = f();" works
-template <typename T, typename E>
-expected(const expected<T, E> &) -> expected<T, E>;
-template <typename T, typename E>
-expected(expected<T, E> &&) -> expected<T, E>;
-template <typename E>
-expected(const expected<void, E> &) -> expected<void, E>;
-template <typename E>
-expected(expected<void, E> &&) -> expected<void, E>;
 
 } // namespace threadschedule
