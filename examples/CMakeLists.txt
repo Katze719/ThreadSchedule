@@ -11,3 +11,9 @@ target_link_libraries(performance_benchmark ThreadSchedule::ThreadSchedule)
 # Thread registry example
 add_executable(registry_example registry_example.cpp)
 target_link_libraries(registry_example ThreadSchedule::ThreadSchedule)
+
+add_executable(registry_merge_example registry_merge_example.cpp)
+target_link_libraries(registry_merge_example ThreadSchedule::ThreadSchedule)
+
+add_executable(external_registry_example external_registry_example.cpp)
+target_link_libraries(external_registry_example ThreadSchedule::ThreadSchedule)

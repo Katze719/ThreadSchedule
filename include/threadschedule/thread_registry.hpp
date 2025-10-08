@@ -551,15 +551,28 @@ class AutoRegisterCurrentThread
 {
   public:
     explicit AutoRegisterCurrentThread(std::string name = std::string(), std::string componentTag = std::string())
-        : active_(true)
+        : active_(true), externalReg_(nullptr)
     {
         auto block = ThreadControlBlock::create_for_current_thread(name, componentTag);
         registry().register_current_thread(block);
     }
+
+    explicit AutoRegisterCurrentThread(ThreadRegistry &reg, std::string name = std::string(),
+                                       std::string componentTag = std::string())
+        : active_(true), externalReg_(&reg)
+    {
+        auto block = ThreadControlBlock::create_for_current_thread(name, componentTag);
+        externalReg_->register_current_thread(block);
+    }
     ~AutoRegisterCurrentThread()
     {
         if (active_)
-            registry().unregister_current_thread();
+        {
+            if (externalReg_)
+                externalReg_->unregister_current_thread();
+            else
+                registry().unregister_current_thread();
+        }
     }
     AutoRegisterCurrentThread(const AutoRegisterCurrentThread &) = delete;
     AutoRegisterCurrentThread &operator=(const AutoRegisterCurrentThread &) = delete;
@@ -579,6 +592,7 @@ class AutoRegisterCurrentThread
 
   private:
     bool active_;
+    ThreadRegistry *externalReg_;
 };
 
 } // namespace threadschedule

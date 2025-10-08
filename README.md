@@ -249,6 +249,7 @@ worker.set_affinity(affinity);
 
 - **[Integration Guide](docs/INTEGRATION.md)** - All integration methods (CPM, FetchContent, Conan, subdirectory, system install)
 - **[CMake Reference](docs/CMAKE_REFERENCE.md)** - Complete CMake API and configuration options
+- **[Registry Guide](docs/REGISTRY.md)** - How to use the global thread registry across apps and DSOs
 - **[Examples](examples/)** - Working code examples
 - **[Benchmarks](benchmarks/)** - Performance benchmarks and optimization guides
 
