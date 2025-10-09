@@ -18,6 +18,11 @@ if(NOT TARGET ThreadSchedule::ThreadSchedule)
     include("${CMAKE_CURRENT_LIST_DIR}/ThreadScheduleTargets.cmake")
 endif()
 
+# Provide convenient alias for runtime target if present
+if(TARGET ThreadSchedule::ThreadScheduleRuntime AND NOT TARGET ThreadSchedule::Runtime)
+    add_library(ThreadSchedule::Runtime ALIAS ThreadSchedule::ThreadScheduleRuntime)
+endif()
+
 # Verify that targets exist
 check_required_components(ThreadSchedule)
 

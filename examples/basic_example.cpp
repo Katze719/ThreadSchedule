@@ -211,17 +211,17 @@ int main()
 
         std::cout << "\n=== Pool Selection Guide ===" << std::endl;
         std::cout << "ThreadPool (Simple):" << std::endl;
-        std::cout << "  ✓ Use for general applications" << std::endl;
-        std::cout << "  ✓ Task rate < 1000/second" << std::endl;
-        std::cout << "  ✓ Lower memory usage" << std::endl;
-        std::cout << "  ✓ Easier to debug" << std::endl;
+        std::cout << "  Use for general applications" << std::endl;
+        std::cout << "  Task rate < 1000/second" << std::endl;
+        std::cout << "  Lower memory usage" << std::endl;
+        std::cout << "  Easier to debug" << std::endl;
 
         std::cout << "\nHighPerformancePool (Work-Stealing):" << std::endl;
-        std::cout << "  ✓ Use for high-frequency workloads" << std::endl;
-        std::cout << "  ✓ Task rate > 10k/second" << std::endl;
-        std::cout << "  ✓ Batch processing support" << std::endl;
-        std::cout << "  ✓ Advanced performance monitoring" << std::endl;
-        std::cout << "  ✓ Optimal for short CPU-bound tasks" << std::endl;
+        std::cout << "  Use for high-frequency workloads" << std::endl;
+        std::cout << "  Task rate > 10k/second" << std::endl;
+        std::cout << "  Batch processing support" << std::endl;
+        std::cout << "  Advanced performance monitoring" << std::endl;
+        std::cout << "  Optimal for short CPU-bound tasks" << std::endl;
     }
     catch (std::exception const& e)
     {

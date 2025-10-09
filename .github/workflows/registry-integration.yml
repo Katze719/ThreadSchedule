@@ -21,53 +21,49 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y cmake ninja-build
     
-    - name: Install ThreadSchedule
+    - name: Install ThreadSchedule (header-only)
       run: |
         cmake -B build -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install/threadschedule
         cmake --build build
         cmake --install build
-    
-    - name: Build Library A
+
+    - name: App Injection Integration Scenario
       run: |
-        cd integration_tests/library_a
+        cd integration_tests/app_injection
         cmake -B build -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install/threadschedule \
-          -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install
+          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install/threadschedule
         cmake --build build
-        cmake --install build
-    
-    - name: Build Library B
+        ctest --test-dir build --output-on-failure
+
+    - name: Composite Merge Integration Scenario
       run: |
-        cd integration_tests/library_b
+        cd integration_tests/composite_merge
         cmake -B build -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install/threadschedule \
-          -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install
+          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install/threadschedule
         cmake --build build
-        cmake --install build
-    
-    - name: Build and Run Main App
+        ctest --test-dir build --output-on-failure
+
+    - name: Runtime Single Registry Scenario
       run: |
-        cd integration_tests/main_app
-        cmake -B build -G Ninja \
+        cmake -B build_runtime -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_PREFIX_PATH="${{ github.workspace }}/install/threadschedule;${{ github.workspace }}/install"
-        cmake --build build
+          -DTHREADSCHEDULE_RUNTIME=ON \
+          -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install/threadschedule
+        cmake --build build_runtime
+        cmake --install build_runtime
         
-        # Set library path for shared libraries
+        cd integration_tests/runtime_single
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DTHREADSCHEDULE_RUNTIME=ON \
+          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install/threadschedule
+        cmake --build build
         export LD_LIBRARY_PATH=${{ github.workspace }}/install/lib:$LD_LIBRARY_PATH
-        
-        # Run the integration test
-        ./build/main_app
-    
-    - name: Run CTest
-      run: |
-        cd integration_tests/main_app/build
-        export LD_LIBRARY_PATH=${{ github.workspace }}/install/lib:$LD_LIBRARY_PATH
-        ctest --output-on-failure
+        ctest --test-dir build --output-on-failure
 
   integration-test-linux-arm:
     name: Registry Integration (Linux ARM64)
@@ -81,53 +77,49 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y cmake ninja-build g++
     
-    - name: Install ThreadSchedule
+    - name: Install ThreadSchedule (header-only)
       run: |
         cmake -B build -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install/threadschedule
         cmake --build build
         cmake --install build
-    
-    - name: Build Library A
-      run: |
-        cd integration_tests/library_a
-        cmake -B build -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install/threadschedule \
-          -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install
-        cmake --build build
-        cmake --install build
 
-    - name: Build Library B
+    - name: App Injection Integration Scenario
       run: |
-        cd integration_tests/library_b
+        cd integration_tests/app_injection
         cmake -B build -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install/threadschedule \
-          -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install
+          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install/threadschedule
         cmake --build build
-        cmake --install build
+        ctest --test-dir build --output-on-failure
 
-    - name: Build and Run Main App
+    - name: Composite Merge Integration Scenario
       run: |
-        cd integration_tests/main_app
+        cd integration_tests/composite_merge
         cmake -B build -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_PREFIX_PATH="${{ github.workspace }}/install/threadschedule;${{ github.workspace }}/install"
+          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install/threadschedule
         cmake --build build
-        
-        # Set library path for shared libraries
-        export LD_LIBRARY_PATH=${{ github.workspace }}/install/lib:$LD_LIBRARY_PATH
-        
-        # Run the integration test
-        ./build/main_app
-    
-    - name: Run CTest
+        ctest --test-dir build --output-on-failure
+
+    - name: Runtime Single Registry Scenario
       run: |
-        cd integration_tests/main_app/build
+        cmake -B build_runtime -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DTHREADSCHEDULE_RUNTIME=ON \
+          -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install/threadschedule
+        cmake --build build_runtime
+        cmake --install build_runtime
+        
+        cd integration_tests/runtime_single
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DTHREADSCHEDULE_RUNTIME=ON \
+          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install/threadschedule
+        cmake --build build
         export LD_LIBRARY_PATH=${{ github.workspace }}/install/lib:$LD_LIBRARY_PATH
-        ctest --output-on-failure
+        ctest --test-dir build --output-on-failure
 
   integration-test-windows:
     name: Registry Integration (Windows)
@@ -143,50 +135,46 @@ jobs:
     - name: Install Ninja
       run: choco install ninja --no-progress --yes
     
-    - name: Install ThreadSchedule
+    - name: Install ThreadSchedule (header-only)
       run: |
         cmake -B build -G Ninja `
           -DCMAKE_BUILD_TYPE=Release `
           -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install/threadschedule
         cmake --build build
         cmake --install build
-    
-    - name: Build Library A
+
+    - name: App Injection Integration Scenario
       run: |
-        cd integration_tests/library_a
+        cd integration_tests/app_injection
         cmake -B build -G Ninja `
           -DCMAKE_BUILD_TYPE=Release `
-          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install/threadschedule `
-          -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install
+          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install/threadschedule
         cmake --build build
-        cmake --install build
-    
-    - name: Build Library B
+        ctest --test-dir build --output-on-failure
+
+    - name: Composite Merge Integration Scenario
       run: |
-        cd integration_tests/library_b
+        cd integration_tests/composite_merge
         cmake -B build -G Ninja `
           -DCMAKE_BUILD_TYPE=Release `
-          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install/threadschedule `
-          -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install
+          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install/threadschedule
         cmake --build build
-        cmake --install build
-    
-    - name: Build and Run Main App
+        ctest --test-dir build --output-on-failure
+
+    - name: Runtime Single Registry Scenario
       run: |
-        cd integration_tests/main_app
-        cmake -B build -G Ninja `
+        cmake -B build_runtime -G Ninja `
           -DCMAKE_BUILD_TYPE=Release `
-          -DCMAKE_PREFIX_PATH="${{ github.workspace }}/install/threadschedule;${{ github.workspace }}/install"
-        cmake --build build
+          -DTHREADSCHEDULE_RUNTIME=ON `
+          -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install/threadschedule
+        cmake --build build_runtime
+        cmake --install build_runtime
         
-        # Add DLL path to PATH
+        cd integration_tests/runtime_single
+        cmake -B build -G Ninja `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DTHREADSCHEDULE_RUNTIME=ON `
+          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install/threadschedule
+        cmake --build build
         $env:PATH = "${{ github.workspace }}/install/bin;$env:PATH"
-        
-        # Run the integration test
-        ./build/main_app.exe
-    
-    - name: Run CTest
-      run: |
-        cd integration_tests/main_app/build
-        $env:PATH = "${{ github.workspace }}/install/bin;$env:PATH"
-        ctest --output-on-failure
+        ctest --test-dir build --output-on-failure
