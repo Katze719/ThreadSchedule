@@ -4,7 +4,12 @@
 
 using namespace threadschedule;
 
-extern "C" void libB_start()
+extern "C"
+#ifdef _WIN32
+    __declspec(dllexport)
+#endif
+    void
+    libB_start()
 {
     ThreadWrapper t([] {
         AutoRegisterCurrentThread guard("rt-b1", "B");
