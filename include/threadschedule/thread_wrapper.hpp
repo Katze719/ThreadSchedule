@@ -40,16 +40,16 @@ class ThreadStorage<ThreadType, OwningTag>
   protected:
     ThreadStorage() = default;
 
-    [[nodiscard]] ThreadType &underlying() noexcept
+    [[nodiscard]] auto underlying() noexcept -> ThreadType &
     {
         return thread_;
     }
-    [[nodiscard]] const ThreadType &underlying() const noexcept
+    [[nodiscard]] auto underlying() const noexcept -> const ThreadType &
     {
         return thread_;
     }
 
-  protected:
+  
     ThreadType thread_;
 };
 
@@ -63,16 +63,16 @@ class ThreadStorage<ThreadType, NonOwningTag>
     {
     }
 
-    [[nodiscard]] ThreadType &underlying() noexcept
+    [[nodiscard]] auto underlying() noexcept -> ThreadType &
     {
         return *external_thread_;
     }
-    [[nodiscard]] const ThreadType &underlying() const noexcept
+    [[nodiscard]] auto underlying() const noexcept -> const ThreadType &
     {
         return *external_thread_;
     }
 
-  protected:
+  
     ThreadType *external_thread_ = nullptr; // non-owning
 };
 } // namespace detail
@@ -110,21 +110,21 @@ class BaseThreadWrapper : protected detail::ThreadStorage<ThreadType, OwnershipT
         }
     }
 
-    [[nodiscard]] bool joinable() const noexcept
+    [[nodiscard]] auto joinable() const noexcept -> bool
     {
         return underlying().joinable();
     }
-    [[nodiscard]] id get_id() const noexcept
+    [[nodiscard]] auto get_id() const noexcept -> id
     {
         return underlying().get_id();
     }
-    [[nodiscard]] native_handle_type native_handle() noexcept
+    [[nodiscard]] auto native_handle() noexcept -> native_handle_type
     {
         return underlying().native_handle();
     }
 
     // Extended functionality
-    [[nodiscard]] expected<void, std::error_code> set_name(const std::string &name)
+    [[nodiscard]] auto set_name(const std::string &name) -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         // Windows supports longer thread names. Try SetThreadDescription dynamically.
@@ -152,12 +152,12 @@ class BaseThreadWrapper : protected detail::ThreadStorage<ThreadType, OwnershipT
 
         const auto handle = native_handle();
         if (pthread_setname_np(handle, name.c_str()) == 0)
-            return expected<void, std::error_code>();
+            return {};
         return expected<void, std::error_code>(unexpect, std::error_code(errno, std::generic_category()));
 #endif
     }
 
-    [[nodiscard]] std::optional<std::string> get_name() const
+    [[nodiscard]] auto get_name() const -> std::optional<std::string>
     {
 #ifdef _WIN32
         const auto handle = const_cast<BaseThreadWrapper *>(this)->native_handle();
@@ -198,7 +198,7 @@ class BaseThreadWrapper : protected detail::ThreadStorage<ThreadType, OwnershipT
 #endif
     }
 
-    [[nodiscard]] expected<void, std::error_code> set_priority(ThreadPriority priority)
+    [[nodiscard]] auto set_priority(ThreadPriority priority) -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         const auto handle = native_handle();
@@ -257,8 +257,8 @@ class BaseThreadWrapper : protected detail::ThreadStorage<ThreadType, OwnershipT
 #endif
     }
 
-    [[nodiscard]] expected<void, std::error_code> set_scheduling_policy(SchedulingPolicy policy,
-                                                                        ThreadPriority priority)
+    [[nodiscard]] auto set_scheduling_policy(SchedulingPolicy policy,
+                                                                        ThreadPriority priority) -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         // Windows doesn't have the same scheduling policy concept as Linux
@@ -280,7 +280,7 @@ class BaseThreadWrapper : protected detail::ThreadStorage<ThreadType, OwnershipT
 #endif
     }
 
-    [[nodiscard]] expected<void, std::error_code> set_affinity(const ThreadAffinity &affinity)
+    [[nodiscard]] auto set_affinity(const ThreadAffinity &affinity) -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         const auto handle = native_handle();
@@ -314,7 +314,7 @@ class BaseThreadWrapper : protected detail::ThreadStorage<ThreadType, OwnershipT
 #endif
     }
 
-    [[nodiscard]] std::optional<ThreadAffinity> get_affinity() const
+    [[nodiscard]] auto get_affinity() const -> std::optional<ThreadAffinity>
     {
 #ifdef _WIN32
         // Windows doesn't have a direct API to get thread affinity
@@ -334,7 +334,7 @@ class BaseThreadWrapper : protected detail::ThreadStorage<ThreadType, OwnershipT
     }
 
     // Nice value (process-level, affects all threads)
-    static bool set_nice_value(int nice_value)
+    static auto set_nice_value(int nice_value) -> bool
     {
 #ifdef _WIN32
         // Windows has process priority classes, not nice values
@@ -366,7 +366,7 @@ class BaseThreadWrapper : protected detail::ThreadStorage<ThreadType, OwnershipT
 #endif
     }
 
-    static std::optional<int> get_nice_value()
+    static auto get_nice_value() -> std::optional<int>
     {
 #ifdef _WIN32
         // Get Windows process priority class and map to nice value
@@ -417,7 +417,7 @@ class ThreadWrapper : public BaseThreadWrapper<std::thread, detail::OwningTag>
     ThreadWrapper() = default;
 
     // Construct by taking ownership of an existing std::thread (move)
-    explicit ThreadWrapper(std::thread &&t) noexcept : BaseThreadWrapper()
+    explicit ThreadWrapper(std::thread &&t) noexcept  
     {
         this->underlying() = std::move(t);
     }
@@ -429,14 +429,14 @@ class ThreadWrapper : public BaseThreadWrapper<std::thread, detail::OwningTag>
     }
 
     ThreadWrapper(const ThreadWrapper &) = delete;
-    ThreadWrapper &operator=(const ThreadWrapper &) = delete;
+    auto operator=(const ThreadWrapper &) -> ThreadWrapper & = delete;
 
-    ThreadWrapper(ThreadWrapper &&other) noexcept : BaseThreadWrapper()
+    ThreadWrapper(ThreadWrapper &&other) noexcept  
     {
         this->underlying() = std::move(other.underlying());
     }
 
-    ThreadWrapper &operator=(ThreadWrapper &&other) noexcept
+    auto operator=(ThreadWrapper &&other) noexcept -> ThreadWrapper &
     {
         if (this != &other)
         {
@@ -449,7 +449,7 @@ class ThreadWrapper : public BaseThreadWrapper<std::thread, detail::OwningTag>
         return *this;
     }
 
-    ~ThreadWrapper()
+    ~ThreadWrapper() override
     {
         if (this->underlying().joinable())
         {
@@ -459,8 +459,8 @@ class ThreadWrapper : public BaseThreadWrapper<std::thread, detail::OwningTag>
 
     // Factory methods
     template <typename F, typename... Args>
-    static ThreadWrapper create_with_config(const std::string &name, SchedulingPolicy policy, ThreadPriority priority,
-                                            F &&f, Args &&...args)
+    static auto create_with_config(const std::string &name, SchedulingPolicy policy, ThreadPriority priority,
+                                            F &&f, Args &&...args) -> ThreadWrapper
     {
 
         ThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
@@ -603,7 +603,7 @@ class ThreadByNameView
         (void)name;
 #else
         DIR *dir = opendir("/proc/self/task");
-        if (!dir)
+        if (dir == nullptr)
             return;
         struct dirent *entry = nullptr;
         while ((entry = readdir(dir)) != nullptr)
@@ -629,7 +629,7 @@ class ThreadByNameView
 #endif
     }
 
-    [[nodiscard]] bool found() const noexcept
+    [[nodiscard]] auto found() const noexcept -> bool
     {
 #ifdef _WIN32
         return false;
@@ -638,7 +638,7 @@ class ThreadByNameView
 #endif
     }
 
-    [[nodiscard]] expected<void, std::error_code> set_name(const std::string &name)
+    [[nodiscard]] auto set_name(const std::string &name) -> expected<void, std::error_code> const
     {
 #ifdef _WIN32
         return unexpected(std::make_error_code(std::errc::function_not_supported));
@@ -659,7 +659,7 @@ class ThreadByNameView
 #endif
     }
 
-    [[nodiscard]] std::optional<std::string> get_name() const
+    [[nodiscard]] auto get_name() const -> std::optional<std::string>
     {
 #ifdef _WIN32
         return std::nullopt;
@@ -678,12 +678,12 @@ class ThreadByNameView
 #endif
     }
 
-    [[nodiscard]] native_handle_type native_handle() const noexcept
+    [[nodiscard]] auto native_handle() const noexcept -> native_handle_type
     {
         return handle_;
     }
 
-    [[nodiscard]] expected<void, std::error_code> set_priority(ThreadPriority priority)
+    [[nodiscard]] auto set_priority(ThreadPriority priority) -> expected<void, std::error_code> const
     {
 #ifdef _WIN32
         return unexpected(std::make_error_code(std::errc::function_not_supported));
@@ -700,8 +700,8 @@ class ThreadByNameView
 #endif
     }
 
-    [[nodiscard]] expected<void, std::error_code> set_scheduling_policy(SchedulingPolicy policy,
-                                                                        ThreadPriority priority)
+    [[nodiscard]] auto set_scheduling_policy(SchedulingPolicy policy,
+                                                                        ThreadPriority priority) -> expected<void, std::error_code> const
     {
 #ifdef _WIN32
         return unexpected(std::make_error_code(std::errc::function_not_supported));
@@ -718,7 +718,7 @@ class ThreadByNameView
 #endif
     }
 
-    [[nodiscard]] expected<void, std::error_code> set_affinity(const ThreadAffinity &affinity)
+    [[nodiscard]] auto set_affinity(const ThreadAffinity &affinity) -> expected<void, std::error_code> const
     {
 #ifdef _WIN32
         return unexpected(std::make_error_code(std::errc::function_not_supported));
@@ -743,7 +743,7 @@ class ThreadByNameView
 class ThreadInfo
 {
   public:
-    static unsigned int hardware_concurrency()
+    static auto hardware_concurrency() -> unsigned int
     {
         return std::thread::hardware_concurrency();
     }
@@ -757,7 +757,7 @@ class ThreadInfo
 #endif
     }
 
-    static std::optional<SchedulingPolicy> get_current_policy()
+    static auto get_current_policy() -> std::optional<SchedulingPolicy>
     {
 #ifdef _WIN32
         // Windows doesn't have Linux-style scheduling policies
@@ -773,7 +773,7 @@ class ThreadInfo
 #endif
     }
 
-    static std::optional<int> get_current_priority()
+    static auto get_current_priority() -> std::optional<int>
     {
 #ifdef _WIN32
         HANDLE thread = GetCurrentThread();

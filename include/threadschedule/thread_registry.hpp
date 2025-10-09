@@ -34,7 +34,7 @@ using Tid = pid_t; // Linux TID via gettid()
 struct RegisteredThreadInfo
 {
     Tid tid{};
-    std::thread::id stdId{};
+    std::thread::id stdId;
     std::string name;         // logical name/tag as provided during registration
     std::string componentTag; // optional grouping label
     bool alive{true};
@@ -46,9 +46,9 @@ class ThreadControlBlock
   public:
     ThreadControlBlock() = default;
     ThreadControlBlock(const ThreadControlBlock &) = delete;
-    ThreadControlBlock &operator=(const ThreadControlBlock &) = delete;
+    auto operator=(const ThreadControlBlock &) -> ThreadControlBlock & = delete;
     ThreadControlBlock(ThreadControlBlock &&) = delete;
-    ThreadControlBlock &operator=(ThreadControlBlock &&) = delete;
+    auto operator=(ThreadControlBlock &&) -> ThreadControlBlock & = delete;
 
     ~ThreadControlBlock()
     {
@@ -61,24 +61,24 @@ class ThreadControlBlock
 #endif
     }
 
-    [[nodiscard]] Tid tid() const noexcept
+    [[nodiscard]] auto tid() const noexcept -> Tid
     {
         return tid_;
     }
-    [[nodiscard]] std::thread::id std_id() const noexcept
+    [[nodiscard]] auto std_id() const noexcept -> std::thread::id
     {
         return stdId_;
     }
-    [[nodiscard]] const std::string &name() const noexcept
+    [[nodiscard]] auto name() const noexcept -> const std::string &
     {
         return name_;
     }
-    [[nodiscard]] const std::string &componentTag() const noexcept
+    [[nodiscard]] auto component_tag() const noexcept -> const std::string &
     {
         return componentTag_;
     }
 
-    [[nodiscard]] expected<void, std::error_code> set_affinity(const ThreadAffinity &affinity) const
+    [[nodiscard]] auto set_affinity(const ThreadAffinity &affinity) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         if (!handle_)
@@ -110,7 +110,7 @@ class ThreadControlBlock
 #endif
     }
 
-    [[nodiscard]] expected<void, std::error_code> set_priority(ThreadPriority priority) const
+    [[nodiscard]] auto set_priority(ThreadPriority priority) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         if (!handle_)
@@ -145,8 +145,8 @@ class ThreadControlBlock
 #endif
     }
 
-    [[nodiscard]] expected<void, std::error_code> set_scheduling_policy(SchedulingPolicy policy,
-                                                                        ThreadPriority priority) const
+    [[nodiscard]] auto set_scheduling_policy(SchedulingPolicy policy,
+                                                                        ThreadPriority priority) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         return set_priority(priority);
@@ -161,7 +161,7 @@ class ThreadControlBlock
 #endif
     }
 
-    [[nodiscard]] expected<void, std::error_code> set_name(const std::string &name) const
+    [[nodiscard]] auto set_name(const std::string &name) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         if (!handle_)
@@ -187,8 +187,8 @@ class ThreadControlBlock
 #endif
     }
 
-    static std::shared_ptr<ThreadControlBlock> create_for_current_thread(const std::string &name,
-                                                                         const std::string &componentTag)
+    static auto create_for_current_thread(const std::string &name,
+                                                                         const std::string &componentTag) -> std::shared_ptr<ThreadControlBlock>
     {
         auto block = std::make_shared<ThreadControlBlock>();
         block->tid_ = ThreadInfo::get_thread_id();
@@ -208,7 +208,7 @@ class ThreadControlBlock
 
   private:
     Tid tid_{};
-    std::thread::id stdId_{};
+    std::thread::id stdId_;
     std::string name_;
     std::string componentTag_;
 #ifdef _WIN32
@@ -223,7 +223,7 @@ class ThreadRegistry
   public:
     ThreadRegistry() = default;
     ThreadRegistry(const ThreadRegistry &) = delete;
-    ThreadRegistry &operator=(const ThreadRegistry &) = delete;
+    auto operator=(const ThreadRegistry &) -> ThreadRegistry & = delete;
 
     // Register/unregister the CURRENT thread (to be called inside the running thread)
     void register_current_thread(std::string name = std::string(), std::string componentTag = std::string())
@@ -242,7 +242,7 @@ class ThreadRegistry
         }
     }
 
-    void register_current_thread(std::shared_ptr<ThreadControlBlock> controlBlock)
+    void register_current_thread(const std::shared_ptr<ThreadControlBlock>& controlBlock)
     {
         if (!controlBlock)
             return;
@@ -250,7 +250,7 @@ class ThreadRegistry
         info.tid = controlBlock->tid();
         info.stdId = controlBlock->std_id();
         info.name = controlBlock->name();
-        info.componentTag = controlBlock->componentTag();
+        info.componentTag = controlBlock->component_tag();
         info.alive = true;
         info.control = controlBlock;
         std::unique_lock<std::shared_mutex> lock(mutex_);
@@ -270,7 +270,7 @@ class ThreadRegistry
     }
 
     // Lookup
-    [[nodiscard]] std::optional<RegisteredThreadInfo> get(Tid tid) const
+    [[nodiscard]] auto get(Tid tid) const -> std::optional<RegisteredThreadInfo>
     {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         auto it = threads_.find(tid);
@@ -310,7 +310,7 @@ class ThreadRegistry
     }
 
     // Control operations (by Tid)
-    [[nodiscard]] expected<void, std::error_code> set_affinity(Tid tid, const ThreadAffinity &affinity) const
+    [[nodiscard]] auto set_affinity(Tid tid, const ThreadAffinity &affinity) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         if (auto blk = lock_block_(tid))
@@ -343,7 +343,7 @@ class ThreadRegistry
             return {};
         return unexpected(std::make_error_code(std::errc::operation_not_permitted));
 #else
-        if (auto blk = lock_block_(tid))
+        if (auto blk = lock_block(tid))
             return blk->set_affinity(affinity);
         if (tid <= 0)
             return unexpected(std::make_error_code(std::errc::invalid_argument));
@@ -353,7 +353,7 @@ class ThreadRegistry
 #endif
     }
 
-    [[nodiscard]] expected<void, std::error_code> set_priority(Tid tid, ThreadPriority priority) const
+    [[nodiscard]] auto set_priority(Tid tid, ThreadPriority priority) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         if (auto blk = lock_block_(tid))
@@ -383,7 +383,7 @@ class ThreadRegistry
             return {};
         return unexpected(std::make_error_code(std::errc::operation_not_permitted));
 #else
-        if (auto blk = lock_block_(tid))
+        if (auto blk = lock_block(tid))
             return blk->set_priority(priority);
         if (tid <= 0)
             return unexpected(std::make_error_code(std::errc::invalid_argument));
@@ -397,15 +397,15 @@ class ThreadRegistry
 #endif
     }
 
-    [[nodiscard]] expected<void, std::error_code> set_scheduling_policy(Tid tid, SchedulingPolicy policy,
-                                                                        ThreadPriority priority) const
+    [[nodiscard]] auto set_scheduling_policy(Tid tid, SchedulingPolicy policy,
+                                                                        ThreadPriority priority) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         if (auto blk = lock_block_(tid))
             return blk->set_scheduling_policy(policy, priority);
         return set_priority(tid, priority);
 #else
-        if (auto blk = lock_block_(tid))
+        if (auto blk = lock_block(tid))
             return blk->set_scheduling_policy(policy, priority);
         if (tid <= 0)
             return unexpected(std::make_error_code(std::errc::invalid_argument));
@@ -419,7 +419,7 @@ class ThreadRegistry
 #endif
     }
 
-    [[nodiscard]] expected<void, std::error_code> set_name(Tid tid, const std::string &name) const
+    [[nodiscard]] auto set_name(Tid tid, const std::string &name) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         if (auto blk = lock_block_(tid))
@@ -448,7 +448,7 @@ class ThreadRegistry
             return {};
         return unexpected(std::make_error_code(std::errc::operation_not_permitted));
 #else
-        if (auto blk = lock_block_(tid))
+        if (auto blk = lock_block(tid))
             return blk->set_name(name);
         if (name.length() > 15)
             return unexpected(std::make_error_code(std::errc::invalid_argument));
@@ -468,7 +468,7 @@ class ThreadRegistry
     }
 
   private:
-    [[nodiscard]] std::shared_ptr<ThreadControlBlock> lock_block_(Tid tid) const
+    [[nodiscard]] auto lock_block(Tid tid) const -> std::shared_ptr<ThreadControlBlock>
     {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         auto it = threads_.find(tid);
@@ -481,16 +481,16 @@ class ThreadRegistry
 };
 
 // Registry access methods
-inline ThreadRegistry *&registry_storage()
+inline auto registry_storage() -> ThreadRegistry *&
 {
     static ThreadRegistry *external = nullptr;
     return external;
 }
 
-inline ThreadRegistry &registry()
+inline auto registry() -> ThreadRegistry &
 {
     ThreadRegistry *&ext = registry_storage();
-    if (ext)
+    if (ext != nullptr)
         return *ext;
     static ThreadRegistry local;
     return local;
@@ -507,7 +507,7 @@ class CompositeThreadRegistry
   public:
     void attach(ThreadRegistry *reg)
     {
-        if (!reg)
+        if (reg == nullptr)
             return;
         std::lock_guard<std::mutex> lock(mutex_);
         registries_.push_back(reg);
@@ -550,15 +550,15 @@ class CompositeThreadRegistry
 class AutoRegisterCurrentThread
 {
   public:
-    explicit AutoRegisterCurrentThread(std::string name = std::string(), std::string componentTag = std::string())
+    explicit AutoRegisterCurrentThread(const std::string& name = std::string(), const std::string& componentTag = std::string())
         : active_(true), externalReg_(nullptr)
     {
         auto block = ThreadControlBlock::create_for_current_thread(name, componentTag);
         registry().register_current_thread(block);
     }
 
-    explicit AutoRegisterCurrentThread(ThreadRegistry &reg, std::string name = std::string(),
-                                       std::string componentTag = std::string())
+    explicit AutoRegisterCurrentThread(ThreadRegistry &reg, const std::string& name = std::string(),
+                                       const std::string& componentTag = std::string())
         : active_(true), externalReg_(&reg)
     {
         auto block = ThreadControlBlock::create_for_current_thread(name, componentTag);
@@ -568,19 +568,19 @@ class AutoRegisterCurrentThread
     {
         if (active_)
         {
-            if (externalReg_)
+            if (externalReg_ != nullptr)
                 externalReg_->unregister_current_thread();
             else
                 registry().unregister_current_thread();
         }
     }
     AutoRegisterCurrentThread(const AutoRegisterCurrentThread &) = delete;
-    AutoRegisterCurrentThread &operator=(const AutoRegisterCurrentThread &) = delete;
+    auto operator=(const AutoRegisterCurrentThread &) -> AutoRegisterCurrentThread & = delete;
     AutoRegisterCurrentThread(AutoRegisterCurrentThread &&other) noexcept : active_(other.active_)
     {
         other.active_ = false;
     }
-    AutoRegisterCurrentThread &operator=(AutoRegisterCurrentThread &&other) noexcept
+    auto operator=(AutoRegisterCurrentThread &&other) noexcept -> AutoRegisterCurrentThread &
     {
         if (this != &other)
         {
