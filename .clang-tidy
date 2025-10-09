@@ -1,4 +1,4 @@
-Checks: '-*,modernize-*,performance-*,readability-*,-readability-braces-*'
+Checks: '-*,modernize-*,performance-*,readability-*,-readability-braces-*,-readability-magic-numbers,-modernize-avoid-c-arrays'
 WarningsAsErrors: ''
 HeaderFilterRegex: '.*'
 FormatStyle:     none

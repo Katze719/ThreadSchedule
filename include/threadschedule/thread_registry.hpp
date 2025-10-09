@@ -25,6 +25,17 @@
 namespace threadschedule
 {
 
+// Optional export macro for building a runtime (shared/dll) variant
+#if defined(_WIN32) || defined(_WIN64)
+#if defined(THREADSCHEDULE_EXPORTS)
+#define THREADSCHEDULE_API __declspec(dllexport)
+#else
+#define THREADSCHEDULE_API __declspec(dllimport)
+#endif
+#else
+#define THREADSCHEDULE_API
+#endif
+
 #ifdef _WIN32
 using Tid = unsigned long; // DWORD thread id
 #else
@@ -481,6 +492,11 @@ class ThreadRegistry
 };
 
 // Registry access methods
+#if defined(THREADSCHEDULE_RUNTIME)
+// Declarations only; implemented in the runtime translation unit
+THREADSCHEDULE_API auto registry() -> ThreadRegistry&;
+THREADSCHEDULE_API void set_external_registry(ThreadRegistry* reg);
+#else
 inline auto registry_storage() -> ThreadRegistry*&
 {
     static ThreadRegistry* external = nullptr;
@@ -500,6 +516,7 @@ inline void set_external_registry(ThreadRegistry* reg)
 {
     registry_storage() = reg;
 }
+#endif
 
 // Composite registry to aggregate multiple registries when explicit merging is desired
 class CompositeThreadRegistry

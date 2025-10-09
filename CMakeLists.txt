@@ -49,6 +49,7 @@ option(THREADSCHEDULE_BUILD_EXAMPLES "Build examples" ${THREADSCHEDULE_IS_TOPLEV
 option(THREADSCHEDULE_BUILD_TESTS "Build tests" OFF)
 option(THREADSCHEDULE_BUILD_BENCHMARKS "Build benchmarks" OFF)
 option(THREADSCHEDULE_INSTALL "Generate install target" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
+option(THREADSCHEDULE_RUNTIME "Build shared runtime for global registry (non header-only)" OFF)
 
 # CPM support (optional, download if building tests or benchmarks)
 if(THREADSCHEDULE_BUILD_TESTS OR THREADSCHEDULE_BUILD_BENCHMARKS)
@@ -93,7 +94,7 @@ endif()
 # Platform-specific requirements
 find_package(Threads REQUIRED)
 
-# Create the interface library target
+# Create the interface library target (header-only API)
 add_library(ThreadSchedule INTERFACE)
 add_library(ThreadSchedule::ThreadSchedule ALIAS ThreadSchedule)
 
@@ -179,6 +180,25 @@ endif()
 
 if(THREADSCHEDULE_BUILD_BENCHMARKS AND TARGET benchmark::benchmark)
     add_subdirectory(benchmarks)
+endif()
+
+# Optional shared runtime that exports a single global registry instance
+if(THREADSCHEDULE_RUNTIME)
+    add_library(ThreadScheduleRuntime SHARED
+        src/runtime_registry.cpp
+    )
+    target_compile_definitions(ThreadScheduleRuntime PRIVATE THREADSCHEDULE_EXPORTS THREADSCHEDULE_RUNTIME)
+    target_include_directories(ThreadScheduleRuntime
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+    target_link_libraries(ThreadScheduleRuntime PUBLIC Threads::Threads)
+    if(UNIX AND NOT APPLE AND NOT WIN32)
+        target_link_libraries(ThreadScheduleRuntime PUBLIC pthread rt)
+    endif()
+    set_target_properties(ThreadScheduleRuntime PROPERTIES OUTPUT_NAME "threadschedule")
+    add_library(ThreadSchedule::Runtime ALIAS ThreadScheduleRuntime)
 endif()
 
 # Installation

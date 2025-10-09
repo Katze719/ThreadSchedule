@@ -1,6 +1,5 @@
 #pragma once
 
-#include "concepts.hpp"
 #include "expected.hpp"
 #include "scheduler_policy.hpp"
 #include "thread_wrapper.hpp"
@@ -499,6 +498,7 @@ class HighPerformancePool
 
     std::chrono::steady_clock::time_point start_time_;
 
+    // NOLINTNEXTLINE(readability-function-cognitive-complexity)
     void worker_function(size_t worker_id)
     {
         // Thread-local random number generator for work stealing

@@ -636,7 +636,7 @@ class ThreadByNameView
 #endif
     }
 
-    [[nodiscard]] auto set_name(std::string const& name) -> expected<void, std::error_code> const
+    [[nodiscard]] auto set_name(std::string const& name) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         return unexpected(std::make_error_code(std::errc::function_not_supported));
@@ -681,7 +681,7 @@ class ThreadByNameView
         return handle_;
     }
 
-    [[nodiscard]] auto set_priority(ThreadPriority priority) -> expected<void, std::error_code> const
+    [[nodiscard]] auto set_priority(ThreadPriority priority) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         return unexpected(std::make_error_code(std::errc::function_not_supported));
@@ -698,8 +698,8 @@ class ThreadByNameView
 #endif
     }
 
-    [[nodiscard]] auto set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority)
-        -> expected<void, std::error_code> const
+    [[nodiscard]] auto set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority) const
+        -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         return unexpected(std::make_error_code(std::errc::function_not_supported));
@@ -716,7 +716,7 @@ class ThreadByNameView
 #endif
     }
 
-    [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) -> expected<void, std::error_code> const
+    [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         return unexpected(std::make_error_code(std::errc::function_not_supported));

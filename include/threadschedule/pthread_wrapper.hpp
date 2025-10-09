@@ -1,6 +1,5 @@
 #pragma once
 
-#include "concepts.hpp"
 #include "expected.hpp"
 #include "scheduler_policy.hpp"
 #include <atomic>
@@ -121,13 +120,13 @@ class PThreadWrapper
     {
         return thread_;
     }
-    auto native_handle() -> native_handle_type const
+    [[nodiscard]] auto native_handle() const -> native_handle_type
     {
         return thread_;
     }
 
     // Extended pthread functionality
-    auto set_name(std::string const& name) -> expected<void, std::error_code> const
+    [[nodiscard]] auto set_name(std::string const& name) const -> expected<void, std::error_code>
     {
         if (name.length() > 15)
             return expected<void, std::error_code>(unexpect, std::make_error_code(std::errc::invalid_argument));
@@ -146,7 +145,7 @@ class PThreadWrapper
         return std::nullopt;
     }
 
-    auto set_priority(ThreadPriority priority) -> expected<void, std::error_code> const
+    [[nodiscard]] auto set_priority(ThreadPriority priority) const -> expected<void, std::error_code>
     {
         int const policy = SCHED_OTHER;
         auto params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
@@ -161,8 +160,8 @@ class PThreadWrapper
         return unexpected(std::error_code(errno, std::generic_category()));
     }
 
-    auto set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority)
-        -> expected<void, std::error_code> const
+    [[nodiscard]] auto set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority) const
+        -> expected<void, std::error_code>
     {
         int const policy_int = static_cast<int>(policy);
         auto params_result = SchedulerParams::create_for_policy(policy, priority);
@@ -177,7 +176,7 @@ class PThreadWrapper
         return unexpected(std::error_code(errno, std::generic_category()));
     }
 
-    auto set_affinity(ThreadAffinity const& affinity) -> expected<void, std::error_code> const
+    [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) const -> expected<void, std::error_code>
     {
         if (pthread_setaffinity_np(thread_, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
             return {};
@@ -195,7 +194,7 @@ class PThreadWrapper
     }
 
     // Cancellation support
-    auto cancel() -> expected<void, std::error_code> const
+    [[nodiscard]] auto cancel() const -> expected<void, std::error_code>
     {
         if (pthread_cancel(thread_) == 0)
             return {};
