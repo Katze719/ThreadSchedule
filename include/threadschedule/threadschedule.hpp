@@ -4,6 +4,7 @@
 #include "pthread_wrapper.hpp"
 #include "scheduler_policy.hpp"
 #include "thread_pool.hpp"
+#include "thread_registry.hpp"
 #include "thread_wrapper.hpp"
 
 /**

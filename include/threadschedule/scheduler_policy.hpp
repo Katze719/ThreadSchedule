@@ -2,6 +2,7 @@
 
 #include "expected.hpp"
 #include <algorithm>
+#include <cstdint>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -21,7 +22,7 @@ namespace threadschedule
 /**
  * @brief Enumeration of available scheduling policies
  */
-enum class SchedulingPolicy
+enum class SchedulingPolicy : std::uint_fast8_t
 {
 #ifdef _WIN32
     // Windows doesn't have the same scheduling policies as Linux
