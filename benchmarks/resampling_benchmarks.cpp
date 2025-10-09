@@ -65,7 +65,7 @@ class ImageQueue
         }
     }
 
-    bool pop(T &item, std::chrono::milliseconds timeout = std::chrono::milliseconds(100))
+    bool pop(T& item, std::chrono::milliseconds timeout = std::chrono::milliseconds(100))
     {
         std::unique_lock<std::mutex> lock(mutex_);
 
@@ -105,41 +105,41 @@ class ImageQueue
 class ImageResampler
 {
   public:
-    static ResampledImage resample_bilinear(const SimulatedImage &input, size_t new_width, size_t new_height)
+    static ResampledImage resample_bilinear(SimulatedImage const& input, size_t new_width, size_t new_height)
     {
         ResampledImage output(new_width, new_height);
 
-        const double x_ratio = static_cast<double>(input.width - 1) / new_width;
-        const double y_ratio = static_cast<double>(input.height - 1) / new_height;
+        double const x_ratio = static_cast<double>(input.width - 1) / new_width;
+        double const y_ratio = static_cast<double>(input.height - 1) / new_height;
 
         for (size_t y = 0; y < new_height; ++y)
         {
             for (size_t x = 0; x < new_width; ++x)
             {
-                const double px = x * x_ratio;
-                const double py = y * y_ratio;
+                double const px = x * x_ratio;
+                double const py = y * y_ratio;
 
-                const size_t x_floor = static_cast<size_t>(px);
-                const size_t y_floor = static_cast<size_t>(py);
-                const size_t x_ceil = std::min(x_floor + 1, input.width - 1);
-                const size_t y_ceil = std::min(y_floor + 1, input.height - 1);
+                size_t const x_floor = static_cast<size_t>(px);
+                size_t const y_floor = static_cast<size_t>(py);
+                size_t const x_ceil = std::min(x_floor + 1, input.width - 1);
+                size_t const y_ceil = std::min(y_floor + 1, input.height - 1);
 
-                const double x_weight = px - x_floor;
-                const double y_weight = py - y_floor;
+                double const x_weight = px - x_floor;
+                double const y_weight = py - y_floor;
 
                 // Bilinear interpolation with simulated heavy computation
-                const uint32_t top_left = input.pixels[y_floor * input.width + x_floor];
-                const uint32_t top_right = input.pixels[y_floor * input.width + x_ceil];
-                const uint32_t bottom_left = input.pixels[y_ceil * input.width + x_floor];
-                const uint32_t bottom_right = input.pixels[y_ceil * input.width + x_ceil];
+                uint32_t const top_left = input.pixels[y_floor * input.width + x_floor];
+                uint32_t const top_right = input.pixels[y_floor * input.width + x_ceil];
+                uint32_t const bottom_left = input.pixels[y_ceil * input.width + x_floor];
+                uint32_t const bottom_right = input.pixels[y_ceil * input.width + x_ceil];
 
                 // Simulate heavy computation by doing multiple interpolations
                 uint32_t result = 0;
                 for (int iter = 0; iter < 50; ++iter)
                 {
-                    const double top =
+                    double const top =
                         static_cast<double>(top_left) * (1.0 - x_weight) + static_cast<double>(top_right) * x_weight;
-                    const double bottom = static_cast<double>(bottom_left) * (1.0 - x_weight) +
+                    double const bottom = static_cast<double>(bottom_left) * (1.0 - x_weight) +
                                           static_cast<double>(bottom_right) * x_weight;
                     result += static_cast<uint32_t>(top * (1.0 - y_weight) + bottom * y_weight);
                 }
@@ -156,14 +156,14 @@ class ImageResampler
 // Producer-Consumer Resampling Benchmarks (Your Real Workload)
 // =============================================================================
 
-static void BM_Resampling_HighPerformancePool_4Core(benchmark::State &state)
+static void BM_Resampling_HighPerformancePool_4Core(benchmark::State& state)
 {
-    const size_t image_width = state.range(0);
-    const size_t image_height = state.range(1);
-    const size_t num_images = state.range(2);
+    size_t const image_width = state.range(0);
+    size_t const image_height = state.range(1);
+    size_t const num_images = state.range(2);
 
     // 4 cores: 1 producer + 3 workers (your scenario)
-    const size_t num_workers = 3;
+    size_t const num_workers = 3;
     HighPerformancePool pool(num_workers);
     pool.configure_threads("resampling_worker", SchedulingPolicy::OTHER, ThreadPriority::normal());
     pool.distribute_across_cpus();
@@ -209,7 +209,7 @@ static void BM_Resampling_HighPerformancePool_4Core(benchmark::State &state)
         }
 
         // Wait for all resampling tasks to complete
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -228,13 +228,13 @@ static void BM_Resampling_HighPerformancePool_4Core(benchmark::State &state)
                    " images=" + std::to_string(num_images));
 }
 
-static void BM_Resampling_FastThreadPool_4Core(benchmark::State &state)
+static void BM_Resampling_FastThreadPool_4Core(benchmark::State& state)
 {
-    const size_t image_width = state.range(0);
-    const size_t image_height = state.range(1);
-    const size_t num_images = state.range(2);
+    size_t const image_width = state.range(0);
+    size_t const image_height = state.range(1);
+    size_t const num_images = state.range(2);
 
-    const size_t num_workers = 3;
+    size_t const num_workers = 3;
     FastThreadPool pool(num_workers);
     pool.configure_threads("fast_resampling_worker");
 
@@ -273,7 +273,7 @@ static void BM_Resampling_FastThreadPool_4Core(benchmark::State &state)
             }
         }
 
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -295,20 +295,20 @@ static void BM_Resampling_FastThreadPool_4Core(benchmark::State &state)
 // Real-time Video Processing Simulation (30fps typical)
 // =============================================================================
 
-static void BM_Resampling_RealTimeVideo(benchmark::State &state)
+static void BM_Resampling_RealTimeVideo(benchmark::State& state)
 {
-    const size_t fps = state.range(0); // Target frames per second
-    const size_t duration_seconds = 3; // Shorter for benchmark
-    const size_t num_workers = 3;
+    size_t const fps = state.range(0); // Target frames per second
+    size_t const duration_seconds = 3; // Shorter for benchmark
+    size_t const num_workers = 3;
 
     HighPerformancePool pool(num_workers);
     pool.configure_threads("video_worker", SchedulingPolicy::OTHER, ThreadPriority::normal());
     pool.distribute_across_cpus();
 
     // Standard video resolution
-    const size_t image_width = 1280;
-    const size_t image_height = 720;
-    const auto frame_interval = std::chrono::microseconds(1000000 / fps);
+    size_t const image_width = 1280;
+    size_t const image_height = 720;
+    auto const frame_interval = std::chrono::microseconds(1000000 / fps);
 
     for (auto _ : state)
     {
@@ -320,7 +320,7 @@ static void BM_Resampling_RealTimeVideo(benchmark::State &state)
 
         // Producer thread with precise timing (simulates video capture)
         std::thread producer([&]() {
-            const auto start_time = std::chrono::steady_clock::now();
+            auto const start_time = std::chrono::steady_clock::now();
             size_t frame_count = 0;
 
             while (std::chrono::steady_clock::now() - start_time < std::chrono::seconds(duration_seconds))
@@ -366,7 +366,7 @@ static void BM_Resampling_RealTimeVideo(benchmark::State &state)
             }
         }
 
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -392,14 +392,14 @@ static void BM_Resampling_RealTimeVideo(benchmark::State &state)
 // Pool Comparison for Image Workload
 // =============================================================================
 
-static void BM_Resampling_PoolComparison(benchmark::State &state)
+static void BM_Resampling_PoolComparison(benchmark::State& state)
 {
-    const size_t num_images = state.range(0);
-    const int pool_type = state.range(1); // 0=ThreadPool, 1=FastThreadPool, 2=HighPerformancePool
+    size_t const num_images = state.range(0);
+    int const pool_type = state.range(1); // 0=ThreadPool, 1=FastThreadPool, 2=HighPerformancePool
 
-    const size_t num_workers = 3;
-    const size_t image_width = 1024;
-    const size_t image_height = 768;
+    size_t const num_workers = 3;
+    size_t const image_width = 1024;
+    size_t const image_height = 768;
 
     for (auto _ : state)
     {
@@ -451,7 +451,7 @@ static void BM_Resampling_PoolComparison(benchmark::State &state)
 
             if (input_queue.pop(input_image, std::chrono::milliseconds(10)))
             {
-                const size_t pixels = input_image->width * input_image->height;
+                size_t const pixels = input_image->width * input_image->height;
 
                 if (pool_type == 0)
                 {
@@ -490,7 +490,7 @@ static void BM_Resampling_PoolComparison(benchmark::State &state)
         }
 
         // Wait for all resampling to complete
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -522,11 +522,11 @@ static void BM_Resampling_PoolComparison(benchmark::State &state)
 // Queue Depth Impact Analysis (Buffer Management)
 // =============================================================================
 
-static void BM_Resampling_QueueDepthImpact(benchmark::State &state)
+static void BM_Resampling_QueueDepthImpact(benchmark::State& state)
 {
-    const size_t max_queue_depth = state.range(0);
-    const size_t num_images = 50;
-    const size_t num_workers = 3;
+    size_t const max_queue_depth = state.range(0);
+    size_t const num_images = 50;
+    size_t const num_workers = 3;
 
     HighPerformancePool pool(num_workers);
     pool.configure_threads("queue_depth_worker");
@@ -575,7 +575,7 @@ static void BM_Resampling_QueueDepthImpact(benchmark::State &state)
             }
         }
 
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }

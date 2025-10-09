@@ -57,10 +57,10 @@ struct BenchmarkWorkloads
 // Basic ThreadPool Benchmarks
 // =============================================================================
 
-static void BM_ThreadPool_MinimalTasks(benchmark::State &state)
+static void BM_ThreadPool_MinimalTasks(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t num_tasks = state.range(1);
+    size_t const num_threads = state.range(0);
+    size_t const num_tasks = state.range(1);
 
     ThreadPool pool(num_threads);
     pool.configure_threads("bench");
@@ -77,7 +77,7 @@ static void BM_ThreadPool_MinimalTasks(benchmark::State &state)
             futures.push_back(pool.submit(BenchmarkWorkloads::minimal_task));
         }
 
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -91,10 +91,10 @@ static void BM_ThreadPool_MinimalTasks(benchmark::State &state)
     state.SetLabel("threads=" + std::to_string(num_threads) + " tasks=" + std::to_string(num_tasks));
 }
 
-static void BM_ThreadPool_LightTasks(benchmark::State &state)
+static void BM_ThreadPool_LightTasks(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t num_tasks = state.range(1);
+    size_t const num_threads = state.range(0);
+    size_t const num_tasks = state.range(1);
 
     ThreadPool pool(num_threads);
     pool.configure_threads("bench");
@@ -109,7 +109,7 @@ static void BM_ThreadPool_LightTasks(benchmark::State &state)
             futures.push_back(pool.submit(BenchmarkWorkloads::light_cpu_task));
         }
 
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -123,10 +123,10 @@ static void BM_ThreadPool_LightTasks(benchmark::State &state)
 // FastThreadPool Benchmarks
 // =============================================================================
 
-static void BM_FastThreadPool_MinimalTasks(benchmark::State &state)
+static void BM_FastThreadPool_MinimalTasks(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t num_tasks = state.range(1);
+    size_t const num_threads = state.range(0);
+    size_t const num_tasks = state.range(1);
 
     FastThreadPool pool(num_threads);
     pool.configure_threads("bench");
@@ -143,7 +143,7 @@ static void BM_FastThreadPool_MinimalTasks(benchmark::State &state)
             futures.push_back(pool.submit(BenchmarkWorkloads::minimal_task));
         }
 
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -157,10 +157,10 @@ static void BM_FastThreadPool_MinimalTasks(benchmark::State &state)
     state.SetLabel("threads=" + std::to_string(num_threads) + " tasks=" + std::to_string(num_tasks));
 }
 
-static void BM_FastThreadPool_BatchProcessing(benchmark::State &state)
+static void BM_FastThreadPool_BatchProcessing(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t batch_size = state.range(1);
+    size_t const num_threads = state.range(0);
+    size_t const batch_size = state.range(1);
 
     FastThreadPool pool(num_threads);
     pool.configure_threads("bench");
@@ -175,7 +175,7 @@ static void BM_FastThreadPool_BatchProcessing(benchmark::State &state)
     for (auto _ : state)
     {
         auto futures = pool.submit_batch(tasks.begin(), tasks.end());
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -189,10 +189,10 @@ static void BM_FastThreadPool_BatchProcessing(benchmark::State &state)
 // HighPerformancePool Benchmarks (Work-Stealing)
 // =============================================================================
 
-static void BM_HighPerformancePool_MinimalTasks(benchmark::State &state)
+static void BM_HighPerformancePool_MinimalTasks(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t num_tasks = state.range(1);
+    size_t const num_threads = state.range(0);
+    size_t const num_tasks = state.range(1);
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("bench", SchedulingPolicy::OTHER, ThreadPriority::normal());
@@ -210,7 +210,7 @@ static void BM_HighPerformancePool_MinimalTasks(benchmark::State &state)
             futures.push_back(pool.submit(BenchmarkWorkloads::minimal_task));
         }
 
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -226,10 +226,10 @@ static void BM_HighPerformancePool_MinimalTasks(benchmark::State &state)
     state.SetLabel("threads=" + std::to_string(num_threads) + " tasks=" + std::to_string(num_tasks));
 }
 
-static void BM_HighPerformancePool_BatchProcessing(benchmark::State &state)
+static void BM_HighPerformancePool_BatchProcessing(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t batch_size = state.range(1);
+    size_t const num_threads = state.range(0);
+    size_t const batch_size = state.range(1);
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("bench", SchedulingPolicy::OTHER, ThreadPriority::normal());
@@ -245,7 +245,7 @@ static void BM_HighPerformancePool_BatchProcessing(benchmark::State &state)
     for (auto _ : state)
     {
         auto futures = pool.submit_batch(tasks.begin(), tasks.end());
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -258,10 +258,10 @@ static void BM_HighPerformancePool_BatchProcessing(benchmark::State &state)
     state.SetLabel("threads=" + std::to_string(num_threads) + " batch=" + std::to_string(batch_size));
 }
 
-static void BM_HighPerformancePool_ParallelForEach(benchmark::State &state)
+static void BM_HighPerformancePool_ParallelForEach(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t data_size = state.range(1);
+    size_t const num_threads = state.range(0);
+    size_t const data_size = state.range(1);
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("bench", SchedulingPolicy::OTHER, ThreadPriority::normal());
@@ -288,11 +288,11 @@ static void BM_HighPerformancePool_ParallelForEach(benchmark::State &state)
 // Comparison Benchmarks (All Pools)
 // =============================================================================
 
-static void BM_ComparePoolTypes_LightWorkload(benchmark::State &state)
+static void BM_ComparePoolTypes_LightWorkload(benchmark::State& state)
 {
-    const size_t num_threads = 4; // Fixed for fair comparison
-    const size_t num_tasks = state.range(0);
-    const int pool_type = state.range(1); // 0=ThreadPool, 1=FastThreadPool, 2=HighPerformancePool
+    size_t const num_threads = 4; // Fixed for fair comparison
+    size_t const num_tasks = state.range(0);
+    int const pool_type = state.range(1); // 0=ThreadPool, 1=FastThreadPool, 2=HighPerformancePool
 
     for (auto _ : state)
     {
@@ -313,7 +313,7 @@ static void BM_ComparePoolTypes_LightWorkload(benchmark::State &state)
                 futures.push_back(pool.submit(BenchmarkWorkloads::light_cpu_task));
             }
 
-            for (auto &future : futures)
+            for (auto& future : futures)
             {
                 future.wait();
             }
@@ -328,7 +328,7 @@ static void BM_ComparePoolTypes_LightWorkload(benchmark::State &state)
                 futures.push_back(pool.submit(BenchmarkWorkloads::light_cpu_task));
             }
 
-            for (auto &future : futures)
+            for (auto& future : futures)
             {
                 future.wait();
             }
@@ -344,7 +344,7 @@ static void BM_ComparePoolTypes_LightWorkload(benchmark::State &state)
                 futures.push_back(pool.submit(BenchmarkWorkloads::light_cpu_task));
             }
 
-            for (auto &future : futures)
+            for (auto& future : futures)
             {
                 future.wait();
             }

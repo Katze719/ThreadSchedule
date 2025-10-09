@@ -51,6 +51,22 @@ if(TARGET gtest)
         gtest_main
     )
     add_test(NAME ExpectedTest COMMAND expected_test)
+    add_executable(thread_registry_stress_test thread_registry_stress_test.cpp)
+    target_link_libraries(thread_registry_stress_test 
+        ThreadSchedule::ThreadSchedule 
+        gtest 
+        gtest_main
+    )
+    add_test(NAME ThreadRegistryStressTest COMMAND thread_registry_stress_test)
+
+    # ThreadRegistry tests
+    add_executable(thread_registry_test thread_registry_test.cpp)
+    target_link_libraries(thread_registry_test 
+        ThreadSchedule::ThreadSchedule 
+        gtest 
+        gtest_main
+    )
+    add_test(NAME ThreadRegistryTest COMMAND thread_registry_test)
 
     # Set test properties for better output
     set_tests_properties(ThreadWrapperTest ThreadWrapperViewTest ThreadConfigTest ThreadPoolTest

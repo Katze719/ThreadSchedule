@@ -18,7 +18,7 @@ struct CacheLineBenchmark
     static constexpr size_t INTS_PER_CACHE_LINE = CACHE_LINE_SIZE / sizeof(int);
 
     // Test cache-friendly access patterns
-    static void cache_friendly_task(std::vector<int> &data, size_t start_idx, size_t count)
+    static void cache_friendly_task(std::vector<int>& data, size_t start_idx, size_t count)
     {
         for (size_t i = 0; i < count; ++i)
         {
@@ -27,7 +27,7 @@ struct CacheLineBenchmark
     }
 
     // Test cache-unfriendly access patterns (strided access)
-    static void cache_unfriendly_task(std::vector<int> &data, size_t start_idx, size_t stride, size_t count)
+    static void cache_unfriendly_task(std::vector<int>& data, size_t start_idx, size_t stride, size_t count)
     {
         for (size_t i = 0; i < count; ++i)
         {
@@ -36,17 +36,17 @@ struct CacheLineBenchmark
     }
 };
 
-static void BM_CacheFriendly_HighPerformancePool(benchmark::State &state)
+static void BM_CacheFriendly_HighPerformancePool(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t data_size = 1000000; // 1M integers
+    size_t const num_threads = state.range(0);
+    size_t const data_size = 1000000; // 1M integers
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("cache_bench");
     pool.distribute_across_cpus();
 
     std::vector<int> data(data_size, 1);
-    const size_t chunk_size = data_size / (num_threads * 4); // Optimize for cache
+    size_t const chunk_size = data_size / (num_threads * 4); // Optimize for cache
 
     for (auto _ : state)
     {
@@ -54,12 +54,12 @@ static void BM_CacheFriendly_HighPerformancePool(benchmark::State &state)
 
         for (size_t i = 0; i < data_size; i += chunk_size)
         {
-            const size_t end_idx = std::min(i + chunk_size, data_size);
+            size_t const end_idx = std::min(i + chunk_size, data_size);
             futures.push_back(
                 pool.submit([&data, i, end_idx]() { CacheLineBenchmark::cache_friendly_task(data, i, end_idx - i); }));
         }
 
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -71,17 +71,17 @@ static void BM_CacheFriendly_HighPerformancePool(benchmark::State &state)
     state.counters["cache_efficiency"] = benchmark::Counter(1.0); // Cache-friendly = 1.0
 }
 
-static void BM_CacheUnfriendly_HighPerformancePool(benchmark::State &state)
+static void BM_CacheUnfriendly_HighPerformancePool(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t data_size = 1000000;
+    size_t const num_threads = state.range(0);
+    size_t const data_size = 1000000;
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("cache_unfriendly_bench");
 
     std::vector<int> data(data_size, 1);
-    const size_t stride = 64; // Jump by cache lines
-    const size_t elements_per_thread = data_size / (num_threads * stride);
+    size_t const stride = 64; // Jump by cache lines
+    size_t const elements_per_thread = data_size / (num_threads * stride);
 
     for (auto _ : state)
     {
@@ -94,7 +94,7 @@ static void BM_CacheUnfriendly_HighPerformancePool(benchmark::State &state)
             }));
         }
 
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -110,10 +110,10 @@ static void BM_CacheUnfriendly_HighPerformancePool(benchmark::State &state)
 // Memory Allocation Benchmarks
 // =============================================================================
 
-static void BM_MemoryAllocation_TaskCreation(benchmark::State &state)
+static void BM_MemoryAllocation_TaskCreation(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t num_allocations = state.range(1);
+    size_t const num_threads = state.range(0);
+    size_t const num_allocations = state.range(1);
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("alloc_bench");
@@ -134,7 +134,7 @@ static void BM_MemoryAllocation_TaskCreation(benchmark::State &state)
 
         // Collect results to ensure allocations aren't optimized away
         size_t total_sum = 0;
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             auto result = future.get();
             total_sum += result->size();
@@ -150,10 +150,10 @@ static void BM_MemoryAllocation_TaskCreation(benchmark::State &state)
 // NUMA Awareness Benchmarks (for multi-socket systems)
 // =============================================================================
 
-static void BM_NUMA_LocalMemory(benchmark::State &state)
+static void BM_NUMA_LocalMemory(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t data_size = 10000000; // 10M integers
+    size_t const num_threads = state.range(0);
+    size_t const data_size = 10000000; // 10M integers
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("numa_bench");
@@ -191,10 +191,10 @@ struct FalseSharingTest
     alignas(64) std::atomic<size_t> counter4{0};
 };
 
-static void BM_FalseSharing_Avoided(benchmark::State &state)
+static void BM_FalseSharing_Avoided(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t increments_per_thread = 100000;
+    size_t const num_threads = state.range(0);
+    size_t const increments_per_thread = 100000;
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("false_sharing_bench");
@@ -208,7 +208,7 @@ static void BM_FalseSharing_Avoided(benchmark::State &state)
         for (size_t t = 0; t < num_threads; ++t)
         {
             futures.push_back(pool.submit([&test_data, t, increments_per_thread]() {
-                std::atomic<size_t> *counter = nullptr;
+                std::atomic<size_t>* counter = nullptr;
                 switch (t % 4)
                 {
                 case 0:
@@ -232,7 +232,7 @@ static void BM_FalseSharing_Avoided(benchmark::State &state)
             }));
         }
 
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
