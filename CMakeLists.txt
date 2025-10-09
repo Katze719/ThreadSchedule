@@ -155,8 +155,8 @@ if(THREADSCHEDULE_IS_TOPLEVEL_PROJECT)
     endif()
 endif()
 
-# Copy compile_commands.json to project root for clangd
-if(THREADSCHEDULE_IS_TOPLEVEL_PROJECT AND CMAKE_EXPORT_COMPILE_COMMANDS)
+# Copy compile_commands.json to project root for clangd (single-config generators only)
+if(THREADSCHEDULE_IS_TOPLEVEL_PROJECT AND CMAKE_EXPORT_COMPILE_COMMANDS AND NOT CMAKE_CONFIGURATION_TYPES)
     add_custom_target(copy-compile-commands ALL
         ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_BINARY_DIR}/compile_commands.json
