@@ -134,7 +134,7 @@ TEST(ExpectedTest, OperatorStar)
     auto r = parse_int_ok();
     EXPECT_EQ(*r, 42);
 
-    const auto cr = parse_int_ok();
+    auto const cr = parse_int_ok();
     EXPECT_EQ(*cr, 42);
 }
 
@@ -150,7 +150,7 @@ TEST(ExpectedTest, OperatorArrow)
     EXPECT_EQ(p->x, 3);
     EXPECT_EQ(p->y, 4);
 
-    const ts::expected<Point, std::error_code> cp(Point{5, 6});
+    ts::expected<Point, std::error_code> const cp(Point{5, 6});
     EXPECT_EQ(cp->x, 5);
     EXPECT_EQ(cp->y, 6);
 }
@@ -165,7 +165,7 @@ TEST(ExpectedTest, ValueThrows)
         bad.value();
         FAIL() << "Should have thrown";
     }
-    catch (const bad_expected_access<std::error_code> &e)
+    catch (bad_expected_access<std::error_code> const& e)
     {
         EXPECT_EQ(e.error(), std::make_error_code(std::errc::invalid_argument));
     }

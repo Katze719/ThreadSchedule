@@ -77,27 +77,27 @@ class ThreadPriority
     }
 
     // Comparison operators
-    [[nodiscard]] auto operator==(const ThreadPriority &other) const -> bool
+    [[nodiscard]] auto operator==(ThreadPriority const& other) const -> bool
     {
         return priority_ == other.priority_;
     }
-    [[nodiscard]] auto operator!=(const ThreadPriority &other) const -> bool
+    [[nodiscard]] auto operator!=(ThreadPriority const& other) const -> bool
     {
         return priority_ != other.priority_;
     }
-    [[nodiscard]] auto operator<(const ThreadPriority &other) const -> bool
+    [[nodiscard]] auto operator<(ThreadPriority const& other) const -> bool
     {
         return priority_ < other.priority_;
     }
-    [[nodiscard]] auto operator<=(const ThreadPriority &other) const -> bool
+    [[nodiscard]] auto operator<=(ThreadPriority const& other) const -> bool
     {
         return priority_ <= other.priority_;
     }
-    [[nodiscard]] auto operator>(const ThreadPriority &other) const -> bool
+    [[nodiscard]] auto operator>(ThreadPriority const& other) const -> bool
     {
         return priority_ > other.priority_;
     }
-    [[nodiscard]] auto operator>=(const ThreadPriority &other) const -> bool
+    [[nodiscard]] auto operator>=(ThreadPriority const& other) const -> bool
     {
         return priority_ >= other.priority_;
     }
@@ -131,7 +131,7 @@ class ThreadAffinity
 #endif
     }
 
-    explicit ThreadAffinity(const std::vector<int> &cpus) : ThreadAffinity()
+    explicit ThreadAffinity(std::vector<int> const& cpus) : ThreadAffinity()
     {
         for (int cpu : cpus)
         {
@@ -248,7 +248,7 @@ class ThreadAffinity
         return mask_ != 0;
     }
 #else
-    [[nodiscard]] auto native_handle() const -> const cpu_set_t &
+    [[nodiscard]] auto native_handle() const -> cpu_set_t const&
     {
         return cpuset_;
     }
@@ -306,13 +306,14 @@ class SchedulerParams
         return 30;
     }
 #else
-    static auto create_for_policy(SchedulingPolicy policy, ThreadPriority priority) -> expected<sched_param, std::error_code>
+    static auto create_for_policy(SchedulingPolicy policy, ThreadPriority priority)
+        -> expected<sched_param, std::error_code>
     {
         sched_param param{};
 
-        const int policy_int = static_cast<int>(policy);
-        const int min_prio = sched_get_priority_min(policy_int);
-        const int max_prio = sched_get_priority_max(policy_int);
+        int const policy_int = static_cast<int>(policy);
+        int const min_prio = sched_get_priority_min(policy_int);
+        int const max_prio = sched_get_priority_max(policy_int);
 
         if (min_prio == -1 || max_prio == -1)
         {
@@ -325,9 +326,9 @@ class SchedulerParams
 
     static auto get_priority_range(SchedulingPolicy policy) -> expected<int, std::error_code>
     {
-        const int policy_int = static_cast<int>(policy);
-        const int min_prio = sched_get_priority_min(policy_int);
-        const int max_prio = sched_get_priority_max(policy_int);
+        int const policy_int = static_cast<int>(policy);
+        int const min_prio = sched_get_priority_min(policy_int);
+        int const max_prio = sched_get_priority_max(policy_int);
 
         if (min_prio == -1 || max_prio == -1)
         {

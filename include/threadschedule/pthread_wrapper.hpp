@@ -36,14 +36,14 @@ class PThreadWrapper
     }
 
     template <typename F, typename... Args>
-    explicit PThreadWrapper(F &&func, Args &&...args) : thread_(0), joined_(false)
+    explicit PThreadWrapper(F&& func, Args&&... args) : thread_(0), joined_(false)
     {
 
         // Store the callable in a way pthread can handle
         auto callable =
             std::make_unique<std::function<void()>>(std::bind(std::forward<F>(func), std::forward<Args>(args)...));
 
-        const int result = pthread_create(&thread_, nullptr, thread_function, callable.release());
+        int const result = pthread_create(&thread_, nullptr, thread_function, callable.release());
 
         if (result != 0)
         {
@@ -52,17 +52,17 @@ class PThreadWrapper
     }
 
     // Non-copyable
-    PThreadWrapper(const PThreadWrapper &) = delete;
-    auto operator=(const PThreadWrapper &) -> PThreadWrapper & = delete;
+    PThreadWrapper(PThreadWrapper const&) = delete;
+    auto operator=(PThreadWrapper const&) -> PThreadWrapper& = delete;
 
     // Movable
-    PThreadWrapper(PThreadWrapper &&other) noexcept : thread_(other.thread_), joined_(other.joined_.load())
+    PThreadWrapper(PThreadWrapper&& other) noexcept : thread_(other.thread_), joined_(other.joined_.load())
     {
         other.thread_ = 0;
         other.joined_.store(true);
     }
 
-    auto operator=(PThreadWrapper &&other) noexcept -> PThreadWrapper &
+    auto operator=(PThreadWrapper&& other) noexcept -> PThreadWrapper&
     {
         if (this != &other)
         {
@@ -91,8 +91,8 @@ class PThreadWrapper
     {
         if (joinable())
         {
-            void *retval;
-            const int result = pthread_join(thread_, &retval);
+            void* retval;
+            int const result = pthread_join(thread_, &retval);
             if (result == 0)
             {
                 joined_ = true;
@@ -104,7 +104,7 @@ class PThreadWrapper
     {
         if (joinable())
         {
-            const int result = pthread_detach(thread_);
+            int const result = pthread_detach(thread_);
             if (result == 0)
             {
                 joined_ = true;
@@ -127,7 +127,7 @@ class PThreadWrapper
     }
 
     // Extended pthread functionality
-    auto set_name(const std::string &name) -> expected<void, std::error_code> const
+    auto set_name(std::string const& name) -> expected<void, std::error_code> const
     {
         if (name.length() > 15)
             return expected<void, std::error_code>(unexpect, std::make_error_code(std::errc::invalid_argument));
@@ -148,7 +148,7 @@ class PThreadWrapper
 
     auto set_priority(ThreadPriority priority) -> expected<void, std::error_code> const
     {
-        const int policy = SCHED_OTHER;
+        int const policy = SCHED_OTHER;
         auto params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
 
         if (!params_result.has_value())
@@ -161,9 +161,10 @@ class PThreadWrapper
         return unexpected(std::error_code(errno, std::generic_category()));
     }
 
-    auto set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority) -> expected<void, std::error_code> const
+    auto set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority)
+        -> expected<void, std::error_code> const
     {
-        const int policy_int = static_cast<int>(policy);
+        int const policy_int = static_cast<int>(policy);
         auto params_result = SchedulerParams::create_for_policy(policy, priority);
 
         if (!params_result.has_value())
@@ -176,7 +177,7 @@ class PThreadWrapper
         return unexpected(std::error_code(errno, std::generic_category()));
     }
 
-    auto set_affinity(const ThreadAffinity &affinity) -> expected<void, std::error_code> const
+    auto set_affinity(ThreadAffinity const& affinity) -> expected<void, std::error_code> const
     {
         if (pthread_setaffinity_np(thread_, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
             return {};
@@ -186,7 +187,7 @@ class PThreadWrapper
     [[nodiscard]] auto get_affinity() const -> std::optional<ThreadAffinity>
     {
         ThreadAffinity affinity;
-        if (pthread_getaffinity_np(thread_, sizeof(cpu_set_t), const_cast<cpu_set_t *>(&affinity.native_handle())) == 0)
+        if (pthread_getaffinity_np(thread_, sizeof(cpu_set_t), const_cast<cpu_set_t*>(&affinity.native_handle())) == 0)
         {
             return affinity;
         }
@@ -203,7 +204,7 @@ class PThreadWrapper
 
     static auto set_cancel_state(bool enabled) -> expected<void, std::error_code>
     {
-        const int state = enabled ? PTHREAD_CANCEL_ENABLE : PTHREAD_CANCEL_DISABLE;
+        int const state = enabled ? PTHREAD_CANCEL_ENABLE : PTHREAD_CANCEL_DISABLE;
         int old_state;
         if (pthread_setcancelstate(state, &old_state) == 0)
             return {};
@@ -212,7 +213,7 @@ class PThreadWrapper
 
     static auto set_cancel_type(bool asynchronous) -> expected<void, std::error_code>
     {
-        const int type = asynchronous ? PTHREAD_CANCEL_ASYNCHRONOUS : PTHREAD_CANCEL_DEFERRED;
+        int const type = asynchronous ? PTHREAD_CANCEL_ASYNCHRONOUS : PTHREAD_CANCEL_DEFERRED;
         int old_type;
         if (pthread_setcanceltype(type, &old_type) == 0)
             return {};
@@ -221,8 +222,8 @@ class PThreadWrapper
 
     // Factory methods
     template <typename F, typename... Args>
-    static auto create_with_config(const std::string &name, SchedulingPolicy policy, ThreadPriority priority,
-                                             F &&f, Args &&...args) -> PThreadWrapper
+    static auto create_with_config(std::string const& name, SchedulingPolicy policy, ThreadPriority priority, F&& f,
+                                   Args&&... args) -> PThreadWrapper
     {
 
         PThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
@@ -232,14 +233,14 @@ class PThreadWrapper
     }
 
     template <typename F, typename... Args>
-    static auto create_with_attributes(const pthread_attr_t &attr, F &&func, Args &&...args) -> PThreadWrapper
+    static auto create_with_attributes(pthread_attr_t const& attr, F&& func, Args&&... args) -> PThreadWrapper
     {
 
         PThreadWrapper wrapper;
         auto callable =
             std::make_unique<std::function<void()>>(std::bind(std::forward<F>(func), std::forward<Args>(args)...));
 
-        const int result = pthread_create(&wrapper.thread_, &attr, thread_function, callable.release());
+        int const result = pthread_create(&wrapper.thread_, &attr, thread_function, callable.release());
 
         if (result != 0)
         {
@@ -253,9 +254,9 @@ class PThreadWrapper
     pthread_t thread_;
     std::atomic<bool> joined_;
 
-    static auto thread_function(void *arg) -> void *
+    static auto thread_function(void* arg) -> void*
     {
-        std::unique_ptr<std::function<void()>> func(static_cast<std::function<void()> *>(arg));
+        std::unique_ptr<std::function<void()>> func(static_cast<std::function<void()>*>(arg));
 
         try
         {
@@ -290,11 +291,11 @@ class PThreadAttributes
     }
 
     // Non-copyable
-    PThreadAttributes(const PThreadAttributes &) = delete;
-    auto operator=(const PThreadAttributes &) -> PThreadAttributes & = delete;
+    PThreadAttributes(PThreadAttributes const&) = delete;
+    auto operator=(PThreadAttributes const&) -> PThreadAttributes& = delete;
 
     // Movable
-    PThreadAttributes(PThreadAttributes &&other) noexcept : attr_(other.attr_)
+    PThreadAttributes(PThreadAttributes&& other) noexcept : attr_(other.attr_)
     {
         if (pthread_attr_init(&other.attr_) != 0)
         {
@@ -302,7 +303,7 @@ class PThreadAttributes
         }
     }
 
-    auto operator=(PThreadAttributes &&other) noexcept -> PThreadAttributes &
+    auto operator=(PThreadAttributes&& other) noexcept -> PThreadAttributes&
     {
         if (this != &other)
         {
@@ -316,11 +317,11 @@ class PThreadAttributes
         return *this;
     }
 
-    [[nodiscard]] auto get() const -> const pthread_attr_t &
+    [[nodiscard]] auto get() const -> pthread_attr_t const&
     {
         return attr_;
     }
-    auto get() -> pthread_attr_t &
+    auto get() -> pthread_attr_t&
     {
         return attr_;
     }
@@ -328,7 +329,7 @@ class PThreadAttributes
     // Attribute setters
     auto set_detach_state(bool detached) -> bool
     {
-        const int state = detached ? PTHREAD_CREATE_DETACHED : PTHREAD_CREATE_JOINABLE;
+        int const state = detached ? PTHREAD_CREATE_DETACHED : PTHREAD_CREATE_JOINABLE;
         return pthread_attr_setdetachstate(&attr_, state) == 0;
     }
 
@@ -344,7 +345,7 @@ class PThreadAttributes
 
     auto set_scheduling_policy(SchedulingPolicy policy) -> bool
     {
-        const int policy_int = static_cast<int>(policy);
+        int const policy_int = static_cast<int>(policy);
         return pthread_attr_setschedpolicy(&attr_, policy_int) == 0;
     }
 
@@ -357,13 +358,13 @@ class PThreadAttributes
 
     auto set_inherit_sched(bool inherit) -> bool
     {
-        const int inherit_val = inherit ? PTHREAD_INHERIT_SCHED : PTHREAD_EXPLICIT_SCHED;
+        int const inherit_val = inherit ? PTHREAD_INHERIT_SCHED : PTHREAD_EXPLICIT_SCHED;
         return pthread_attr_setinheritsched(&attr_, inherit_val) == 0;
     }
 
     auto set_scope(bool system_scope) -> bool
     {
-        const int scope = system_scope ? PTHREAD_SCOPE_SYSTEM : PTHREAD_SCOPE_PROCESS;
+        int const scope = system_scope ? PTHREAD_SCOPE_SYSTEM : PTHREAD_SCOPE_PROCESS;
         return pthread_attr_setscope(&attr_, scope) == 0;
     }
 
@@ -416,7 +417,7 @@ class PThreadMutex
         }
     }
 
-    explicit PThreadMutex(const pthread_mutexattr_t *attr)
+    explicit PThreadMutex(pthread_mutexattr_t const* attr)
     {
         if (pthread_mutex_init(&mutex_, attr) != 0)
         {
@@ -429,8 +430,8 @@ class PThreadMutex
         pthread_mutex_destroy(&mutex_);
     }
 
-    PThreadMutex(const PThreadMutex &) = delete;
-    auto operator=(const PThreadMutex &) -> PThreadMutex & = delete;
+    PThreadMutex(PThreadMutex const&) = delete;
+    auto operator=(PThreadMutex const&) -> PThreadMutex& = delete;
 
     void lock()
     {
@@ -453,7 +454,7 @@ class PThreadMutex
         }
     }
 
-    auto native_handle() -> pthread_mutex_t *
+    auto native_handle() -> pthread_mutex_t*
     {
         return &mutex_;
     }

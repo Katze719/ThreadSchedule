@@ -18,9 +18,9 @@ class ThreadWrapperReg : public ThreadWrapper
     ThreadWrapperReg() = default;
 
     template <typename F, typename... Args>
-    explicit ThreadWrapperReg(std::string name, std::string componentTag, F &&f, Args &&...args)
+    explicit ThreadWrapperReg(std::string name, std::string componentTag, F&& f, Args&&... args)
         : ThreadWrapper(
-              [n = std::move(name), c = std::move(componentTag), func = std::forward<F>(f)](auto &&...inner) {
+              [n = std::move(name), c = std::move(componentTag), func = std::forward<F>(f)](auto&&... inner) {
                   AutoRegisterCurrentThread guard(n, c);
                   func(std::forward<decltype(inner)>(inner)...);
               },
@@ -38,9 +38,9 @@ class JThreadWrapperReg : public JThreadWrapper
     JThreadWrapperReg() = default;
 
     template <typename F, typename... Args>
-    explicit JThreadWrapperReg(std::string name, std::string componentTag, F &&f, Args &&...args)
+    explicit JThreadWrapperReg(std::string name, std::string componentTag, F&& f, Args&&... args)
         : JThreadWrapper(
-              [n = std::move(name), c = std::move(componentTag), func = std::forward<F>(f)](auto &&...inner) {
+              [n = std::move(name), c = std::move(componentTag), func = std::forward<F>(f)](auto&&... inner) {
                   AutoRegisterCurrentThread guard(n, c);
                   func(std::forward<decltype(inner)>(inner)...);
               },
@@ -59,9 +59,9 @@ class PThreadWrapperReg : public PThreadWrapper
     PThreadWrapperReg() = default;
 
     template <typename F, typename... Args>
-    explicit PThreadWrapperReg(std::string name, std::string componentTag, F &&f, Args &&...args)
+    explicit PThreadWrapperReg(std::string name, std::string componentTag, F&& f, Args&&... args)
         : PThreadWrapper(
-              [n = std::move(name), c = std::move(componentTag), func = std::forward<F>(f)](auto &&...inner) {
+              [n = std::move(name), c = std::move(componentTag), func = std::forward<F>(f)](auto&&... inner) {
                   AutoRegisterCurrentThread guard(n, c);
                   func(std::forward<decltype(inner)>(inner)...);
               },

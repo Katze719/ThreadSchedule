@@ -45,10 +45,10 @@ class ThreadControlBlock
 {
   public:
     ThreadControlBlock() = default;
-    ThreadControlBlock(const ThreadControlBlock &) = delete;
-    auto operator=(const ThreadControlBlock &) -> ThreadControlBlock & = delete;
-    ThreadControlBlock(ThreadControlBlock &&) = delete;
-    auto operator=(ThreadControlBlock &&) -> ThreadControlBlock & = delete;
+    ThreadControlBlock(ThreadControlBlock const&) = delete;
+    auto operator=(ThreadControlBlock const&) -> ThreadControlBlock& = delete;
+    ThreadControlBlock(ThreadControlBlock&&) = delete;
+    auto operator=(ThreadControlBlock&&) -> ThreadControlBlock& = delete;
 
     ~ThreadControlBlock()
     {
@@ -69,26 +69,26 @@ class ThreadControlBlock
     {
         return stdId_;
     }
-    [[nodiscard]] auto name() const noexcept -> const std::string &
+    [[nodiscard]] auto name() const noexcept -> std::string const&
     {
         return name_;
     }
-    [[nodiscard]] auto component_tag() const noexcept -> const std::string &
+    [[nodiscard]] auto component_tag() const noexcept -> std::string const&
     {
         return componentTag_;
     }
 
-    [[nodiscard]] auto set_affinity(const ThreadAffinity &affinity) const -> expected<void, std::error_code>
+    [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         if (!handle_)
             return unexpected(std::make_error_code(std::errc::no_such_process));
-        using SetThreadGroupAffinityFn = BOOL(WINAPI *)(HANDLE, const GROUP_AFFINITY *, PGROUP_AFFINITY);
+        using SetThreadGroupAffinityFn = BOOL(WINAPI*)(HANDLE, const GROUP_AFFINITY*, PGROUP_AFFINITY);
         HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
         if (hMod)
         {
             auto set_group_affinity = reinterpret_cast<SetThreadGroupAffinityFn>(
-                reinterpret_cast<void *>(GetProcAddress(hMod, "SetThreadGroupAffinity")));
+                reinterpret_cast<void*>(GetProcAddress(hMod, "SetThreadGroupAffinity")));
             if (set_group_affinity && affinity.has_any())
             {
                 GROUP_AFFINITY ga{};
@@ -145,8 +145,8 @@ class ThreadControlBlock
 #endif
     }
 
-    [[nodiscard]] auto set_scheduling_policy(SchedulingPolicy policy,
-                                                                        ThreadPriority priority) const -> expected<void, std::error_code>
+    [[nodiscard]] auto set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority) const
+        -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         return set_priority(priority);
@@ -161,17 +161,17 @@ class ThreadControlBlock
 #endif
     }
 
-    [[nodiscard]] auto set_name(const std::string &name) const -> expected<void, std::error_code>
+    [[nodiscard]] auto set_name(std::string const& name) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         if (!handle_)
             return unexpected(std::make_error_code(std::errc::no_such_process));
-        using SetThreadDescriptionFn = HRESULT(WINAPI *)(HANDLE, PCWSTR);
+        using SetThreadDescriptionFn = HRESULT(WINAPI*)(HANDLE, PCWSTR);
         HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
         if (!hMod)
             return unexpected(std::make_error_code(std::errc::function_not_supported));
         auto set_desc = reinterpret_cast<SetThreadDescriptionFn>(
-            reinterpret_cast<void *>(GetProcAddress(hMod, "SetThreadDescription")));
+            reinterpret_cast<void*>(GetProcAddress(hMod, "SetThreadDescription")));
         if (!set_desc)
             return unexpected(std::make_error_code(std::errc::function_not_supported));
         std::wstring wide(name.begin(), name.end());
@@ -187,8 +187,8 @@ class ThreadControlBlock
 #endif
     }
 
-    static auto create_for_current_thread(const std::string &name,
-                                                                         const std::string &componentTag) -> std::shared_ptr<ThreadControlBlock>
+    static auto create_for_current_thread(std::string const& name, std::string const& componentTag)
+        -> std::shared_ptr<ThreadControlBlock>
     {
         auto block = std::make_shared<ThreadControlBlock>();
         block->tid_ = ThreadInfo::get_thread_id();
@@ -222,13 +222,13 @@ class ThreadRegistry
 {
   public:
     ThreadRegistry() = default;
-    ThreadRegistry(const ThreadRegistry &) = delete;
-    auto operator=(const ThreadRegistry &) -> ThreadRegistry & = delete;
+    ThreadRegistry(ThreadRegistry const&) = delete;
+    auto operator=(ThreadRegistry const&) -> ThreadRegistry& = delete;
 
     // Register/unregister the CURRENT thread (to be called inside the running thread)
     void register_current_thread(std::string name = std::string(), std::string componentTag = std::string())
     {
-        const Tid tid = ThreadInfo::get_thread_id();
+        Tid const tid = ThreadInfo::get_thread_id();
         RegisteredThreadInfo info;
         info.tid = tid;
         info.stdId = std::this_thread::get_id();
@@ -242,7 +242,7 @@ class ThreadRegistry
         }
     }
 
-    void register_current_thread(const std::shared_ptr<ThreadControlBlock>& controlBlock)
+    void register_current_thread(std::shared_ptr<ThreadControlBlock> const& controlBlock)
     {
         if (!controlBlock)
             return;
@@ -259,7 +259,7 @@ class ThreadRegistry
 
     void unregister_current_thread()
     {
-        const Tid tid = ThreadInfo::get_thread_id();
+        Tid const tid = ThreadInfo::get_thread_id();
         std::unique_lock<std::shared_mutex> lock(mutex_);
         auto it = threads_.find(tid);
         if (it != threads_.end())
@@ -280,10 +280,10 @@ class ThreadRegistry
     }
 
     template <typename Fn>
-    void for_each(Fn &&fn) const
+    void for_each(Fn&& fn) const
     {
         std::shared_lock<std::shared_mutex> lock(mutex_);
-        for (const auto &kv : threads_)
+        for (auto const& kv : threads_)
         {
             fn(kv.second);
         }
@@ -291,26 +291,26 @@ class ThreadRegistry
 
     // Bulk apply with predicate
     template <typename Predicate, typename Fn>
-    void apply(Predicate &&pred, Fn &&fn) const
+    void apply(Predicate&& pred, Fn&& fn) const
     {
         std::vector<RegisteredThreadInfo> snapshot;
         {
             std::shared_lock<std::shared_mutex> lock(mutex_);
             snapshot.reserve(threads_.size());
-            for (const auto &kv : threads_)
+            for (auto const& kv : threads_)
             {
                 if (pred(kv.second))
                     snapshot.push_back(kv.second);
             }
         }
-        for (const auto &entry : snapshot)
+        for (auto const& entry : snapshot)
         {
             fn(entry);
         }
     }
 
     // Control operations (by Tid)
-    [[nodiscard]] auto set_affinity(Tid tid, const ThreadAffinity &affinity) const -> expected<void, std::error_code>
+    [[nodiscard]] auto set_affinity(Tid tid, ThreadAffinity const& affinity) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         if (auto blk = lock_block_(tid))
@@ -318,12 +318,12 @@ class ThreadRegistry
         HANDLE h = OpenThread(THREAD_SET_INFORMATION | THREAD_QUERY_INFORMATION, FALSE, static_cast<DWORD>(tid));
         if (!h)
             return unexpected(std::make_error_code(std::errc::no_such_process));
-        using SetThreadGroupAffinityFn = BOOL(WINAPI *)(HANDLE, const GROUP_AFFINITY *, PGROUP_AFFINITY);
+        using SetThreadGroupAffinityFn = BOOL(WINAPI*)(HANDLE, const GROUP_AFFINITY*, PGROUP_AFFINITY);
         HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
         if (hMod)
         {
             auto set_group_affinity = reinterpret_cast<SetThreadGroupAffinityFn>(
-                reinterpret_cast<void *>(GetProcAddress(hMod, "SetThreadGroupAffinity")));
+                reinterpret_cast<void*>(GetProcAddress(hMod, "SetThreadGroupAffinity")));
             if (set_group_affinity && affinity.has_any())
             {
                 GROUP_AFFINITY ga{};
@@ -387,7 +387,7 @@ class ThreadRegistry
             return blk->set_priority(priority);
         if (tid <= 0)
             return unexpected(std::make_error_code(std::errc::invalid_argument));
-        const int policy = SCHED_OTHER;
+        int const policy = SCHED_OTHER;
         auto params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
         if (!params_result.has_value())
             return unexpected(params_result.error());
@@ -397,8 +397,8 @@ class ThreadRegistry
 #endif
     }
 
-    [[nodiscard]] auto set_scheduling_policy(Tid tid, SchedulingPolicy policy,
-                                                                        ThreadPriority priority) const -> expected<void, std::error_code>
+    [[nodiscard]] auto set_scheduling_policy(Tid tid, SchedulingPolicy policy, ThreadPriority priority) const
+        -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         if (auto blk = lock_block_(tid))
@@ -419,7 +419,7 @@ class ThreadRegistry
 #endif
     }
 
-    [[nodiscard]] auto set_name(Tid tid, const std::string &name) const -> expected<void, std::error_code>
+    [[nodiscard]] auto set_name(Tid tid, std::string const& name) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         if (auto blk = lock_block_(tid))
@@ -427,7 +427,7 @@ class ThreadRegistry
         HANDLE h = OpenThread(THREAD_SET_LIMITED_INFORMATION | THREAD_SET_INFORMATION, FALSE, static_cast<DWORD>(tid));
         if (!h)
             return unexpected(std::make_error_code(std::errc::no_such_process));
-        using SetThreadDescriptionFn = HRESULT(WINAPI *)(HANDLE, PCWSTR);
+        using SetThreadDescriptionFn = HRESULT(WINAPI*)(HANDLE, PCWSTR);
         HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
         if (!hMod)
         {
@@ -435,7 +435,7 @@ class ThreadRegistry
             return unexpected(std::make_error_code(std::errc::function_not_supported));
         }
         auto set_desc = reinterpret_cast<SetThreadDescriptionFn>(
-            reinterpret_cast<void *>(GetProcAddress(hMod, "SetThreadDescription")));
+            reinterpret_cast<void*>(GetProcAddress(hMod, "SetThreadDescription")));
         if (!set_desc)
         {
             CloseHandle(h);
@@ -481,22 +481,22 @@ class ThreadRegistry
 };
 
 // Registry access methods
-inline auto registry_storage() -> ThreadRegistry *&
+inline auto registry_storage() -> ThreadRegistry*&
 {
-    static ThreadRegistry *external = nullptr;
+    static ThreadRegistry* external = nullptr;
     return external;
 }
 
-inline auto registry() -> ThreadRegistry &
+inline auto registry() -> ThreadRegistry&
 {
-    ThreadRegistry *&ext = registry_storage();
+    ThreadRegistry*& ext = registry_storage();
     if (ext != nullptr)
         return *ext;
     static ThreadRegistry local;
     return local;
 }
 
-inline void set_external_registry(ThreadRegistry *reg)
+inline void set_external_registry(ThreadRegistry* reg)
 {
     registry_storage() = reg;
 }
@@ -505,7 +505,7 @@ inline void set_external_registry(ThreadRegistry *reg)
 class CompositeThreadRegistry
 {
   public:
-    void attach(ThreadRegistry *reg)
+    void attach(ThreadRegistry* reg)
     {
         if (reg == nullptr)
             return;
@@ -514,28 +514,28 @@ class CompositeThreadRegistry
     }
 
     template <typename Fn>
-    void for_each(Fn &&fn) const
+    void for_each(Fn&& fn) const
     {
-        std::vector<ThreadRegistry *> regs;
+        std::vector<ThreadRegistry*> regs;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             regs = registries_;
         }
-        for (auto *r : regs)
+        for (auto* r : regs)
         {
             r->for_each(fn);
         }
     }
 
     template <typename Predicate, typename Fn>
-    void apply(Predicate &&pred, Fn &&fn) const
+    void apply(Predicate&& pred, Fn&& fn) const
     {
-        std::vector<ThreadRegistry *> regs;
+        std::vector<ThreadRegistry*> regs;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             regs = registries_;
         }
-        for (auto *r : regs)
+        for (auto* r : regs)
         {
             r->apply(pred, fn);
         }
@@ -543,22 +543,23 @@ class CompositeThreadRegistry
 
   private:
     mutable std::mutex mutex_;
-    std::vector<ThreadRegistry *> registries_;
+    std::vector<ThreadRegistry*> registries_;
 };
 
 // RAII helper to auto-register the current thread
 class AutoRegisterCurrentThread
 {
   public:
-    explicit AutoRegisterCurrentThread(const std::string& name = std::string(), const std::string& componentTag = std::string())
+    explicit AutoRegisterCurrentThread(std::string const& name = std::string(),
+                                       std::string const& componentTag = std::string())
         : active_(true), externalReg_(nullptr)
     {
         auto block = ThreadControlBlock::create_for_current_thread(name, componentTag);
         registry().register_current_thread(block);
     }
 
-    explicit AutoRegisterCurrentThread(ThreadRegistry &reg, const std::string& name = std::string(),
-                                       const std::string& componentTag = std::string())
+    explicit AutoRegisterCurrentThread(ThreadRegistry& reg, std::string const& name = std::string(),
+                                       std::string const& componentTag = std::string())
         : active_(true), externalReg_(&reg)
     {
         auto block = ThreadControlBlock::create_for_current_thread(name, componentTag);
@@ -574,13 +575,13 @@ class AutoRegisterCurrentThread
                 registry().unregister_current_thread();
         }
     }
-    AutoRegisterCurrentThread(const AutoRegisterCurrentThread &) = delete;
-    auto operator=(const AutoRegisterCurrentThread &) -> AutoRegisterCurrentThread & = delete;
-    AutoRegisterCurrentThread(AutoRegisterCurrentThread &&other) noexcept : active_(other.active_)
+    AutoRegisterCurrentThread(AutoRegisterCurrentThread const&) = delete;
+    auto operator=(AutoRegisterCurrentThread const&) -> AutoRegisterCurrentThread& = delete;
+    AutoRegisterCurrentThread(AutoRegisterCurrentThread&& other) noexcept : active_(other.active_)
     {
         other.active_ = false;
     }
-    auto operator=(AutoRegisterCurrentThread &&other) noexcept -> AutoRegisterCurrentThread &
+    auto operator=(AutoRegisterCurrentThread&& other) noexcept -> AutoRegisterCurrentThread&
     {
         if (this != &other)
         {
@@ -592,7 +593,7 @@ class AutoRegisterCurrentThread
 
   private:
     bool active_;
-    ThreadRegistry *externalReg_;
+    ThreadRegistry* externalReg_;
 };
 
 } // namespace threadschedule
