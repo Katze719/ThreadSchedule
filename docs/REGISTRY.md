@@ -4,7 +4,7 @@ This guide explains how to use the process-wide thread registry in common scenar
 
 ### What is the registry?
 
-The registry provides a process-wide view of running threads and APIs to control them (affinity, priority, scheduling policy, name). It is header-only, opt-in, and compatible with both Linux and Windows.
+The registry provides a process-wide view of running threads and APIs to control them (affinity, priority, scheduling policy, name). It is header-only by default (with an optional shared runtime), opt-in, and compatible with both Linux and Windows.
 
 - Core entrypoints:
   - `threadschedule::registry()` – default global registry
@@ -67,6 +67,33 @@ int main() {
 
 - Dynamic discovery (no headers)
   - On POSIX, you can `dlsym` exported symbols (e.g., `libX_registry`, `libX_set_registry`) from each DSO at runtime and call them to either attach or inject a registry pointer.
+
+### Single shared runtime (optional, non header-only mode)
+
+If you prefer a single, process-wide registry without app-side injection or composite merging, enable the runtime option. This builds a shared library that owns the global registry and exports the required symbols.
+
+- Enable in CMake:
+
+```bash
+cmake -B build -DTHREADSCHEDULE_RUNTIME=ON
+cmake --build build
+```
+
+- Link your app and DSOs against the runtime target:
+
+```cmake
+target_link_libraries(your_app PRIVATE ThreadSchedule::ThreadSchedule ThreadSchedule::Runtime)
+target_link_libraries(your_dso PRIVATE ThreadSchedule::ThreadSchedule ThreadSchedule::Runtime)
+```
+
+- Exported APIs (same as header-only), provided by the runtime:
+  - `threadschedule::registry()` – returns the single process-wide registry instance
+  - `threadschedule::set_external_registry(ThreadRegistry*)` – optionally redirect runtime to an app-owned instance
+
+Notes:
+- With `THREADSCHEDULE_RUNTIME=ON`, the header declares these functions and the `.so/.dll` provides the definitions.
+- This ensures all components in the process resolve to the same registry object as long as they link to the runtime.
+- You can still call `set_external_registry(&appReg)` early in `main()` to make the app’s instance authoritative.
 
 ### Examples
 
@@ -171,6 +198,8 @@ using namespace threadschedule;
 // from libA_api.hpp and libB_api.hpp provided by the DSOs
 ThreadRegistry& libA_registry();
 ThreadRegistry& libB_registry();
+void libA_start();
+void libB_start();
 
 int main() {
   libA_start();
@@ -195,6 +224,56 @@ void foreign_thread() {
   // ... work ...
 }
 ```
+
+#### 5) Runtime (shared) example – app + two DSOs
+
+This repository includes a minimal working example under `examples/runtime_shared/` that demonstrates using `THREADSCHEDULE_RUNTIME`:
+
+- Targets: `runtime_libA` (DSO), `runtime_libB` (DSO), `runtime_main` (app)
+- All are linked against `ThreadSchedule::Runtime` so they share one process-wide registry.
+
+Key snippets:
+
+libA (`examples/runtime_shared/libA.cpp`):
+
+```cpp
+#include <threadschedule/thread_registry.hpp>
+#include <threadschedule/thread_wrapper.hpp>
+extern "C" void libA_start() {
+  threadschedule::ThreadWrapper t([]{
+    threadschedule::AutoRegisterCurrentThread guard("rt-a1","A");
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  });
+  t.detach();
+}
+```
+
+libB is analogous.
+
+App (`examples/runtime_shared/main.cpp`):
+
+```cpp
+#include <threadschedule/thread_registry.hpp>
+extern "C" void libA_start();
+extern "C" void libB_start();
+int main(){
+  libA_start();
+  libB_start();
+  std::this_thread::sleep_for(std::chrono::milliseconds(30));
+  int count = 0;
+  threadschedule::registry().for_each([&](const threadschedule::RegisteredThreadInfo&){ count++; });
+  return count > 0 ? 0 : 1;
+}
+```
+
+Build:
+
+```bash
+cmake -B build -DTHREADSCHEDULE_RUNTIME=ON -DTHREADSCHEDULE_BUILD_EXAMPLES=ON
+cmake --build build --target runtime_main
+```
+
+Run `runtime_main` – it will list threads from both DSOs via the single shared registry.
 
 ### Platform notes
 

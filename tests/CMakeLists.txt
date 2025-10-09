@@ -68,6 +68,18 @@ if(TARGET gtest)
     )
     add_test(NAME ThreadRegistryTest COMMAND thread_registry_test)
 
+    if(THREADSCHEDULE_RUNTIME)
+        add_executable(runtime_registry_test runtime_registry_test.cpp)
+        target_link_libraries(runtime_registry_test 
+            ThreadSchedule::ThreadSchedule 
+            gtest 
+            gtest_main
+            ThreadSchedule::Runtime
+        )
+        target_compile_definitions(runtime_registry_test PRIVATE THREADSCHEDULE_RUNTIME)
+        add_test(NAME RuntimeRegistryTest COMMAND runtime_registry_test)
+    endif()
+
     # Set test properties for better output
     set_tests_properties(ThreadWrapperTest ThreadWrapperViewTest ThreadConfigTest ThreadPoolTest
         PROPERTIES

@@ -20,7 +20,7 @@ ThreadSchedule is continuously tested on the following configurations:
 | Ubuntu 22.04 | Clang 14 | ✅ | ✅ | ✅ |
 | Ubuntu 24.04 | GCC 11 | ✅ | ✅ | ✅ |
 | Ubuntu 24.04 | Clang 14 | ✅ | - | - |
-| Ubuntu 24.04 | Clang 18 | - | ✅ | ✅ |
+| Ubuntu 24.04 | Clang 19 | - | ✅ | ✅ |
 | **Windows** | | | | |
 | windows-latest (2022) | MSVC 2022 | ✅ | ✅ | ✅ |
 | windows-latest (2022) | MinGW-w64 (GCC) | ✅ | ✅ | ✅ |

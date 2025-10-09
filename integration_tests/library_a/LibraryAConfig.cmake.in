@@ -1,0 +1,8 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(ThreadSchedule REQUIRED)
+
+include("${CMAKE_CURRENT_LIST_DIR}/LibraryATargets.cmake")
+
+check_required_components(LibraryA)
