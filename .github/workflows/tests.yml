@@ -152,3 +152,32 @@ jobs:
         cd build
         ctest --output-on-failure --parallel
 
+
+  # Test on Linux ARM64 (simple config, default compilers)
+  linux-arm:
+    name: Linux ARM64 (ubuntu-24.04-arm, C++23, gcc)
+    runs-on: ubuntu-24.04-arm
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_CXX_STANDARD=23 \
+          -DTHREADSCHEDULE_BUILD_EXAMPLES=ON \
+          -DTHREADSCHEDULE_BUILD_TESTS=ON
+
+    - name: Build
+      run: cmake --build build --parallel
+
+    - name: Run tests
+      run: |
+        cd build
+        ctest --output-on-failure --parallel
