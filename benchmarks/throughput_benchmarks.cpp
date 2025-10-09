@@ -12,10 +12,10 @@ using namespace threadschedule;
 // High-Throughput Benchmarks (10k+ tasks/second scenarios)
 // =============================================================================
 
-static void BM_HighThroughput_HighPerformancePool(benchmark::State &state)
+static void BM_HighThroughput_HighPerformancePool(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t tasks_per_iteration = state.range(1);
+    size_t const num_threads = state.range(0);
+    size_t const tasks_per_iteration = state.range(1);
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("htp_bench", SchedulingPolicy::OTHER, ThreadPriority::normal());
@@ -36,7 +36,7 @@ static void BM_HighThroughput_HighPerformancePool(benchmark::State &state)
         }
 
         // Wait for all tasks to complete
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -49,10 +49,10 @@ static void BM_HighThroughput_HighPerformancePool(benchmark::State &state)
     state.SetItemsProcessed(state.iterations() * tasks_per_iteration);
 }
 
-static void BM_HighThroughput_FastThreadPool(benchmark::State &state)
+static void BM_HighThroughput_FastThreadPool(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t tasks_per_iteration = state.range(1);
+    size_t const num_threads = state.range(0);
+    size_t const tasks_per_iteration = state.range(1);
 
     FastThreadPool pool(num_threads);
     pool.configure_threads("ftp_bench");
@@ -67,7 +67,7 @@ static void BM_HighThroughput_FastThreadPool(benchmark::State &state)
             futures.push_back(pool.submit([]() { std::this_thread::yield(); }));
         }
 
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -82,10 +82,10 @@ static void BM_HighThroughput_FastThreadPool(benchmark::State &state)
 // Scalability Benchmarks (How performance changes with thread count)
 // =============================================================================
 
-static void BM_Scalability_WorkStealing(benchmark::State &state)
+static void BM_Scalability_WorkStealing(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t num_tasks = 50000; // Fixed task count
+    size_t const num_threads = state.range(0);
+    size_t const num_tasks = 50000; // Fixed task count
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("scale_bench", SchedulingPolicy::OTHER, ThreadPriority::normal());
@@ -113,7 +113,7 @@ static void BM_Scalability_WorkStealing(benchmark::State &state)
             }));
         }
 
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -131,10 +131,10 @@ static void BM_Scalability_WorkStealing(benchmark::State &state)
 // Contention Benchmarks (High contention scenarios)
 // =============================================================================
 
-static void BM_Contention_SubmissionStorm(benchmark::State &state)
+static void BM_Contention_SubmissionStorm(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t num_submitters = state.range(1); // Number of threads submitting tasks
+    size_t const num_threads = state.range(0);
+    size_t const num_submitters = state.range(1); // Number of threads submitting tasks
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("contention_bench");
@@ -145,7 +145,7 @@ static void BM_Contention_SubmissionStorm(benchmark::State &state)
         std::atomic<size_t> completed_tasks{0};
         std::vector<std::thread> submitters;
 
-        const size_t tasks_per_submitter = 1000;
+        size_t const tasks_per_submitter = 1000;
 
         // Start submitter threads
         for (size_t i = 0; i < num_submitters; ++i)
@@ -161,7 +161,7 @@ static void BM_Contention_SubmissionStorm(benchmark::State &state)
                     submitted_tasks.fetch_add(1, std::memory_order_relaxed);
                 }
 
-                for (auto &future : futures)
+                for (auto& future : futures)
                 {
                     future.wait();
                 }
@@ -169,7 +169,7 @@ static void BM_Contention_SubmissionStorm(benchmark::State &state)
         }
 
         // Wait for all submitters to finish
-        for (auto &submitter : submitters)
+        for (auto& submitter : submitters)
         {
             submitter.join();
         }
@@ -182,10 +182,10 @@ static void BM_Contention_SubmissionStorm(benchmark::State &state)
 // Memory Access Pattern Benchmarks
 // =============================================================================
 
-static void BM_MemoryAccess_Sequential(benchmark::State &state)
+static void BM_MemoryAccess_Sequential(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t data_size = 1000000; // 1M elements
+    size_t const num_threads = state.range(0);
+    size_t const data_size = 1000000; // 1M elements
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("mem_bench");
@@ -207,10 +207,10 @@ static void BM_MemoryAccess_Sequential(benchmark::State &state)
     state.counters["elements_per_second"] = benchmark::Counter(data_size, benchmark::Counter::kIsRate);
 }
 
-static void BM_MemoryAccess_Random(benchmark::State &state)
+static void BM_MemoryAccess_Random(benchmark::State& state)
 {
-    const size_t num_threads = state.range(0);
-    const size_t data_size = 1000000;
+    size_t const num_threads = state.range(0);
+    size_t const data_size = 1000000;
 
     HighPerformancePool pool(num_threads);
     pool.configure_threads("mem_rand_bench");

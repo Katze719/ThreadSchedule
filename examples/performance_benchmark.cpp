@@ -26,7 +26,7 @@ class PerformanceBenchmark
     }
 
     // Benchmark pure task submission/completion throughput
-    void benchmark_throughput(size_t num_tasks, const std::string &test_name)
+    void benchmark_throughput(size_t num_tasks, std::string const& test_name)
     {
         std::cout << "\n=== " << test_name << " ===" << std::endl;
         std::cout << "Tasks: " << num_tasks << ", Threads: " << pool_.size() << std::endl;
@@ -48,7 +48,7 @@ class PerformanceBenchmark
         }
 
         // Wait for completion
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -89,7 +89,7 @@ class PerformanceBenchmark
 
         auto futures = pool_.submit_batch(tasks.begin(), tasks.end());
 
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -133,7 +133,7 @@ class PerformanceBenchmark
             }));
         }
 
-        for (auto &future : futures)
+        for (auto& future : futures)
         {
             future.wait();
         }
@@ -157,7 +157,7 @@ class PerformanceBenchmark
     {
         std::cout << "\n=== Parallel Algorithm Benchmark ===" << std::endl;
 
-        const size_t data_size = 10000000; // 10M elements
+        size_t const data_size = 10000000; // 10M elements
         std::vector<int> data(data_size);
 
         // Fill with test data
@@ -233,7 +233,7 @@ int main()
         std::cout << "• Monitor work stealing ratio" << std::endl;
         std::cout << "• Configure CPU affinity for CPU-bound work" << std::endl;
     }
-    catch (const std::exception &e)
+    catch (std::exception const& e)
     {
         std::cerr << "Benchmark failed: " << e.what() << std::endl;
         return 1;

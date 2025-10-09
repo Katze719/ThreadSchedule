@@ -44,6 +44,7 @@ ThreadSchedule is continuously tested on the following configurations:
 - **Thread Naming**: Human-readable thread names for debugging
 - **Priority & Scheduling**: Fine-grained control over thread priorities and scheduling policies
 - **CPU Affinity**: Pin threads to specific CPU cores
+- **Global Control Registry**: Process-wide registry to list and control running threads (affinity, priority, name)
 - **High-Performance Pools**: Work-stealing thread pool optimized for 10k+ tasks/second
 - **Performance Metrics**: Built-in statistics and monitoring
 - **RAII & Exception Safety**: Automatic resource management
@@ -139,6 +140,38 @@ jv.request_stop();
 jv.join();
 ```
 
+### Global Thread Registry (Core Feature)
+
+Opt-in registered threads with process-wide control, without imposing overhead on normal wrappers.
+
+```cpp
+#include <threadschedule/registered_threads.hpp>
+#include <threadschedule/thread_registry.hpp>
+using namespace threadschedule;
+
+int main() {
+    // Opt-in registration via *Reg wrapper
+    ThreadWrapperReg t("worker-1", "io", [] {
+        // ... work ...
+    });
+
+    // Example: rename and set priority for all IO-tagged threads
+    registry().apply(
+        [](const RegisteredThreadInfo& e){ return e.componentTag=="io"; },
+        [&](const RegisteredThreadInfo& e){
+            (void)registry().set_name(e.tid, std::string("io-")+e.name);
+            (void)registry().set_priority(e.tid, ThreadPriority{0});
+        }
+    );
+
+    t.join();
+}
+```
+
+Notes:
+- Normal wrappers (`ThreadWrapper`, `JThreadWrapper`, `PThreadWrapper`) remain zero-overhead.
+- The registry uses weak references to control blocks (Windows/Linux) when available; otherwise it falls back to direct OS APIs by TID.
+
 Find by name (Linux):
 
 ```cpp
@@ -216,6 +249,7 @@ worker.set_affinity(affinity);
 
 - **[Integration Guide](docs/INTEGRATION.md)** - All integration methods (CPM, FetchContent, Conan, subdirectory, system install)
 - **[CMake Reference](docs/CMAKE_REFERENCE.md)** - Complete CMake API and configuration options
+- **[Registry Guide](docs/REGISTRY.md)** - How to use the global thread registry across apps and DSOs
 - **[Examples](examples/)** - Working code examples
 - **[Benchmarks](benchmarks/)** - Performance benchmarks and optimization guides
 

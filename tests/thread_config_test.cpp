@@ -158,7 +158,7 @@ TEST_F(ThreadConfigTest, ThreadAffinityNativeHandle)
     ThreadAffinity affinity;
     affinity.add_cpu(0);
 
-    const cpu_set_t &cpuset = affinity.native_handle();
+    cpu_set_t const& cpuset = affinity.native_handle();
     EXPECT_TRUE(CPU_ISSET(0, &cpuset));
 }
 #endif
@@ -200,7 +200,7 @@ TEST_F(ThreadConfigTest, SchedulerParamsCreation)
 
     if (params_result.has_value())
     {
-        const auto &params = params_result.value();
+        auto const& params = params_result.value();
         // Verify it's a valid sched_param
 #ifndef _WIN32
         EXPECT_GE(params.sched_priority, 0);

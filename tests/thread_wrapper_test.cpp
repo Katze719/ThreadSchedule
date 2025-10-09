@@ -62,7 +62,7 @@ TEST_F(ThreadWrapperTest, ThreadNaming)
     ThreadWrapper thread([]() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
 
     auto set_name_result = thread.set_name("test_thread");
-    const bool name_set = set_name_result.has_value();
+    bool const name_set = set_name_result.has_value();
 
 #ifdef _WIN32
     // On Windows, naming might fail if not Windows 10+
@@ -150,7 +150,7 @@ TEST_F(ThreadWrapperTest, MultipleThreads)
         threads.push_back(std::make_unique<ThreadWrapper>([&counter]() { counter++; }));
     }
 
-    for (auto &thread : threads)
+    for (auto& thread : threads)
     {
         thread->join();
     }

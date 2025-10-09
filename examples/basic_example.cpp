@@ -16,7 +16,7 @@ void demonstrate_simple_threadpool()
     ThreadPool pool(4); // Simple thread pool
     pool.configure_threads("SimpleWorker");
 
-    const size_t num_tasks = 100;
+    size_t const num_tasks = 100;
     std::atomic<size_t> completed{0};
 
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -39,7 +39,7 @@ void demonstrate_simple_threadpool()
     }
 
     // Wait for all tasks
-    for (auto &future : futures)
+    for (auto& future : futures)
     {
         future.wait();
     }
@@ -64,7 +64,7 @@ void demonstrate_high_performance_pool()
     pool.configure_threads("HighPerf", SchedulingPolicy::OTHER, ThreadPriority::normal());
     pool.distribute_across_cpus();
 
-    const size_t num_tasks = 10000;
+    size_t const num_tasks = 10000;
     std::atomic<size_t> completed_counter{0};
 
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -87,7 +87,7 @@ void demonstrate_high_performance_pool()
     }
 
     // Wait for completion
-    for (auto &future : futures)
+    for (auto& future : futures)
     {
         future.wait();
     }
@@ -116,7 +116,7 @@ void demonstrate_batch_processing()
 
     HighPerformancePool pool(std::thread::hardware_concurrency());
 
-    const size_t batch_size = 5000;
+    size_t const batch_size = 5000;
     std::vector<std::function<void()>> tasks;
     std::atomic<size_t> counter{0};
 
@@ -140,7 +140,7 @@ void demonstrate_batch_processing()
     // Submit entire batch at once - more efficient than individual submits
     auto futures = pool.submit_batch(tasks.begin(), tasks.end());
 
-    for (auto &future : futures)
+    for (auto& future : futures)
     {
         future.wait();
     }
@@ -186,7 +186,7 @@ void demonstrate_global_pools()
         std::cout << x << " ";
     std::cout << std::endl;
 
-    parallel_for_each(data, [](int &x) {
+    parallel_for_each(data, [](int& x) {
         x *= x; // Square each element
     });
 
@@ -223,7 +223,7 @@ int main()
         std::cout << "  ✓ Advanced performance monitoring" << std::endl;
         std::cout << "  ✓ Optimal for short CPU-bound tasks" << std::endl;
     }
-    catch (const std::exception &e)
+    catch (std::exception const& e)
     {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
