@@ -69,6 +69,66 @@ jobs:
         export LD_LIBRARY_PATH=${{ github.workspace }}/install/lib:$LD_LIBRARY_PATH
         ctest --output-on-failure
 
+  integration-test-linux-arm:
+    name: Registry Integration (Linux ARM64)
+    runs-on: ubuntu-24.04-arm
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++
+    
+    - name: Install ThreadSchedule
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install/threadschedule
+        cmake --build build
+        cmake --install build
+    
+    - name: Build Library A
+      run: |
+        cd integration_tests/library_a
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install/threadschedule \
+          -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install
+        cmake --build build
+        cmake --install build
+
+    - name: Build Library B
+      run: |
+        cd integration_tests/library_b
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install/threadschedule \
+          -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install
+        cmake --build build
+        cmake --install build
+
+    - name: Build and Run Main App
+      run: |
+        cd integration_tests/main_app
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_PREFIX_PATH="${{ github.workspace }}/install/threadschedule;${{ github.workspace }}/install"
+        cmake --build build
+        
+        # Set library path for shared libraries
+        export LD_LIBRARY_PATH=${{ github.workspace }}/install/lib:$LD_LIBRARY_PATH
+        
+        # Run the integration test
+        ./build/main_app
+    
+    - name: Run CTest
+      run: |
+        cd integration_tests/main_app/build
+        export LD_LIBRARY_PATH=${{ github.workspace }}/install/lib:$LD_LIBRARY_PATH
+        ctest --output-on-failure
+
   integration-test-windows:
     name: Registry Integration (Windows)
     runs-on: windows-latest

@@ -15,12 +15,14 @@ ThreadSchedule is continuously tested on the following configurations:
 
 | Platform | Compiler | C++17 | C++20 | C++23 |
 |----------|----------|:-----:|:-----:|:-----:|
-| **Linux** | | | | |
+| **Linux (x86_64)** | | | | |
 | Ubuntu 22.04 | GCC 11 | ✅ | ✅ | ✅ |
 | Ubuntu 22.04 | Clang 14 | ✅ | ✅ | ✅ |
 | Ubuntu 24.04 | GCC 11 | ✅ | ✅ | ✅ |
 | Ubuntu 24.04 | Clang 14 | ✅ | - | - |
 | Ubuntu 24.04 | Clang 19 | - | ✅ | ✅ |
+| **Linux (ARM64)** | | | | |
+| Ubuntu 24.04 ARM64 | GCC (system) | ✅ | ✅ | ✅ |
 | **Windows** | | | | |
 | windows-latest (2022) | MSVC 2022 | ✅ | ✅ | ✅ |
 | windows-latest (2022) | MinGW-w64 (GCC) | ✅ | ✅ | ✅ |
@@ -30,6 +32,8 @@ ThreadSchedule is continuously tested on the following configurations:
 > **Ubuntu 24.04 Clang**: Clang 14 is limited to C++17 on 24.04; for C++20/23, Clang 19 is used.
 >
 > **Windows images**: CI runs on `windows-latest` and `windows-2025` with MSVC 2022 and MinGW-w64.
+>
+> **ARM64**: Linux ARM64 (`ubuntu-24.04-arm`) is included in CI. Windows ARM64 requires a self-hosted runner (not covered by GitHub-hosted runners at the moment).
 >
 > **MinGW**: MinGW-w64 provides full Windows API support including thread naming (Windows 10+).
 

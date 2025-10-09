@@ -78,6 +78,14 @@ if(TARGET gtest)
         )
         target_compile_definitions(runtime_registry_test PRIVATE THREADSCHEDULE_RUNTIME)
         add_test(NAME RuntimeRegistryTest COMMAND runtime_registry_test)
+
+        if(WIN32)
+            add_custom_command(TARGET runtime_registry_test POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    $<TARGET_FILE:ThreadScheduleRuntime>
+                    $<TARGET_FILE_DIR:runtime_registry_test>
+            )
+        endif()
     endif()
 
     # Set test properties for better output
