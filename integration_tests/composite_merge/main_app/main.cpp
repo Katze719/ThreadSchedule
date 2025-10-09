@@ -20,20 +20,36 @@ int main()
 
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-    // Merge library-local registries via composite view using known APIs
-    // Since library-local registries are private, we validate via names/tags through OS APIs
-    // and use the global default registry for a separate control check.
+    // Verify individual library registries
+    int a_count = 0;
+    int b_count = 0;
 
-    int seen = 0;
+    composite_libA::get_registry().for_each([&](RegisteredThreadInfo const& info) {
+        a_count++;
+        assert(info.componentTag == "CompositeLibA");
+    });
+
+    composite_libB::get_registry().for_each([&](RegisteredThreadInfo const& info) {
+        b_count++;
+        assert(info.componentTag == "CompositeLibB");
+    });
+
+    std::cout << "LibA registry: " << a_count << " threads\n";
+    std::cout << "LibB registry: " << b_count << " threads\n";
+
+    assert(a_count == 2 && "Expected 2 threads in LibA registry");
+    assert(b_count == 2 && "Expected 2 threads in LibB registry");
+
+    // Merge library-local registries via composite view
     CompositeThreadRegistry comp;
-    // In a real app you would expose accessors returning references to each library's registry.
-    // Here we simulate by attaching the process-global default registry and asserting at least 0.
-    comp.attach(&registry());
-    comp.for_each([&](RegisteredThreadInfo const&) { seen++; });
+    comp.attach(&composite_libA::get_registry());
+    comp.attach(&composite_libB::get_registry());
 
-    // We cannot reliably assert exact counts in the process-global registry here, but the
-    // composite registry path is covered in unit/integration elsewhere. Ensure code runs.
-    (void)seen; // silence unused warning in some toolchains
+    int total = 0;
+    comp.for_each([&](RegisteredThreadInfo const&) { total++; });
+
+    std::cout << "Composite registry: " << total << " threads\n";
+    assert(total == 4 && "Expected 4 threads in composite registry");
 
     composite_libA::wait_for_threads();
     composite_libB::wait_for_threads();

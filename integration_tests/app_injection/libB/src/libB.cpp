@@ -15,6 +15,12 @@ namespace appinj_libB
 static std::mutex threads_mutex;
 static std::vector<std::unique_ptr<ThreadWrapper>> threads;
 
+// Allow the app to inject its registry into this DSO
+void set_registry(ThreadRegistry* reg)
+{
+    set_external_registry(reg);
+}
+
 void start_worker(char const* name)
 {
     std::lock_guard<std::mutex> lock(threads_mutex);
