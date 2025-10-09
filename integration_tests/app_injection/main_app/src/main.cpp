@@ -38,6 +38,6 @@ int main()
 
     set_external_registry(nullptr);
 
-    std::cout << "✓ App injection integration test complete.\n";
+    std::cout << "App injection integration test complete.\n";
     return 0;
 }

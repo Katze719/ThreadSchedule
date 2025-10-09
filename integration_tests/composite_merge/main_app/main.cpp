@@ -38,6 +38,6 @@ int main()
     composite_libA::wait_for_threads();
     composite_libB::wait_for_threads();
 
-    std::cout << "✓ Composite merge scenario executed.\n";
+    std::cout << "Composite merge scenario executed.\n";
     return 0;
 }

@@ -42,6 +42,6 @@ int main()
     runtime_libA::wait_for_threads();
     runtime_libB::wait_for_threads();
 
-    std::cout << "✓ Runtime single registry test passed!\n";
+    std::cout << "Runtime single registry test passed!\n";
     return 0;
 }
