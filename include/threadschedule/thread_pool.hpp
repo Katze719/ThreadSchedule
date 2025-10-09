@@ -54,7 +54,7 @@ class WorkStealingDeque
     }
 
     // Thread-safe operations
-    bool push(T &&item)
+    auto push(T &&item) -> bool
     {
         std::lock_guard<std::mutex> lock(mutex_);
         const size_t t = top_.load(std::memory_order_relaxed);
@@ -70,7 +70,7 @@ class WorkStealingDeque
         return true;
     }
 
-    bool push(const T &item)
+    auto push(const T &item) -> bool
     {
         std::lock_guard<std::mutex> lock(mutex_);
         const size_t t = top_.load(std::memory_order_relaxed);
@@ -86,7 +86,7 @@ class WorkStealingDeque
         return true;
     }
 
-    bool pop(T &item)
+    auto pop(T &item) -> bool
     {
         std::lock_guard<std::mutex> lock(mutex_);
         const size_t t = top_.load(std::memory_order_relaxed);
@@ -104,7 +104,7 @@ class WorkStealingDeque
     }
 
     // Thief operations (other threads stealing work)
-    bool steal(T &item)
+    auto steal(T &item) -> bool
     {
         std::lock_guard<std::mutex> lock(mutex_);
         const size_t b = bottom_.load(std::memory_order_relaxed);
@@ -120,14 +120,14 @@ class WorkStealingDeque
         return true;
     }
 
-    size_t size() const
+    auto size() const -> size_t
     {
         const size_t t = top_.load(std::memory_order_relaxed);
         const size_t b = bottom_.load(std::memory_order_relaxed);
         return t > b ? t - b : 0;
     }
 
-    bool empty() const
+    auto empty() const -> bool
     {
         return size() == 0;
     }
@@ -181,7 +181,7 @@ class HighPerformancePool
     }
 
     HighPerformancePool(const HighPerformancePool &) = delete;
-    HighPerformancePool &operator=(const HighPerformancePool &) = delete;
+    auto operator=(const HighPerformancePool &) -> HighPerformancePool & = delete;
 
     ~HighPerformancePool()
     {
@@ -245,7 +245,7 @@ class HighPerformancePool
      * @brief Batch task submission for maximum throughput
      */
     template <typename Iterator>
-    std::vector<std::future<void>> submit_batch(Iterator begin, Iterator end)
+    auto submit_batch(Iterator begin, Iterator end) -> std::vector<std::future<void>>
     {
         std::vector<std::future<void>> futures;
         const size_t batch_size = std::distance(begin, end);
@@ -324,12 +324,12 @@ class HighPerformancePool
         }
     }
 
-    size_t size() const noexcept
+    auto size() const noexcept -> size_t
     {
         return num_threads_;
     }
 
-    size_t pending_tasks() const
+    auto pending_tasks() const -> size_t
     {
         size_t total = 0;
         for (const auto &queue : worker_queues_)
@@ -345,9 +345,9 @@ class HighPerformancePool
     /**
      * @brief Configure all worker threads
      */
-    expected<void, std::error_code> configure_threads(const std::string &name_prefix,
+    auto configure_threads(const std::string &name_prefix,
                                                       SchedulingPolicy policy = SchedulingPolicy::OTHER,
-                                                      ThreadPriority priority = ThreadPriority::normal())
+                                                      ThreadPriority priority = ThreadPriority::normal()) -> expected<void, std::error_code>
     {
         bool success = true;
 
@@ -370,7 +370,7 @@ class HighPerformancePool
         return unexpected(std::make_error_code(std::errc::operation_not_permitted));
     }
 
-    expected<void, std::error_code> set_affinity(const ThreadAffinity &affinity)
+    auto set_affinity(const ThreadAffinity &affinity) -> expected<void, std::error_code>
     {
         bool success = true;
 
@@ -386,7 +386,7 @@ class HighPerformancePool
         return unexpected(std::make_error_code(std::errc::operation_not_permitted));
     }
 
-    expected<void, std::error_code> distribute_across_cpus()
+    auto distribute_across_cpus() -> expected<void, std::error_code>
     {
         const auto cpu_count = std::thread::hardware_concurrency();
         if (cpu_count == 0)
@@ -440,7 +440,7 @@ class HighPerformancePool
     /**
      * @brief Get detailed performance statistics
      */
-    Statistics get_statistics() const
+    auto get_statistics() const -> Statistics
     {
         const auto now = std::chrono::steady_clock::now();
         const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_);
@@ -623,7 +623,7 @@ class FastThreadPool
     }
 
     FastThreadPool(const FastThreadPool &) = delete;
-    FastThreadPool &operator=(const FastThreadPool &) = delete;
+    auto operator=(const FastThreadPool &) -> FastThreadPool & = delete;
 
     ~FastThreadPool()
     {
@@ -660,7 +660,7 @@ class FastThreadPool
      * @brief Efficient batch processing
      */
     template <typename Iterator>
-    std::vector<std::future<void>> submit_batch(Iterator begin, Iterator end)
+    auto submit_batch(Iterator begin, Iterator end) -> std::vector<std::future<void>>
     {
         std::vector<std::future<void>> futures;
         const size_t batch_size = std::distance(begin, end);
@@ -708,8 +708,8 @@ class FastThreadPool
         workers_.clear();
     }
 
-    bool configure_threads(const std::string &name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
-                           ThreadPriority priority = ThreadPriority::normal())
+    auto configure_threads(const std::string &name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
+                           ThreadPriority priority = ThreadPriority::normal()) -> bool
     {
         bool success = true;
 
@@ -731,7 +731,7 @@ class FastThreadPool
         return success;
     }
 
-    bool distribute_across_cpus()
+    auto distribute_across_cpus() -> bool
     {
         const auto cpu_count = std::thread::hardware_concurrency();
         if (cpu_count == 0)
@@ -751,18 +751,18 @@ class FastThreadPool
         return success;
     }
 
-    size_t size() const noexcept
+    auto size() const noexcept -> size_t
     {
         return num_threads_;
     }
 
-    size_t pending_tasks() const
+    auto pending_tasks() const -> size_t
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         return tasks_.size();
     }
 
-    Statistics get_statistics() const
+    auto get_statistics() const -> Statistics
     {
         const auto now = std::chrono::steady_clock::now();
         const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_);
@@ -902,7 +902,7 @@ class ThreadPool
     }
 
     ThreadPool(const ThreadPool &) = delete;
-    ThreadPool &operator=(const ThreadPool &) = delete;
+    auto operator=(const ThreadPool &) -> ThreadPool & = delete;
 
     ~ThreadPool()
     {
@@ -941,7 +941,7 @@ class ThreadPool
      * @brief Submit multiple tasks
      */
     template <typename Iterator>
-    std::vector<std::future<void>> submit_range(Iterator begin, Iterator end)
+    auto submit_range(Iterator begin, Iterator end) -> std::vector<std::future<void>>
     {
         std::vector<std::future<void>> futures;
         futures.reserve(std::distance(begin, end));
@@ -975,12 +975,12 @@ class ThreadPool
         }
     }
 
-    size_t size() const noexcept
+    auto size() const noexcept -> size_t
     {
         return num_threads_;
     }
 
-    size_t pending_tasks() const
+    auto pending_tasks() const -> size_t
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         return tasks_.size();
@@ -989,8 +989,8 @@ class ThreadPool
     /**
      * @brief Configure thread properties
      */
-    bool configure_threads(const std::string &name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
-                           ThreadPriority priority = ThreadPriority::normal())
+    auto configure_threads(const std::string &name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
+                           ThreadPriority priority = ThreadPriority::normal()) -> bool
     {
         bool success = true;
 
@@ -1012,7 +1012,7 @@ class ThreadPool
         return success;
     }
 
-    bool set_affinity(const ThreadAffinity &affinity)
+    auto set_affinity(const ThreadAffinity &affinity) -> bool
     {
         bool success = true;
 
@@ -1027,7 +1027,7 @@ class ThreadPool
         return success;
     }
 
-    bool distribute_across_cpus()
+    auto distribute_across_cpus() -> bool
     {
         const auto cpu_count = std::thread::hardware_concurrency();
         if (cpu_count == 0)
@@ -1075,7 +1075,7 @@ class ThreadPool
         workers_.clear();
     }
 
-    Statistics get_statistics() const
+    auto get_statistics() const -> Statistics
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         Statistics stats;
@@ -1145,7 +1145,7 @@ class ThreadPool
 class GlobalThreadPool
 {
   public:
-    static ThreadPool &instance()
+    static auto instance() -> ThreadPool &
     {
         static ThreadPool pool(std::thread::hardware_concurrency());
         return pool;
@@ -1179,7 +1179,7 @@ class GlobalThreadPool
 class GlobalHighPerformancePool
 {
   public:
-    static HighPerformancePool &instance()
+    static auto instance() -> HighPerformancePool &
     {
         static HighPerformancePool pool(std::thread::hardware_concurrency());
         return pool;

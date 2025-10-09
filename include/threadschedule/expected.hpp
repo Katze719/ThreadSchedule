@@ -56,7 +56,7 @@ class bad_expected_access<void> : public std::exception
 {
   public:
     bad_expected_access() = default;
-    const char *what() const noexcept override
+    [[nodiscard]] auto what() const noexcept -> const char * override
     {
         return "bad expected access";
     }
@@ -69,19 +69,19 @@ class bad_expected_access : public bad_expected_access<void>
     explicit bad_expected_access(E e) : error_(std::move(e))
     {
     }
-    const E &error() const & noexcept
+    [[nodiscard]] auto error() const & noexcept -> const E &
     {
         return error_;
     }
-    E &error() & noexcept
+    auto error() & noexcept -> E &
     {
         return error_;
     }
-    const E &&error() const && noexcept
+    [[nodiscard]] auto error() const && noexcept -> const E &&
     {
         return std::move(error_);
     }
-    E &&error() && noexcept
+    auto error() && noexcept -> E &&
     {
         return std::move(error_);
     }
@@ -100,15 +100,15 @@ class unexpected
     constexpr explicit unexpected(E &&e) : error_(std::move(e))
     {
     }
-    constexpr const E &error() const & noexcept
+    [[nodiscard]] constexpr auto error() const & noexcept -> const E &
     {
         return error_;
     }
-    constexpr E &error() & noexcept
+    constexpr auto error() & noexcept -> E &
     {
         return error_;
     }
-    constexpr E &&error() && noexcept
+    constexpr auto error() && noexcept -> E &&
     {
         return std::move(error_);
     }
@@ -159,7 +159,7 @@ class expected
 #if __cplusplus >= 202002L
     constexpr explicit(!std::is_convertible_v<U, T>) expected(U &&value) : has_(true)
 #else
-    constexpr expected(U &&value, std::enable_if_t<std::is_convertible_v<U, T>, int> = 0) : has_(true)
+    constexpr expected(U &&value, std::enable_if_t<std::is_convertible_v<U, T>, int>  /*unused*/= 0) : has_(true)
     {
         new (&storage_.value_) T(std::forward<U>(value));
     }
@@ -176,7 +176,7 @@ class expected
     }
 
     template <typename... Args, typename = std::enable_if_t<std::is_constructible_v<T, Args...>>>
-    constexpr explicit expected(std::in_place_t, Args &&...args) : has_(true)
+    constexpr explicit expected(std::in_place_t /*unused*/, Args &&...args) : has_(true)
     {
         new (&storage_.value_) T(std::forward<Args>(args)...);
     }
@@ -192,13 +192,13 @@ class expected
     }
 
     template <typename... Args>
-    constexpr explicit expected(unexpect_t, Args &&...args) : has_(false)
+    constexpr explicit expected(unexpect_t /*unused*/, Args &&...args) : has_(false)
     {
         new (&storage_.error_) E(std::forward<Args>(args)...);
     }
 
     // assignment operators
-    constexpr expected &operator=(const expected &other)
+    constexpr auto operator=(const expected &other) -> expected &
     {
         if (this == &other)
             return *this;
@@ -207,8 +207,8 @@ class expected
         return *this;
     }
 
-    constexpr expected &operator=(expected &&other) noexcept(std::is_nothrow_move_constructible_v<T> &&
-                                                             std::is_nothrow_move_constructible_v<E>)
+    constexpr auto operator=(expected &&other) noexcept(std::is_nothrow_move_constructible_v<T> &&
+                                                             std::is_nothrow_move_constructible_v<E>) -> expected &
     {
         if (this == &other)
             return *this;
@@ -219,7 +219,7 @@ class expected
 
     template <typename U = T,
               typename = std::enable_if_t<!std::is_same_v<std::decay_t<U>, expected> && std::is_constructible_v<T, U>>>
-    constexpr expected &operator=(U &&value)
+    constexpr auto operator=(U &&value) -> expected &
     {
         if (has_)
         {
@@ -233,7 +233,7 @@ class expected
         return *this;
     }
 
-    constexpr expected &operator=(const unexpected<E> &ue)
+    constexpr auto operator=(const unexpected<E> &ue) -> expected &
     {
         if (!has_)
         {
@@ -247,7 +247,7 @@ class expected
         return *this;
     }
 
-    constexpr expected &operator=(unexpected<E> &&ue)
+    constexpr auto operator=(unexpected<E> &&ue) -> expected &
     {
         if (!has_)
         {
@@ -270,32 +270,32 @@ class expected
     }
 
     // observers
-    constexpr const T *operator->() const noexcept
+    constexpr auto operator->() const noexcept -> const T *
     {
         return &storage_.value_;
     }
 
-    constexpr T *operator->() noexcept
+    constexpr auto operator->() noexcept -> T *
     {
         return &storage_.value_;
     }
 
-    constexpr const T &operator*() const & noexcept
+    constexpr auto operator*() const & noexcept -> const T &
     {
         return storage_.value_;
     }
 
-    constexpr T &operator*() & noexcept
+    constexpr auto operator*() & noexcept -> T &
     {
         return storage_.value_;
     }
 
-    constexpr const T &&operator*() const && noexcept
+    constexpr auto operator*() const && noexcept -> const T &&
     {
         return std::move(storage_.value_);
     }
 
-    constexpr T &&operator*() && noexcept
+    constexpr auto operator*() && noexcept -> T &&
     {
         return std::move(storage_.value_);
     }
@@ -305,74 +305,74 @@ class expected
         return has_;
     }
 
-    constexpr bool has_value() const noexcept
+    [[nodiscard]] constexpr auto has_value() const noexcept -> bool
     {
         return has_;
     }
 
-    constexpr const T &value() const &
+    [[nodiscard]] constexpr auto value() const & -> const T &
     {
         if (!has_)
             THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(storage_.error_));
         return storage_.value_;
     }
 
-    constexpr T &value() &
+    constexpr auto value() & -> T &
     {
         if (!has_)
             THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(storage_.error_));
         return storage_.value_;
     }
 
-    constexpr const T &&value() const &&
+    [[nodiscard]] constexpr auto value() const && -> const T &&
     {
         if (!has_)
             THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(std::move(storage_.error_)));
         return std::move(storage_.value_);
     }
 
-    constexpr T &&value() &&
+    constexpr auto value() && -> T &&
     {
         if (!has_)
             THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(std::move(storage_.error_)));
         return std::move(storage_.value_);
     }
 
-    constexpr const E &error() const & noexcept
+    [[nodiscard]] constexpr auto error() const & noexcept -> const E &
     {
         return storage_.error_;
     }
 
-    constexpr E &error() & noexcept
+    constexpr auto error() & noexcept -> E &
     {
         return storage_.error_;
     }
 
-    constexpr const E &&error() const && noexcept
+    [[nodiscard]] constexpr auto error() const && noexcept -> const E &&
     {
         return std::move(storage_.error_);
     }
 
-    constexpr E &&error() && noexcept
+    constexpr auto error() && noexcept -> E &&
     {
         return std::move(storage_.error_);
     }
 
     template <typename U>
-    constexpr T value_or(U &&default_value) const &
+    constexpr auto value_or(U &&default_value) const & -> T
     {
         return has_ ? storage_.value_ : static_cast<T>(std::forward<U>(default_value));
     }
 
     template <typename U>
-    constexpr T value_or(U &&default_value) &&
+    constexpr auto value_or(U &&default_value) && -> T
     {
         return has_ ? std::move(storage_.value_) : static_cast<T>(std::forward<U>(default_value));
     }
 
     // emplace
     template <typename... Args>
-    constexpr T &emplace(Args &&...args)
+    constexpr auto emplace(Args &&...args) -> T &
     {
         this->~expected();
         new (this) expected(std::in_place, std::forward<Args>(args)...);
@@ -411,8 +411,7 @@ class expected
         using U = std::invoke_result_t<F, T &>;
         if (has_)
             return std::invoke(std::forward<F>(f), storage_.value_);
-        else
-            return U(unexpect, storage_.error_);
+                    return U(unexpect, storage_.error_);
     }
 
     template <typename F>
@@ -421,8 +420,7 @@ class expected
         using U = std::invoke_result_t<F, const T &>;
         if (has_)
             return std::invoke(std::forward<F>(f), storage_.value_);
-        else
-            return U(unexpect, storage_.error_);
+                    return U(unexpect, storage_.error_);
     }
 
     template <typename F>
@@ -431,8 +429,7 @@ class expected
         using U = std::invoke_result_t<F, T &&>;
         if (has_)
             return std::invoke(std::forward<F>(f), std::move(storage_.value_));
-        else
-            return U(unexpect, std::move(storage_.error_));
+                    return U(unexpect, std::move(storage_.error_));
     }
 
     template <typename F>
@@ -441,8 +438,7 @@ class expected
         using U = std::invoke_result_t<F, const T &&>;
         if (has_)
             return std::invoke(std::forward<F>(f), std::move(storage_.value_));
-        else
-            return U(unexpect, std::move(storage_.error_));
+                    return U(unexpect, std::move(storage_.error_));
     }
 
     template <typename F>
@@ -451,8 +447,7 @@ class expected
         using U = std::invoke_result_t<F, E &>;
         if (has_)
             return U(storage_.value_);
-        else
-            return std::invoke(std::forward<F>(f), storage_.error_);
+                    return std::invoke(std::forward<F>(f), storage_.error_);
     }
 
     template <typename F>
@@ -461,8 +456,7 @@ class expected
         using U = std::invoke_result_t<F, const E &>;
         if (has_)
             return U(storage_.value_);
-        else
-            return std::invoke(std::forward<F>(f), storage_.error_);
+                    return std::invoke(std::forward<F>(f), storage_.error_);
     }
 
     template <typename F>
@@ -471,8 +465,7 @@ class expected
         using U = std::invoke_result_t<F, E &&>;
         if (has_)
             return U(std::move(storage_.value_));
-        else
-            return std::invoke(std::forward<F>(f), std::move(storage_.error_));
+                    return std::invoke(std::forward<F>(f), std::move(storage_.error_));
     }
 
     template <typename F>
@@ -481,8 +474,7 @@ class expected
         using U = std::invoke_result_t<F, const E &&>;
         if (has_)
             return U(std::move(storage_.value_));
-        else
-            return std::invoke(std::forward<F>(f), std::move(storage_.error_));
+                    return std::invoke(std::forward<F>(f), std::move(storage_.error_));
     }
 
     template <typename F>
@@ -491,8 +483,7 @@ class expected
         using U = std::remove_cv_t<std::invoke_result_t<F, T &>>;
         if (has_)
             return expected<U, E>(std::in_place, std::invoke(std::forward<F>(f), storage_.value_));
-        else
-            return expected<U, E>(unexpect, storage_.error_);
+                    return expected<U, E>(unexpect, storage_.error_);
     }
 
     template <typename F>
@@ -501,8 +492,7 @@ class expected
         using U = std::remove_cv_t<std::invoke_result_t<F, const T &>>;
         if (has_)
             return expected<U, E>(std::in_place, std::invoke(std::forward<F>(f), storage_.value_));
-        else
-            return expected<U, E>(unexpect, storage_.error_);
+                    return expected<U, E>(unexpect, storage_.error_);
     }
 
     template <typename F>
@@ -511,8 +501,7 @@ class expected
         using U = std::remove_cv_t<std::invoke_result_t<F, T &&>>;
         if (has_)
             return expected<U, E>(std::in_place, std::invoke(std::forward<F>(f), std::move(storage_.value_)));
-        else
-            return expected<U, E>(unexpect, std::move(storage_.error_));
+                    return expected<U, E>(unexpect, std::move(storage_.error_));
     }
 
     template <typename F>
@@ -521,8 +510,7 @@ class expected
         using U = std::remove_cv_t<std::invoke_result_t<F, const T &&>>;
         if (has_)
             return expected<U, E>(std::in_place, std::invoke(std::forward<F>(f), std::move(storage_.value_)));
-        else
-            return expected<U, E>(unexpect, std::move(storage_.error_));
+                    return expected<U, E>(unexpect, std::move(storage_.error_));
     }
 
     template <typename F>
@@ -531,8 +519,7 @@ class expected
         using G = std::remove_cv_t<std::invoke_result_t<F, E &>>;
         if (has_)
             return expected<T, G>(storage_.value_);
-        else
-            return expected<T, G>(unexpect, std::invoke(std::forward<F>(f), storage_.error_));
+                    return expected<T, G>(unexpect, std::invoke(std::forward<F>(f), storage_.error_));
     }
 
     template <typename F>
@@ -541,8 +528,7 @@ class expected
         using G = std::remove_cv_t<std::invoke_result_t<F, const E &>>;
         if (has_)
             return expected<T, G>(storage_.value_);
-        else
-            return expected<T, G>(unexpect, std::invoke(std::forward<F>(f), storage_.error_));
+                    return expected<T, G>(unexpect, std::invoke(std::forward<F>(f), storage_.error_));
     }
 
     template <typename F>
@@ -551,8 +537,7 @@ class expected
         using G = std::remove_cv_t<std::invoke_result_t<F, E &&>>;
         if (has_)
             return expected<T, G>(std::move(storage_.value_));
-        else
-            return expected<T, G>(unexpect, std::invoke(std::forward<F>(f), std::move(storage_.error_)));
+                    return expected<T, G>(unexpect, std::invoke(std::forward<F>(f), std::move(storage_.error_)));
     }
 
     template <typename F>
@@ -561,13 +546,12 @@ class expected
         using G = std::remove_cv_t<std::invoke_result_t<F, const E &&>>;
         if (has_)
             return expected<T, G>(std::move(storage_.value_));
-        else
-            return expected<T, G>(unexpect, std::invoke(std::forward<F>(f), std::move(storage_.error_)));
+                    return expected<T, G>(unexpect, std::invoke(std::forward<F>(f), std::move(storage_.error_)));
     }
 
     // equality operators
     template <typename T2, typename E2>
-    constexpr friend bool operator==(const expected &lhs, const expected<T2, E2> &rhs)
+    constexpr friend auto operator==(const expected &lhs, const expected<T2, E2> &rhs) -> bool
     {
         if (lhs.has_value() != rhs.has_value())
             return false;
@@ -577,55 +561,55 @@ class expected
     }
 
     template <typename T2, typename E2>
-    constexpr friend bool operator!=(const expected &lhs, const expected<T2, E2> &rhs)
+    constexpr friend auto operator!=(const expected &lhs, const expected<T2, E2> &rhs) -> bool
     {
         return !(lhs == rhs);
     }
 
     template <typename T2, typename = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
-    constexpr friend bool operator==(const expected &lhs, const T2 &rhs)
+    constexpr friend auto operator==(const expected &lhs, const T2 &rhs) -> bool
     {
         return lhs.has_value() && *lhs == rhs;
     }
 
     template <typename T2, typename = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
-    constexpr friend bool operator==(const T2 &lhs, const expected &rhs)
+    constexpr friend auto operator==(const T2 &lhs, const expected &rhs) -> bool
     {
         return rhs.has_value() && lhs == *rhs;
     }
 
     template <typename T2, typename = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
-    constexpr friend bool operator!=(const expected &lhs, const T2 &rhs)
+    constexpr friend auto operator!=(const expected &lhs, const T2 &rhs) -> bool
     {
         return !(lhs == rhs);
     }
 
     template <typename T2, typename = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
-    constexpr friend bool operator!=(const T2 &lhs, const expected &rhs)
+    constexpr friend auto operator!=(const T2 &lhs, const expected &rhs) -> bool
     {
         return !(lhs == rhs);
     }
 
     template <typename E2>
-    constexpr friend bool operator==(const expected &lhs, const unexpected<E2> &rhs)
+    constexpr friend auto operator==(const expected &lhs, const unexpected<E2> &rhs) -> bool
     {
         return !lhs.has_value() && lhs.error() == rhs.error();
     }
 
     template <typename E2>
-    constexpr friend bool operator==(const unexpected<E2> &lhs, const expected &rhs)
+    constexpr friend auto operator==(const unexpected<E2> &lhs, const expected &rhs) -> bool
     {
         return !rhs.has_value() && lhs.error() == rhs.error();
     }
 
     template <typename E2>
-    constexpr friend bool operator!=(const expected &lhs, const unexpected<E2> &rhs)
+    constexpr friend auto operator!=(const expected &lhs, const unexpected<E2> &rhs) -> bool
     {
         return !(lhs == rhs);
     }
 
     template <typename E2>
-    constexpr friend bool operator!=(const unexpected<E2> &lhs, const expected &rhs)
+    constexpr friend auto operator!=(const unexpected<E2> &lhs, const expected &rhs) -> bool
     {
         return !(lhs == rhs);
     }
@@ -660,7 +644,7 @@ class expected<void, E>
     constexpr expected(expected &&other) = default;
 
     template <typename... Args>
-    constexpr explicit expected(unexpect_t, Args &&...args) : has_(false), error_(std::forward<Args>(args)...)
+    constexpr explicit expected(unexpect_t /*unused*/, Args &&...args) : has_(false), error_(std::forward<Args>(args)...)
     {
     }
 
@@ -672,17 +656,17 @@ class expected<void, E>
     {
     }
 
-    constexpr expected &operator=(const expected &other) = default;
-    constexpr expected &operator=(expected &&other) = default;
+    constexpr auto operator=(const expected &other) -> expected & = default;
+    constexpr auto operator=(expected &&other) -> expected & = default;
 
-    constexpr expected &operator=(const unexpected<E> &ue)
+    constexpr auto operator=(const unexpected<E> &ue) -> expected &
     {
         has_ = false;
         error_ = ue.error();
         return *this;
     }
 
-    constexpr expected &operator=(unexpected<E> &&ue)
+    constexpr auto operator=(unexpected<E> &&ue) -> expected &
     {
         has_ = false;
         error_ = std::move(ue.error());
@@ -694,7 +678,7 @@ class expected<void, E>
         return has_;
     }
 
-    constexpr bool has_value() const noexcept
+    [[nodiscard]] constexpr auto has_value() const noexcept -> bool
     {
         return has_;
     }
@@ -705,22 +689,22 @@ class expected<void, E>
             THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(error_));
     }
 
-    constexpr const E &error() const & noexcept
+    [[nodiscard]] constexpr auto error() const & noexcept -> const E &
     {
         return error_;
     }
 
-    constexpr E &error() & noexcept
+    constexpr auto error() & noexcept -> E &
     {
         return error_;
     }
 
-    constexpr const E &&error() const && noexcept
+    [[nodiscard]] constexpr auto error() const && noexcept -> const E &&
     {
         return std::move(error_);
     }
 
-    constexpr E &&error() && noexcept
+    constexpr auto error() && noexcept -> E &&
     {
         return std::move(error_);
     }
@@ -756,8 +740,7 @@ class expected<void, E>
         using U = std::invoke_result_t<F>;
         if (has_)
             return std::invoke(std::forward<F>(f));
-        else
-            return U(unexpect, error_);
+                    return U(unexpect, error_);
     }
 
     template <typename F>
@@ -766,8 +749,7 @@ class expected<void, E>
         using U = std::invoke_result_t<F>;
         if (has_)
             return std::invoke(std::forward<F>(f));
-        else
-            return U(unexpect, error_);
+                    return U(unexpect, error_);
     }
 
     template <typename F>
@@ -776,8 +758,7 @@ class expected<void, E>
         using U = std::invoke_result_t<F>;
         if (has_)
             return std::invoke(std::forward<F>(f));
-        else
-            return U(unexpect, std::move(error_));
+                    return U(unexpect, std::move(error_));
     }
 
     template <typename F>
@@ -786,8 +767,7 @@ class expected<void, E>
         using U = std::invoke_result_t<F>;
         if (has_)
             return std::invoke(std::forward<F>(f));
-        else
-            return U(unexpect, std::move(error_));
+                    return U(unexpect, std::move(error_));
     }
 
     template <typename F>
@@ -796,8 +776,7 @@ class expected<void, E>
         using U = std::invoke_result_t<F, E &>;
         if (has_)
             return U();
-        else
-            return std::invoke(std::forward<F>(f), error_);
+                    return std::invoke(std::forward<F>(f), error_);
     }
 
     template <typename F>
@@ -806,8 +785,7 @@ class expected<void, E>
         using U = std::invoke_result_t<F, const E &>;
         if (has_)
             return U();
-        else
-            return std::invoke(std::forward<F>(f), error_);
+                    return std::invoke(std::forward<F>(f), error_);
     }
 
     template <typename F>
@@ -816,8 +794,7 @@ class expected<void, E>
         using U = std::invoke_result_t<F, E &&>;
         if (has_)
             return U();
-        else
-            return std::invoke(std::forward<F>(f), std::move(error_));
+                    return std::invoke(std::forward<F>(f), std::move(error_));
     }
 
     template <typename F>
@@ -826,8 +803,7 @@ class expected<void, E>
         using U = std::invoke_result_t<F, const E &&>;
         if (has_)
             return U();
-        else
-            return std::invoke(std::forward<F>(f), std::move(error_));
+                    return std::invoke(std::forward<F>(f), std::move(error_));
     }
 
     template <typename F>
@@ -836,8 +812,7 @@ class expected<void, E>
         using U = std::remove_cv_t<std::invoke_result_t<F>>;
         if (has_)
             return expected<U, E>(std::in_place, std::invoke(std::forward<F>(f)));
-        else
-            return expected<U, E>(unexpect, error_);
+                    return expected<U, E>(unexpect, error_);
     }
 
     template <typename F>
@@ -846,8 +821,7 @@ class expected<void, E>
         using U = std::remove_cv_t<std::invoke_result_t<F>>;
         if (has_)
             return expected<U, E>(std::in_place, std::invoke(std::forward<F>(f)));
-        else
-            return expected<U, E>(unexpect, error_);
+                    return expected<U, E>(unexpect, error_);
     }
 
     template <typename F>
@@ -856,8 +830,7 @@ class expected<void, E>
         using U = std::remove_cv_t<std::invoke_result_t<F>>;
         if (has_)
             return expected<U, E>(std::in_place, std::invoke(std::forward<F>(f)));
-        else
-            return expected<U, E>(unexpect, std::move(error_));
+                    return expected<U, E>(unexpect, std::move(error_));
     }
 
     template <typename F>
@@ -866,8 +839,7 @@ class expected<void, E>
         using U = std::remove_cv_t<std::invoke_result_t<F>>;
         if (has_)
             return expected<U, E>(std::in_place, std::invoke(std::forward<F>(f)));
-        else
-            return expected<U, E>(unexpect, std::move(error_));
+                    return expected<U, E>(unexpect, std::move(error_));
     }
 
     template <typename F>
@@ -876,8 +848,7 @@ class expected<void, E>
         using G = std::remove_cv_t<std::invoke_result_t<F, E &>>;
         if (has_)
             return expected<void, G>();
-        else
-            return expected<void, G>(unexpect, std::invoke(std::forward<F>(f), error_));
+                    return expected<void, G>(unexpect, std::invoke(std::forward<F>(f), error_));
     }
 
     template <typename F>
@@ -886,8 +857,7 @@ class expected<void, E>
         using G = std::remove_cv_t<std::invoke_result_t<F, const E &>>;
         if (has_)
             return expected<void, G>();
-        else
-            return expected<void, G>(unexpect, std::invoke(std::forward<F>(f), error_));
+                    return expected<void, G>(unexpect, std::invoke(std::forward<F>(f), error_));
     }
 
     template <typename F>
@@ -896,8 +866,7 @@ class expected<void, E>
         using G = std::remove_cv_t<std::invoke_result_t<F, E &&>>;
         if (has_)
             return expected<void, G>();
-        else
-            return expected<void, G>(unexpect, std::invoke(std::forward<F>(f), std::move(error_)));
+                    return expected<void, G>(unexpect, std::invoke(std::forward<F>(f), std::move(error_)));
     }
 
     template <typename F>
@@ -906,13 +875,12 @@ class expected<void, E>
         using G = std::remove_cv_t<std::invoke_result_t<F, const E &&>>;
         if (has_)
             return expected<void, G>();
-        else
-            return expected<void, G>(unexpect, std::invoke(std::forward<F>(f), std::move(error_)));
+                    return expected<void, G>(unexpect, std::invoke(std::forward<F>(f), std::move(error_)));
     }
 
     // equality operators
     template <typename E2>
-    constexpr friend bool operator==(const expected &lhs, const expected<void, E2> &rhs)
+    constexpr friend auto operator==(const expected &lhs, const expected<void, E2> &rhs) -> bool
     {
         if (lhs.has_value() != rhs.has_value())
             return false;
@@ -922,31 +890,31 @@ class expected<void, E>
     }
 
     template <typename E2>
-    constexpr friend bool operator!=(const expected &lhs, const expected<void, E2> &rhs)
+    constexpr friend auto operator!=(const expected &lhs, const expected<void, E2> &rhs) -> bool
     {
         return !(lhs == rhs);
     }
 
     template <typename E2>
-    constexpr friend bool operator==(const expected &lhs, const unexpected<E2> &rhs)
+    constexpr friend auto operator==(const expected &lhs, const unexpected<E2> &rhs) -> bool
     {
         return !lhs.has_value() && lhs.error() == rhs.error();
     }
 
     template <typename E2>
-    constexpr friend bool operator==(const unexpected<E2> &lhs, const expected &rhs)
+    constexpr friend auto operator==(const unexpected<E2> &lhs, const expected &rhs) -> bool
     {
         return !rhs.has_value() && lhs.error() == rhs.error();
     }
 
     template <typename E2>
-    constexpr friend bool operator!=(const expected &lhs, const unexpected<E2> &rhs)
+    constexpr friend auto operator!=(const expected &lhs, const unexpected<E2> &rhs) -> bool
     {
         return !(lhs == rhs);
     }
 
     template <typename E2>
-    constexpr friend bool operator!=(const unexpected<E2> &lhs, const expected &rhs)
+    constexpr friend auto operator!=(const unexpected<E2> &lhs, const expected &rhs) -> bool
     {
         return !(lhs == rhs);
     }

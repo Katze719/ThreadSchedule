@@ -53,56 +53,56 @@ class ThreadPriority
     {
     }
 
-    [[nodiscard]] constexpr int value() const noexcept
+    [[nodiscard]] constexpr auto value() const noexcept -> int
     {
         return priority_;
     }
-    [[nodiscard]] constexpr bool is_valid() const noexcept
+    [[nodiscard]] constexpr auto is_valid() const noexcept -> bool
     {
         return priority_ >= min_priority && priority_ <= max_priority;
     }
 
     // Factory methods for common priorities
-    static constexpr ThreadPriority lowest()
+    static constexpr auto lowest() -> ThreadPriority
     {
         return ThreadPriority(min_priority);
     }
-    static constexpr ThreadPriority normal()
+    static constexpr auto normal() -> ThreadPriority
     {
         return ThreadPriority(0);
     }
-    static constexpr ThreadPriority highest()
+    static constexpr auto highest() -> ThreadPriority
     {
         return ThreadPriority(max_priority);
     }
 
     // Comparison operators
-    [[nodiscard]] bool operator==(const ThreadPriority &other) const
+    [[nodiscard]] auto operator==(const ThreadPriority &other) const -> bool
     {
         return priority_ == other.priority_;
     }
-    [[nodiscard]] bool operator!=(const ThreadPriority &other) const
+    [[nodiscard]] auto operator!=(const ThreadPriority &other) const -> bool
     {
         return priority_ != other.priority_;
     }
-    [[nodiscard]] bool operator<(const ThreadPriority &other) const
+    [[nodiscard]] auto operator<(const ThreadPriority &other) const -> bool
     {
         return priority_ < other.priority_;
     }
-    [[nodiscard]] bool operator<=(const ThreadPriority &other) const
+    [[nodiscard]] auto operator<=(const ThreadPriority &other) const -> bool
     {
         return priority_ <= other.priority_;
     }
-    [[nodiscard]] bool operator>(const ThreadPriority &other) const
+    [[nodiscard]] auto operator>(const ThreadPriority &other) const -> bool
     {
         return priority_ > other.priority_;
     }
-    [[nodiscard]] bool operator>=(const ThreadPriority &other) const
+    [[nodiscard]] auto operator>=(const ThreadPriority &other) const -> bool
     {
         return priority_ >= other.priority_;
     }
 
-    [[nodiscard]] std::string to_string() const
+    [[nodiscard]] auto to_string() const -> std::string
     {
         std::ostringstream oss;
         oss << "ThreadPriority(" << priority_ << ")";
@@ -184,7 +184,7 @@ class ThreadAffinity
 #endif
     }
 
-    [[nodiscard]] bool is_set(int cpu) const
+    [[nodiscard]] auto is_set(int cpu) const -> bool
     {
 #ifdef _WIN32
         if (cpu < 0)
@@ -197,7 +197,7 @@ class ThreadAffinity
 #endif
     }
 
-    [[nodiscard]] bool has_cpu(int cpu) const
+    [[nodiscard]] auto has_cpu(int cpu) const -> bool
     {
         return is_set(cpu);
     }
@@ -211,7 +211,7 @@ class ThreadAffinity
 #endif
     }
 
-    [[nodiscard]] std::vector<int> get_cpus() const
+    [[nodiscard]] auto get_cpus() const -> std::vector<int>
     {
         std::vector<int> cpus;
 #ifdef _WIN32
@@ -248,13 +248,13 @@ class ThreadAffinity
         return mask_ != 0;
     }
 #else
-    [[nodiscard]] const cpu_set_t &native_handle() const
+    [[nodiscard]] auto native_handle() const -> const cpu_set_t &
     {
         return cpuset_;
     }
 #endif
 
-    [[nodiscard]] std::string to_string() const
+    [[nodiscard]] auto to_string() const -> std::string
     {
         auto cpus = get_cpus();
         std::ostringstream oss;
@@ -306,7 +306,7 @@ class SchedulerParams
         return 30;
     }
 #else
-    static expected<sched_param, std::error_code> create_for_policy(SchedulingPolicy policy, ThreadPriority priority)
+    static auto create_for_policy(SchedulingPolicy policy, ThreadPriority priority) -> expected<sched_param, std::error_code>
     {
         sched_param param{};
 
@@ -323,7 +323,7 @@ class SchedulerParams
         return param;
     }
 
-    static expected<int, std::error_code> get_priority_range(SchedulingPolicy policy)
+    static auto get_priority_range(SchedulingPolicy policy) -> expected<int, std::error_code>
     {
         const int policy_int = static_cast<int>(policy);
         const int min_prio = sched_get_priority_min(policy_int);
@@ -342,7 +342,7 @@ class SchedulerParams
 /**
  * @brief String conversion utilities
  */
-inline std::string to_string(SchedulingPolicy policy)
+inline auto to_string(SchedulingPolicy policy) -> std::string
 {
     switch (policy)
     {
