@@ -7,6 +7,7 @@
 | `THREADSCHEDULE_BUILD_EXAMPLES` | BOOL | ON (main project)<br>OFF (subdirectory) | Build example programs |
 | `THREADSCHEDULE_BUILD_TESTS` | BOOL | OFF | Build unit tests |
 | `THREADSCHEDULE_BUILD_BENCHMARKS` | BOOL | OFF | Build benchmarks (downloads Google Benchmark) |
+| `THREADSCHEDULE_RUNTIME` | BOOL | OFF | Build shared runtime library for process-wide registry |
 | `THREADSCHEDULE_INSTALL` | BOOL | ON (main project)<br>OFF (subdirectory) | Generate install targets |
 
 ## CMake Variables
@@ -82,15 +83,37 @@ add_subdirectory(external/ThreadSchedule)
 
 **Result**: Benchmark programs are built. Google Benchmark is automatically downloaded via CPM.
 
+### With Shared Runtime
+```cmake
+set(THREADSCHEDULE_RUNTIME ON)
+add_subdirectory(external/ThreadSchedule)
+
+add_library(mylib SHARED src/mylib.cpp)
+target_link_libraries(mylib PRIVATE 
+    ThreadSchedule::ThreadSchedule
+    ThreadSchedule::Runtime
+)
+
+add_executable(my_app src/main.cpp)
+target_link_libraries(my_app PRIVATE 
+    ThreadSchedule::ThreadSchedule
+    ThreadSchedule::Runtime
+    mylib
+)
+```
+
+**Result**: A shared runtime library (`libthreadschedule.so` / `threadschedule.dll`) is built. All components share a single process-wide registry instance.
+
 ### Development Build (All Features)
 ```cmake
 set(THREADSCHEDULE_BUILD_EXAMPLES ON)
 set(THREADSCHEDULE_BUILD_TESTS ON)
 set(THREADSCHEDULE_BUILD_BENCHMARKS ON)
+set(THREADSCHEDULE_RUNTIME ON)
 add_subdirectory(external/ThreadSchedule)
 ```
 
-**Result**: Everything is built.
+**Result**: Everything is built, including the shared runtime.
 
 ### Custom Installation
 ```cmake
@@ -116,7 +139,7 @@ cmake --install build
 
 The main interface target. Properties:
 
-- **Type**: INTERFACE library (header-only)
+- **Type**: INTERFACE library (header-only by default)
 - **Include directories**: `include/`
 - **Required C++ standard**: C++17 minimum
 - **Linked libraries**: `Threads::Threads` (and `pthread`, `rt` on Linux)
@@ -126,24 +149,58 @@ The main interface target. Properties:
 target_link_libraries(your_target PRIVATE ThreadSchedule::ThreadSchedule)
 ```
 
+### ThreadSchedule::Runtime
+
+Optional shared runtime target for process-wide registry. Properties:
+
+- **Type**: SHARED library (DLL/SO)
+- **Availability**: Only when `THREADSCHEDULE_RUNTIME=ON`
+- **Include directories**: `include/`
+- **Exports**: `registry()` and `set_external_registry()` functions
+- **Use case**: Multi-DSO applications requiring single registry instance
+
+### Usage
+```cmake
+# Enable runtime build
+cmake -B build -DTHREADSCHEDULE_RUNTIME=ON
+
+# Link against runtime
+target_link_libraries(your_target PRIVATE 
+    ThreadSchedule::ThreadSchedule
+    ThreadSchedule::Runtime
+)
+```
+
+**Note**: When using the runtime library, all DSOs (libraries and executables) in your application must link against `ThreadSchedule::Runtime` to share the same registry instance.
+
 ## Platform-Specific Behavior
 
 ### Linux
 ```cmake
-# Automatically links: pthread, rt
+# Header-only mode: Automatically links: pthread, rt
 target_link_libraries(ThreadSchedule INTERFACE Threads::Threads pthread rt)
+
+# Runtime mode: Exports symbols from libthreadschedule.so
+# Make sure libthreadschedule.so is in LD_LIBRARY_PATH or use rpath
 ```
 
 ### Windows
 ```cmake
-# Automatically links: standard thread library
+# Header-only mode: Automatically links: standard thread library
 target_link_libraries(ThreadSchedule INTERFACE Threads::Threads)
+
+# Runtime mode: Creates threadschedule.dll
+# DLL must be in PATH or same directory as executable
+# Integration tests automatically copy DLLs on Windows
 ```
 
 ### macOS
 ```cmake
-# Automatically links: standard thread library
+# Header-only mode: Automatically links: standard thread library
 target_link_libraries(ThreadSchedule INTERFACE Threads::Threads)
+
+# Runtime mode: Creates libthreadschedule.dylib
+# Make sure library is in DYLD_LIBRARY_PATH or use rpath
 ```
 
 ## Cross-Compilation
@@ -207,6 +264,31 @@ set(THREADSCHEDULE_BUILD_TESTS ON)
 ```cmake
 cmake .. -DTHREADSCHEDULE_INSTALL=ON
 ```
+
+### Runtime DLL Not Found (Windows)
+```
+Error: The code execution cannot proceed because threadschedule.dll was not found.
+Exit code: 0xc0000135
+```
+**Solution**: Ensure `threadschedule.dll` is in the same directory as your executable or in PATH. For testing, add a post-build copy command:
+```cmake
+if(WIN32)
+    add_custom_command(TARGET your_target POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:ThreadSchedule::ThreadScheduleRuntime>
+            $<TARGET_FILE_DIR:your_target>
+    )
+endif()
+```
+
+### Multiple Registry Instances in Multi-DSO Setup
+**Symptom**: Each shared library has its own thread registry instead of sharing one.
+
+**Cause**: In header-only mode, each DSO gets its own copy of the static `registry_storage()` function.
+
+**Solution**: Either:
+1. Use `THREADSCHEDULE_RUNTIME=ON` to build a shared runtime (recommended for multi-DSO)
+2. Explicitly inject the registry into each DSO via `set_external_registry()`
 
 ## Advanced Configuration
 
@@ -275,6 +357,8 @@ conan create . --build=missing
 4. **Use FetchContent or CPM** for automatic dependency management
 5. **Pin to specific version** (tag) in production
 6. **Test with your target C++ standard** before deploying
+7. **For multi-DSO applications**: Use `THREADSCHEDULE_RUNTIME=ON` to ensure single registry
+8. **On Windows with runtime**: Copy DLLs to executable directory or use install(RUNTIME_DEPENDENCY_SET)
 
 ## Example Project Structure
 
