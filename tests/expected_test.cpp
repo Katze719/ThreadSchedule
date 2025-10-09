@@ -2,9 +2,7 @@
 #include <system_error>
 #include <threadschedule/expected.hpp>
 
-using threadschedule::expected;
-using threadschedule::unexpected;
-
+namespace ts = threadschedule;
 using namespace threadschedule;
 
 namespace
@@ -16,24 +14,24 @@ enum class parse_error
     overflow = 2
 };
 
-expected<int, std::error_code> parse_int_ok()
+ts::expected<int, std::error_code> parse_int_ok()
 {
     return 42;
 }
 
-expected<int, std::error_code> parse_int_fail()
+ts::expected<int, std::error_code> parse_int_fail()
 {
-    return threadschedule::unexpected(std::make_error_code(std::errc::invalid_argument));
+    return ts::unexpected(std::make_error_code(std::errc::invalid_argument));
 }
 
-expected<void, std::error_code> do_void_ok()
+ts::expected<void, std::error_code> do_void_ok()
 {
     return {};
 }
 
-expected<void, std::error_code> do_void_fail()
+ts::expected<void, std::error_code> do_void_fail()
 {
-    return threadschedule::unexpected(std::make_error_code(std::errc::operation_not_permitted));
+    return ts::unexpected(std::make_error_code(std::errc::operation_not_permitted));
 }
 
 } // namespace
@@ -121,12 +119,12 @@ TEST(ExpectedTest, IfConditionWorksVoid)
 
 TEST(ExpectedTest, TypeAliases)
 {
-    using exp_t = expected<int, std::error_code>;
+    using exp_t = ts::expected<int, std::error_code>;
     static_assert(std::is_same_v<exp_t::value_type, int>);
     static_assert(std::is_same_v<exp_t::error_type, std::error_code>);
-    static_assert(std::is_same_v<exp_t::unexpected_type, unexpected<std::error_code>>);
+    static_assert(std::is_same_v<exp_t::unexpected_type, ts::unexpected<std::error_code>>);
 
-    using exp_void_t = expected<void, std::error_code>;
+    using exp_void_t = ts::expected<void, std::error_code>;
     static_assert(std::is_same_v<exp_void_t::value_type, void>);
     static_assert(std::is_same_v<exp_void_t::error_type, std::error_code>);
 }
@@ -148,11 +146,11 @@ TEST(ExpectedTest, OperatorArrow)
         int y;
     };
 
-    expected<Point, std::error_code> p(Point{3, 4});
+    ts::expected<Point, std::error_code> p(Point{3, 4});
     EXPECT_EQ(p->x, 3);
     EXPECT_EQ(p->y, 4);
 
-    const expected<Point, std::error_code> cp(Point{5, 6});
+    const ts::expected<Point, std::error_code> cp(Point{5, 6});
     EXPECT_EQ(cp->x, 5);
     EXPECT_EQ(cp->y, 6);
 }
@@ -181,7 +179,7 @@ TEST(ExpectedTest, VoidValueThrows)
 
 TEST(ExpectedTest, Emplace)
 {
-    expected<int, std::error_code> r = parse_int_fail();
+    ts::expected<int, std::error_code> r = parse_int_fail();
     EXPECT_FALSE(r.has_value());
 
     r.emplace(100);
@@ -191,7 +189,7 @@ TEST(ExpectedTest, Emplace)
 
 TEST(ExpectedTest, VoidEmplace)
 {
-    expected<void, std::error_code> r = do_void_fail();
+    ts::expected<void, std::error_code> r = do_void_fail();
     EXPECT_FALSE(r.has_value());
 
     r.emplace();
@@ -224,24 +222,24 @@ TEST(ExpectedTest, VoidSwap)
 TEST(ExpectedTest, AndThen)
 {
     auto ok = parse_int_ok();
-    auto result = ok.and_then([](int v) { return expected<int, std::error_code>(v * 2); });
+    auto result = ok.and_then([](int v) { return ts::expected<int, std::error_code>(v * 2); });
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(*result, 84);
 
     auto bad = parse_int_fail();
-    auto result2 = bad.and_then([](int v) { return expected<int, std::error_code>(v * 2); });
+    auto result2 = bad.and_then([](int v) { return ts::expected<int, std::error_code>(v * 2); });
     EXPECT_FALSE(result2.has_value());
 }
 
 TEST(ExpectedTest, OrElse)
 {
     auto ok = parse_int_ok();
-    auto result = ok.or_else([](std::error_code) { return expected<int, std::error_code>(0); });
+    auto result = ok.or_else([](std::error_code) { return ts::expected<int, std::error_code>(0); });
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(*result, 42);
 
     auto bad = parse_int_fail();
-    auto result2 = bad.or_else([](std::error_code) { return expected<int, std::error_code>(99); });
+    auto result2 = bad.or_else([](std::error_code) { return ts::expected<int, std::error_code>(99); });
     ASSERT_TRUE(result2.has_value());
     EXPECT_EQ(*result2, 99);
 }
@@ -269,11 +267,11 @@ TEST(ExpectedTest, TransformError)
 TEST(ExpectedTest, VoidAndThen)
 {
     auto ok = do_void_ok();
-    auto result = ok.and_then([]() { return expected<void, std::error_code>(); });
+    auto result = ok.and_then([]() { return ts::expected<void, std::error_code>(); });
     EXPECT_TRUE(result.has_value());
 
     auto bad = do_void_fail();
-    auto result2 = bad.and_then([]() { return expected<void, std::error_code>(); });
+    auto result2 = bad.and_then([]() { return ts::expected<void, std::error_code>(); });
     EXPECT_FALSE(result2.has_value());
 }
 
@@ -292,8 +290,8 @@ TEST(ExpectedTest, VoidTransform)
 TEST(ExpectedTest, EqualityOperators)
 {
     auto ok1 = parse_int_ok();
-    auto ok2 = expected<int, std::error_code>(42);
-    auto ok3 = expected<int, std::error_code>(43);
+    auto ok2 = ts::expected<int, std::error_code>(42);
+    auto ok3 = ts::expected<int, std::error_code>(43);
     auto bad = parse_int_fail();
 
     EXPECT_TRUE(ok1 == ok2);
@@ -318,7 +316,7 @@ TEST(ExpectedTest, EqualityWithValue)
 TEST(ExpectedTest, EqualityWithUnexpected)
 {
     auto bad = parse_int_fail();
-    auto unexp = unexpected(std::make_error_code(std::errc::invalid_argument));
+    auto unexp = ts::unexpected(std::make_error_code(std::errc::invalid_argument));
 
     EXPECT_TRUE(bad == unexp);
     EXPECT_TRUE(unexp == bad);
@@ -341,7 +339,7 @@ TEST(ExpectedTest, InPlaceConstruction)
         }
     };
 
-    expected<Complex, std::error_code> e(std::in_place, 42, 3.14);
+    ts::expected<Complex, std::error_code> e(std::in_place, 42, 3.14);
     ASSERT_TRUE(e.has_value());
     EXPECT_EQ(e->a, 42);
     EXPECT_DOUBLE_EQ(e->b, 3.14);
@@ -349,16 +347,16 @@ TEST(ExpectedTest, InPlaceConstruction)
 
 TEST(ExpectedTest, UnexpectConstruction)
 {
-    expected<int, std::error_code> e(unexpect, std::make_error_code(std::errc::invalid_argument));
+    ts::expected<int, std::error_code> e(ts::unexpect, std::make_error_code(std::errc::invalid_argument));
     EXPECT_FALSE(e.has_value());
     EXPECT_EQ(e.error(), std::make_error_code(std::errc::invalid_argument));
 }
 
 TEST(ExpectedTest, ValueOrRvalue)
 {
-    expected<int, std::error_code> ok(42);
+    ts::expected<int, std::error_code> ok(42);
     EXPECT_EQ(std::move(ok).value_or(7), 42);
 
-    expected<int, std::error_code> bad(unexpect, std::make_error_code(std::errc::invalid_argument));
+    ts::expected<int, std::error_code> bad(ts::unexpect, std::make_error_code(std::errc::invalid_argument));
     EXPECT_EQ(std::move(bad).value_or(7), 7);
 }

@@ -27,9 +27,8 @@ int main()
     composite.attach(&regB);
 
     // Apply an operation across both
-    composite.apply_all(
-        [](const RegisteredThreadInfo &e) { return e.componentTag == "A" || e.componentTag == "B"; },
-        [&](const RegisteredThreadInfo &e) { (void)registry().set_priority(e.tid, ThreadPriority{0}); });
+    composite.apply([](const RegisteredThreadInfo &e) { return e.componentTag == "A" || e.componentTag == "B"; },
+                    [&](const RegisteredThreadInfo &e) { (void)registry().set_priority(e.tid, ThreadPriority{0}); });
 
     t1.join();
     t2.join();

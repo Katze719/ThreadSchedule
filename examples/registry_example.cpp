@@ -16,12 +16,11 @@ int main()
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     // Apply a no-op priority change to all io threads (demo)
-    registry().apply_all(
-        [](const RegisteredThreadInfo &e) { return e.componentTag == "io"; },
-        [](const RegisteredThreadInfo &e) { (void)registry().set_priority(e.tid, ThreadPriority{0}); });
+    registry().apply([](const RegisteredThreadInfo &e) { return e.componentTag == "io"; },
+                     [](const RegisteredThreadInfo &e) { (void)registry().set_priority(e.tid, ThreadPriority{0}); });
 
     // Try to rename all io threads
-    registry().apply_all(
+    registry().apply(
         [](const RegisteredThreadInfo &e) { return e.componentTag == "io"; },
         [](const RegisteredThreadInfo &e) { (void)registry().set_name(e.tid, std::string("io-") + e.name); });
 

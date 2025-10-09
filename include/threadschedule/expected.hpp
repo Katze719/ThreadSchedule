@@ -143,7 +143,7 @@ class expected
     }
 
     constexpr expected(expected &&other) noexcept(std::is_nothrow_move_constructible_v<T> &&
-                                                   std::is_nothrow_move_constructible_v<E>)
+                                                  std::is_nothrow_move_constructible_v<E>)
         : has_(other.has_)
     {
         if (has_)
@@ -153,10 +153,9 @@ class expected
     }
 
     template <typename U = T,
-              typename = std::enable_if_t<!std::is_same_v<std::decay_t<U>, expected> &&
-                                          !std::is_same_v<std::decay_t<U>, std::in_place_t> &&
-                                          !std::is_same_v<std::decay_t<U>, unexpected<E>> &&
-                                          std::is_constructible_v<T, U>>>
+              typename = std::enable_if_t<
+                  !std::is_same_v<std::decay_t<U>, expected> && !std::is_same_v<std::decay_t<U>, std::in_place_t> &&
+                  !std::is_same_v<std::decay_t<U>, unexpected<E>> && std::is_constructible_v<T, U>>>
 #if __cplusplus >= 202002L
     constexpr explicit(!std::is_convertible_v<U, T>) expected(U &&value) : has_(true)
 #else
@@ -169,8 +168,7 @@ class expected
               typename = std::enable_if_t<!std::is_same_v<std::decay_t<U>, expected> &&
                                           !std::is_same_v<std::decay_t<U>, std::in_place_t> &&
                                           !std::is_same_v<std::decay_t<U>, unexpected<E>> &&
-                                          std::is_constructible_v<T, U> &&
-                                          !std::is_convertible_v<U, T>>>
+                                          std::is_constructible_v<T, U> && !std::is_convertible_v<U, T>>>
     constexpr explicit expected(U &&value) : has_(true)
 #endif
     {
@@ -209,8 +207,8 @@ class expected
         return *this;
     }
 
-    constexpr expected &operator=(expected &&other) noexcept(
-        std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_constructible_v<E>)
+    constexpr expected &operator=(expected &&other) noexcept(std::is_nothrow_move_constructible_v<T> &&
+                                                             std::is_nothrow_move_constructible_v<E>)
     {
         if (this == &other)
             return *this;
@@ -219,8 +217,8 @@ class expected
         return *this;
     }
 
-    template <typename U = T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<U>, expected> &&
-                                                          std::is_constructible_v<T, U>>>
+    template <typename U = T,
+              typename = std::enable_if_t<!std::is_same_v<std::decay_t<U>, expected> && std::is_constructible_v<T, U>>>
     constexpr expected &operator=(U &&value)
     {
         if (has_)
@@ -382,9 +380,9 @@ class expected
     }
 
     // swap
-    constexpr void swap(expected &other) noexcept(
-        std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_constructible_v<E> &&
-        std::is_nothrow_swappable_v<T> && std::is_nothrow_swappable_v<E>)
+    constexpr void swap(expected &other) noexcept(std::is_nothrow_move_constructible_v<T> &&
+                                                  std::is_nothrow_move_constructible_v<E> &&
+                                                  std::is_nothrow_swappable_v<T> && std::is_nothrow_swappable_v<E>)
     {
         if (has_ && other.has_)
         {
@@ -512,8 +510,7 @@ class expected
     {
         using U = std::remove_cv_t<std::invoke_result_t<F, T &&>>;
         if (has_)
-            return expected<U, E>(std::in_place,
-                                  std::invoke(std::forward<F>(f), std::move(storage_.value_)));
+            return expected<U, E>(std::in_place, std::invoke(std::forward<F>(f), std::move(storage_.value_)));
         else
             return expected<U, E>(unexpect, std::move(storage_.error_));
     }
@@ -523,8 +520,7 @@ class expected
     {
         using U = std::remove_cv_t<std::invoke_result_t<F, const T &&>>;
         if (has_)
-            return expected<U, E>(std::in_place,
-                                  std::invoke(std::forward<F>(f), std::move(storage_.value_)));
+            return expected<U, E>(std::in_place, std::invoke(std::forward<F>(f), std::move(storage_.value_)));
         else
             return expected<U, E>(unexpect, std::move(storage_.error_));
     }
@@ -556,8 +552,7 @@ class expected
         if (has_)
             return expected<T, G>(std::move(storage_.value_));
         else
-            return expected<T, G>(unexpect,
-                                  std::invoke(std::forward<F>(f), std::move(storage_.error_)));
+            return expected<T, G>(unexpect, std::invoke(std::forward<F>(f), std::move(storage_.error_)));
     }
 
     template <typename F>
@@ -567,13 +562,12 @@ class expected
         if (has_)
             return expected<T, G>(std::move(storage_.value_));
         else
-            return expected<T, G>(unexpect,
-                                  std::invoke(std::forward<F>(f), std::move(storage_.error_)));
+            return expected<T, G>(unexpect, std::invoke(std::forward<F>(f), std::move(storage_.error_)));
     }
 
     // equality operators
     template <typename T2, typename E2>
-    friend constexpr bool operator==(const expected &lhs, const expected<T2, E2> &rhs)
+    constexpr friend bool operator==(const expected &lhs, const expected<T2, E2> &rhs)
     {
         if (lhs.has_value() != rhs.has_value())
             return false;
@@ -583,59 +577,55 @@ class expected
     }
 
     template <typename T2, typename E2>
-    friend constexpr bool operator!=(const expected &lhs, const expected<T2, E2> &rhs)
+    constexpr friend bool operator!=(const expected &lhs, const expected<T2, E2> &rhs)
     {
         return !(lhs == rhs);
     }
 
-    template <typename T2, typename = std::enable_if_t<!std::is_same_v<
-                               expected, std::decay_t<T2>>>>
-    friend constexpr bool operator==(const expected &lhs, const T2 &rhs)
+    template <typename T2, typename = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
+    constexpr friend bool operator==(const expected &lhs, const T2 &rhs)
     {
         return lhs.has_value() && *lhs == rhs;
     }
 
-    template <typename T2, typename = std::enable_if_t<!std::is_same_v<
-                               expected, std::decay_t<T2>>>>
-    friend constexpr bool operator==(const T2 &lhs, const expected &rhs)
+    template <typename T2, typename = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
+    constexpr friend bool operator==(const T2 &lhs, const expected &rhs)
     {
         return rhs.has_value() && lhs == *rhs;
     }
 
-    template <typename T2, typename = std::enable_if_t<!std::is_same_v<
-                               expected, std::decay_t<T2>>>>
-    friend constexpr bool operator!=(const expected &lhs, const T2 &rhs)
+    template <typename T2, typename = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
+    constexpr friend bool operator!=(const expected &lhs, const T2 &rhs)
     {
         return !(lhs == rhs);
     }
 
-    template <typename T2, typename = std::enable_if_t<!std::is_same_v<
-                               expected, std::decay_t<T2>>>>
-    friend constexpr bool operator!=(const T2 &lhs, const expected &rhs)
+    template <typename T2, typename = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
+    constexpr friend bool operator!=(const T2 &lhs, const expected &rhs)
     {
         return !(lhs == rhs);
     }
 
     template <typename E2>
-    friend constexpr bool operator==(const expected &lhs, const unexpected<E2> &rhs)
+    constexpr friend bool operator==(const expected &lhs, const unexpected<E2> &rhs)
     {
         return !lhs.has_value() && lhs.error() == rhs.error();
     }
 
     template <typename E2>
-    friend constexpr bool operator==(const unexpected<E2> &lhs, const expected &rhs)
+    constexpr friend bool operator==(const unexpected<E2> &lhs, const expected &rhs)
     {
         return !rhs.has_value() && lhs.error() == rhs.error();
     }
 
     template <typename E2>
-    friend constexpr bool operator!=(const expected &lhs, const unexpected<E2> &rhs)
+    constexpr friend bool operator!=(const expected &lhs, const unexpected<E2> &rhs)
     {
         return !(lhs == rhs);
     }
 
     template <typename E2>
-    friend constexpr bool operator!=(const unexpected<E2> &lhs, const expected &rhs)
+    constexpr friend bool operator!=(const unexpected<E2> &lhs, const expected &rhs)
     {
         return !(lhs == rhs);
     }
@@ -741,7 +731,7 @@ class expected<void, E>
     }
 
     constexpr void swap(expected &other) noexcept(std::is_nothrow_move_constructible_v<E> &&
-                                                   std::is_nothrow_swappable_v<E>)
+                                                  std::is_nothrow_swappable_v<E>)
     {
         if (has_ && other.has_)
         {
@@ -922,7 +912,7 @@ class expected<void, E>
 
     // equality operators
     template <typename E2>
-    friend constexpr bool operator==(const expected &lhs, const expected<void, E2> &rhs)
+    constexpr friend bool operator==(const expected &lhs, const expected<void, E2> &rhs)
     {
         if (lhs.has_value() != rhs.has_value())
             return false;
@@ -932,31 +922,31 @@ class expected<void, E>
     }
 
     template <typename E2>
-    friend constexpr bool operator!=(const expected &lhs, const expected<void, E2> &rhs)
+    constexpr friend bool operator!=(const expected &lhs, const expected<void, E2> &rhs)
     {
         return !(lhs == rhs);
     }
 
     template <typename E2>
-    friend constexpr bool operator==(const expected &lhs, const unexpected<E2> &rhs)
+    constexpr friend bool operator==(const expected &lhs, const unexpected<E2> &rhs)
     {
         return !lhs.has_value() && lhs.error() == rhs.error();
     }
 
     template <typename E2>
-    friend constexpr bool operator==(const unexpected<E2> &lhs, const expected &rhs)
+    constexpr friend bool operator==(const unexpected<E2> &lhs, const expected &rhs)
     {
         return !rhs.has_value() && lhs.error() == rhs.error();
     }
 
     template <typename E2>
-    friend constexpr bool operator!=(const expected &lhs, const unexpected<E2> &rhs)
+    constexpr friend bool operator!=(const expected &lhs, const unexpected<E2> &rhs)
     {
         return !(lhs == rhs);
     }
 
     template <typename E2>
-    friend constexpr bool operator!=(const unexpected<E2> &lhs, const expected &rhs)
+    constexpr friend bool operator!=(const unexpected<E2> &lhs, const expected &rhs)
     {
         return !(lhs == rhs);
     }
@@ -970,8 +960,7 @@ class expected<void, E>
 
 // swap for expected
 template <typename T, typename E>
-constexpr void swap(expected<T, E> &lhs,
-                    expected<T, E> &rhs) noexcept(noexcept(lhs.swap(rhs)))
+constexpr void swap(expected<T, E> &lhs, expected<T, E> &rhs) noexcept(noexcept(lhs.swap(rhs)))
 {
     lhs.swap(rhs);
 }

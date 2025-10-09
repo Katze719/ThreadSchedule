@@ -17,8 +17,8 @@ int main()
 
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
-    appReg.apply_all([](const RegisteredThreadInfo &e) { return e.componentTag == "ext"; },
-                     [&](const RegisteredThreadInfo &e) { (void)appReg.set_priority(e.tid, ThreadPriority{0}); });
+    appReg.apply([](const RegisteredThreadInfo &e) { return e.componentTag == "ext"; },
+                 [&](const RegisteredThreadInfo &e) { (void)appReg.set_priority(e.tid, ThreadPriority{0}); });
 
     t.join();
     return 0;

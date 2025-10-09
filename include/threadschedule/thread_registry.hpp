@@ -190,7 +190,7 @@ class ThreadControlBlock
     static std::shared_ptr<ThreadControlBlock> create_for_current_thread(const std::string &name,
                                                                          const std::string &componentTag)
     {
-        auto block = std::shared_ptr<ThreadControlBlock>(new ThreadControlBlock());
+        auto block = std::make_shared<ThreadControlBlock>();
         block->tid_ = ThreadInfo::get_thread_id();
         block->stdId_ = std::this_thread::get_id();
         block->name_ = name;
@@ -291,7 +291,7 @@ class ThreadRegistry
 
     // Bulk apply with predicate
     template <typename Predicate, typename Fn>
-    void apply_all(Predicate &&pred, Fn &&fn) const
+    void apply(Predicate &&pred, Fn &&fn) const
     {
         std::vector<RegisteredThreadInfo> snapshot;
         {
@@ -528,7 +528,7 @@ class CompositeThreadRegistry
     }
 
     template <typename Predicate, typename Fn>
-    void apply_all(Predicate &&pred, Fn &&fn) const
+    void apply(Predicate &&pred, Fn &&fn) const
     {
         std::vector<ThreadRegistry *> regs;
         {
@@ -537,7 +537,7 @@ class CompositeThreadRegistry
         }
         for (auto *r : regs)
         {
-            r->apply_all(pred, fn);
+            r->apply(pred, fn);
         }
     }
 
