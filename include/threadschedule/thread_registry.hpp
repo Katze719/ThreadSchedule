@@ -313,7 +313,7 @@ class ThreadRegistry
     [[nodiscard]] auto set_affinity(Tid tid, ThreadAffinity const& affinity) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
-        if (auto blk = lock_block_(tid))
+        if (auto blk = lock_block(tid))
             return blk->set_affinity(affinity);
         HANDLE h = OpenThread(THREAD_SET_INFORMATION | THREAD_QUERY_INFORMATION, FALSE, static_cast<DWORD>(tid));
         if (!h)
@@ -356,7 +356,7 @@ class ThreadRegistry
     [[nodiscard]] auto set_priority(Tid tid, ThreadPriority priority) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
-        if (auto blk = lock_block_(tid))
+        if (auto blk = lock_block(tid))
             return blk->set_priority(priority);
         HANDLE h = OpenThread(THREAD_SET_INFORMATION | THREAD_QUERY_INFORMATION, FALSE, static_cast<DWORD>(tid));
         if (!h)
@@ -401,7 +401,7 @@ class ThreadRegistry
         -> expected<void, std::error_code>
     {
 #ifdef _WIN32
-        if (auto blk = lock_block_(tid))
+        if (auto blk = lock_block(tid))
             return blk->set_scheduling_policy(policy, priority);
         return set_priority(tid, priority);
 #else
@@ -422,7 +422,7 @@ class ThreadRegistry
     [[nodiscard]] auto set_name(Tid tid, std::string const& name) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
-        if (auto blk = lock_block_(tid))
+        if (auto blk = lock_block(tid))
             return blk->set_name(name);
         HANDLE h = OpenThread(THREAD_SET_LIMITED_INFORMATION | THREAD_SET_INFORMATION, FALSE, static_cast<DWORD>(tid));
         if (!h)
