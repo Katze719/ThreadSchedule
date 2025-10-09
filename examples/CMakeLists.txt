@@ -17,3 +17,6 @@ target_link_libraries(registry_merge_example ThreadSchedule::ThreadSchedule)
 
 add_executable(external_registry_example external_registry_example.cpp)
 target_link_libraries(external_registry_example ThreadSchedule::ThreadSchedule)
+
+# Runtime shared registry example (requires THREADSCHEDULE_RUNTIME)
+add_subdirectory(runtime_shared)
