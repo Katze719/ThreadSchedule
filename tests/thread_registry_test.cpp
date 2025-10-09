@@ -19,7 +19,7 @@ TEST(ThreadRegistryTest, RegistersAndApplies)
 
     // Find by tag and set a neutral priority
     bool found = false;
-    registry().apply_all(
+    registry().apply(
         [&](const RegisteredThreadInfo &e) {
             found = found || (e.componentTag == "test");
             return e.componentTag == "test";
@@ -44,11 +44,11 @@ TEST(ThreadRegistryTest, LinuxAffinitySet)
     aff.add_cpu(0);
 
     bool attempted = false;
-    registry().apply_all([](const RegisteredThreadInfo &e) { return e.componentTag == "aff"; },
-                         [&](const RegisteredThreadInfo &e) {
-                             attempted = true;
-                             (void)registry().set_affinity(e.tid, aff);
-                         });
+    registry().apply([](const RegisteredThreadInfo &e) { return e.componentTag == "aff"; },
+                     [&](const RegisteredThreadInfo &e) {
+                         attempted = true;
+                         (void)registry().set_affinity(e.tid, aff);
+                     });
 
     EXPECT_TRUE(attempted);
     t.join();

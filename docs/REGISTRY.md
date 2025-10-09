@@ -79,7 +79,7 @@ using namespace threadschedule;
 
 int main() {
   ThreadWrapperReg t("worker-1","io", []{ /* work */ });
-  registry().apply_all(
+  registry().apply(
     [](const RegisteredThreadInfo& e){ return e.componentTag=="io"; },
     [&](const RegisteredThreadInfo& e){ (void)registry().set_priority(e.tid, ThreadPriority{0}); }
   );
@@ -180,7 +180,7 @@ int main() {
   composite.attach(&libA_registry());
   composite.attach(&libB_registry());
 
-  composite.apply_all(
+  composite.apply(
     [](const RegisteredThreadInfo&){ return true; },
     [&](const RegisteredThreadInfo& e){ (void)registry().set_priority(e.tid, ThreadPriority{0}); }
   );

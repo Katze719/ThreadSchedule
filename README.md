@@ -156,7 +156,7 @@ int main() {
     });
 
     // Example: rename and set priority for all IO-tagged threads
-    registry().apply_all(
+    registry().apply(
         [](const RegisteredThreadInfo& e){ return e.componentTag=="io"; },
         [&](const RegisteredThreadInfo& e){
             (void)registry().set_name(e.tid, std::string("io-")+e.name);
