@@ -201,6 +201,8 @@ if(THREADSCHEDULE_RUNTIME)
         src/runtime_registry.cpp
     )
     target_compile_definitions(ThreadScheduleRuntime PRIVATE THREADSCHEDULE_EXPORTS THREADSCHEDULE_RUNTIME)
+    # Propagate the THREADSCHEDULE_RUNTIME define to consumers so headers call into the DLL
+    target_compile_definitions(ThreadScheduleRuntime INTERFACE THREADSCHEDULE_RUNTIME)
     target_include_directories(ThreadScheduleRuntime
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -230,6 +232,16 @@ if(THREADSCHEDULE_INSTALL)
         EXPORT ThreadScheduleTargets
         INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )
+
+    if(THREADSCHEDULE_RUNTIME)
+        install(TARGETS ThreadScheduleRuntime
+            EXPORT ThreadScheduleTargets
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        )
+    endif()
 
     # Export configuration
     install(EXPORT ThreadScheduleTargets
