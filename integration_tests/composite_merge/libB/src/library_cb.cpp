@@ -36,4 +36,9 @@ void wait_for_threads()
     threads.clear();
 }
 
+auto get_registry() -> ThreadRegistry&
+{
+    return local_registry;
+}
+
 } // namespace composite_libB
