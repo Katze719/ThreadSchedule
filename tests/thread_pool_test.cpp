@@ -263,7 +263,7 @@ TEST_F(ThreadPoolTest, PerformanceComparisonSimpleTasks)
     constexpr int num_tasks = 1000;
     constexpr int num_threads = 4;
 
-    auto test_pool = [](auto &pool) {
+    auto test_pool = [](auto& pool) {
         std::atomic<int> counter{0};
         auto start = std::chrono::high_resolution_clock::now();
 
@@ -353,7 +353,7 @@ TEST_F(ThreadPoolTest, ConcurrentSubmissions)
         });
     }
 
-    for (auto &t : submitters)
+    for (auto& t : submitters)
     {
         t.join();
     }

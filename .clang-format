@@ -118,9 +118,9 @@ PenaltyBreakTemplateDeclaration: 10
 PenaltyExcessCharacter: 1000000
 PenaltyReturnTypeOnItsOwnLine: 1000
 PenaltyIndentedWhitespace: 0
-PointerAlignment: Right
+PointerAlignment: Left
 QualifierAlignment: Custom
-QualifierOrder: [inline, static, constexpr, const, friend, volatile, restrict, type]
+QualifierOrder: [inline, static, constexpr, friend, volatile, restrict, type, const]
 ReflowComments:  true
 SortIncludes:    true
 SortJavaStaticImport: Before
