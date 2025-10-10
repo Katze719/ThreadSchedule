@@ -150,7 +150,7 @@ static void BM_Contention_SubmissionStorm(benchmark::State& state)
         // Start submitter threads
         for (size_t i = 0; i < num_submitters; ++i)
         {
-            submitters.emplace_back([&pool, &submitted_tasks, &completed_tasks, tasks_per_submitter]() {
+            submitters.emplace_back([&pool, &submitted_tasks, &completed_tasks]() {
                 std::vector<std::future<void>> futures;
                 futures.reserve(tasks_per_submitter);
 
