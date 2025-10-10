@@ -79,7 +79,6 @@ graph TB
     style TCB fill:#f57c00,stroke:#e65100,stroke-width:3px,color:#fff
     style Registry fill:#8e24aa,stroke:#4a148c,stroke-width:3px,color:#fff
     style RegInfo fill:#8e24aa,stroke:#4a148c,stroke-width:2px,color:#fff
-    style Control fill:#00897b,stroke:#004d40,stroke-width:3px,color:#fff
     style GlobalReg fill:#d81b60,stroke:#880e4f,stroke-width:2px,color:#fff
     style ExtReg fill:#d81b60,stroke:#880e4f,stroke-width:2px,color:#fff
 ```
