@@ -24,8 +24,8 @@ int main()
 
     // Phase 2: Verify individual library registries
     std::cout << "\nPhase 2: Verifying individual registries...\n";
-    int a_count = composite_libA::get_registry().count();
-    int b_count = composite_libB::get_registry().count();
+    size_t a_count = composite_libA::get_registry().count();
+    size_t b_count = composite_libB::get_registry().count();
 
     std::cout << "  LibA registry: " << a_count << " threads\n";
     std::cout << "  LibB registry: " << b_count << " threads\n";
@@ -66,7 +66,7 @@ int main()
     comp.attach(&composite_libA::get_registry());
     comp.attach(&composite_libB::get_registry());
 
-    int total = comp.count();
+    size_t total = comp.count();
     std::cout << "  Composite registry: " << total << " threads\n";
 
     if (total != 4)
@@ -77,8 +77,8 @@ int main()
 
     // Phase 5: Test composite query operations
     std::cout << "\nPhase 5: Testing composite query operations...\n";
-    int comp_a = comp.filter([](auto const& e) { return e.componentTag == "CompositeLibA"; }).count();
-    int comp_b = comp.filter([](auto const& e) { return e.componentTag == "CompositeLibB"; }).count();
+    size_t comp_a = comp.filter([](auto const& e) { return e.componentTag == "CompositeLibA"; }).count();
+    size_t comp_b = comp.filter([](auto const& e) { return e.componentTag == "CompositeLibB"; }).count();
 
     std::cout << "  Composite: LibA=" << comp_a << ", LibB=" << comp_b << "\n";
 
@@ -124,7 +124,7 @@ int main()
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    int final_total = comp.count();
+    size_t final_total = comp.count();
     bool comp_empty = comp.empty();
     bool libA_empty = composite_libA::get_registry().empty();
     bool libB_empty = composite_libB::get_registry().empty();

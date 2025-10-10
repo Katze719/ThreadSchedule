@@ -14,7 +14,8 @@ int main()
     ThreadRegistry app_registry;
     bool success = true;
 
-    // Inject the app's registry into each DSO
+    // Inject the app's registry into each DSO AND into the app itself
+    set_external_registry(&app_registry);
     appinj_libA::set_registry(&app_registry);
     appinj_libB::set_registry(&app_registry);
 
@@ -28,9 +29,9 @@ int main()
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // Verify all 4 threads are registered
-    int total = registry().count();
-    int a = registry().filter([](auto const& e) { return e.componentTag == "AppInjLibA"; }).count();
-    int b = registry().filter([](auto const& e) { return e.componentTag == "AppInjLibB"; }).count();
+    size_t total = registry().count();
+    size_t a = registry().filter([](auto const& e) { return e.componentTag == "AppInjLibA"; }).count();
+    size_t b = registry().filter([](auto const& e) { return e.componentTag == "AppInjLibB"; }).count();
 
     std::cout << "  Registry sees: total=" << total << ", A=" << a << ", B=" << b << "\n";
 
@@ -120,7 +121,7 @@ int main()
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    int final_count = registry().count();
+    size_t final_count = registry().count();
     std::cout << "  Final registry count: " << final_count << "\n";
 
     if (final_count != 0)
