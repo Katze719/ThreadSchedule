@@ -45,10 +45,10 @@ struct RegisteredThreadInfo
 {
     Tid tid{};
     std::thread::id stdId;
-    std::string name;         // logical name/tag as provided during registration
-    std::string componentTag; // optional grouping label
+    std::string name;
+    std::string componentTag;
     bool alive{true};
-    std::weak_ptr<class ThreadControlBlock> control; // optional control view
+    std::weak_ptr<class ThreadControlBlock> control;
 };
 
 class ThreadControlBlock

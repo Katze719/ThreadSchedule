@@ -1,6 +1,5 @@
 #include <appinj_libA/libA.hpp>
 #include <appinj_libB/libB.hpp>
-#include <cassert>
 #include <chrono>
 #include <iostream>
 #include <thread>
@@ -39,9 +38,22 @@ int main()
     });
     std::cout << "App registry sees: total=" << total << ", A=" << a << ", B=" << b << "\n";
 
-    assert(total == 4 && "Expected 4 total threads");
-    assert(a == 2 && "Expected 2 threads from LibA");
-    assert(b == 2 && "Expected 2 threads from LibB");
+    bool success = true;
+    if (total != 4)
+    {
+        std::cerr << "ERROR: Expected 4 total threads, got " << total << "\n";
+        success = false;
+    }
+    if (a != 2)
+    {
+        std::cerr << "ERROR: Expected 2 threads from LibA, got " << a << "\n";
+        success = false;
+    }
+    if (b != 2)
+    {
+        std::cerr << "ERROR: Expected 2 threads from LibB, got " << b << "\n";
+        success = false;
+    }
 
     appinj_libA::wait_for_threads();
     appinj_libB::wait_for_threads();
@@ -50,6 +62,14 @@ int main()
     appinj_libA::set_registry(nullptr);
     appinj_libB::set_registry(nullptr);
 
-    std::cout << "App injection integration test complete.\n";
-    return 0;
+    if (success)
+    {
+        std::cout << "App injection integration test PASSED.\n";
+        return 0;
+    }
+    else
+    {
+        std::cerr << "App injection integration test FAILED.\n";
+        return 1;
+    }
 }
