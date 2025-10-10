@@ -1,10 +1,11 @@
 # ThreadSchedule
 
-[![Tests](https://github.com/Katze719/ThreadSchedule/workflows/Tests/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/tests.yml)
-[![Integration](https://github.com/Katze719/ThreadSchedule/workflows/Integration/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/integration.yml)
-[![Code Quality](https://github.com/Katze719/ThreadSchedule/workflows/Code%20Quality/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/code-quality.yml)
-[![Release](https://github.com/Katze719/ThreadSchedule/workflows/Release/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/release.yml)
-[![Documentation](https://github.com/Katze719/ThreadSchedule/workflows/Documentation/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/documentation.yml)
+[![Tests](https://github.com/Katze719/ThreadSchedule/actions/workflows/tests.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/tests.yml)
+[![Integration](https://github.com/Katze719/ThreadSchedule/actions/workflows/integration.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/integration.yml)
+[![Registry Integration](https://github.com/Katze719/ThreadSchedule/actions/workflows/registry-integration.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/registry-integration.yml)
+[![Runtime Tests](https://github.com/Katze719/ThreadSchedule/actions/workflows/runtime-tests.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/runtime-tests.yml)
+[![Code Quality](https://github.com/Katze719/ThreadSchedule/actions/workflows/code-quality.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/code-quality.yml)
+[![Documentation](https://github.com/Katze719/ThreadSchedule/actions/workflows/documentation.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/documentation.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A modern C++ library for advanced thread management on Linux and Windows. ThreadSchedule provides enhanced wrappers for `std::thread`, `std::jthread`, and `pthread` with extended functionality including thread naming, priority management, CPU affinity, and high-performance thread pools.
@@ -13,7 +14,7 @@ Available as **header-only** or with optional **shared runtime** for multi-DSO a
 
 ## Key Features
 
-- **Modern C++**: Full C++17, C++20, and C++23 support with automatic feature detection
+- **Modern C++**: Full C++17, C++20, and C++23 support with automatic feature detection and optimization
 - **Header-Only or Shared Runtime**: Choose based on your needs
 - **Enhanced Wrappers**: Extend `std::thread`, `std::jthread`, and `pthread` with powerful features
 - **Non-owning Views**: Zero-overhead views to configure existing threads or find by name (Linux)
@@ -59,13 +60,13 @@ ThreadSchedule is designed to work on any platform with a C++17 (or newer) compi
 
 **Additional platforms:** ThreadSchedule should work on other platforms (macOS, FreeBSD, other Linux distributions) with standard C++17+ compilers, but these are not regularly tested in CI.
 
-> **Ubuntu 24.04 Clang**: Clang 14 is limited to C++17 on 24.04; for C++20/23, Clang 19 is used.
+> **Ubuntu 24.04 Clang**: Clang 14 are limited to C++17/C++20 on 24.04; for C++23, Clang 19 is used.
 >
 > **Windows ARM64**: Not currently covered by GitHub-hosted runners, requires self-hosted runner for testing.
 >
 > **MinGW**: MinGW-w64 provides full Windows API support including thread naming (Windows 10+).
 
-> ⚠️ **Known Issue (Ubuntu 24.04)**: Clang 18 with C++23 does not build reliably on Ubuntu 24.04 due to toolchain/libstdc++ incompatibilities. Use Clang 19 for C++23 on Ubuntu 24.04.
+> ⚠️ **Known Issue (Ubuntu 24.04)**: Older Clang versions with newer GCC libstdc++ may have compatibility issues. Use Clang 19 for best C++23 support on Ubuntu 24.04.
 
 ## Quick Start
 
@@ -74,7 +75,20 @@ ThreadSchedule is designed to work on any platform with a C++17 (or newer) compi
 Add to your CMakeLists.txt using [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake):
 
 ```cmake
-include(cmake/CPM.cmake)
+cmake_minimum_required(VERSION 3.14)
+project(YourProject LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Download CPM.cmake if not already present
+if(NOT EXISTS "${CMAKE_BINARY_DIR}/cmake/CPM.cmake")
+    file(DOWNLOAD
+        https://github.com/cpm-cmake/CPM.cmake/releases/download/v0.40.8/CPM.cmake
+        ${CMAKE_BINARY_DIR}/cmake/CPM.cmake
+    )
+endif()
+include(${CMAKE_BINARY_DIR}/cmake/CPM.cmake)
 
 CPMAddPackage(
     NAME ThreadSchedule
@@ -83,6 +97,7 @@ CPMAddPackage(
     OPTIONS "THREADSCHEDULE_BUILD_EXAMPLES OFF" "THREADSCHEDULE_BUILD_TESTS OFF"
 )
 
+add_executable(your_app src/main.cpp)
 target_link_libraries(your_app PRIVATE ThreadSchedule::ThreadSchedule)
 ```
 
@@ -334,20 +349,27 @@ worker.set_affinity(affinity);
 - 📋 **Builder Pattern** - Fluent API for pool construction
 - 📋 **Pipeline API** - Stream-processing patterns
 
+### 🔄 Recently Enhanced
+
+- ✅ **Error Handling System** - Comprehensive exception handling with callbacks and context
+- ✅ **Scheduled Tasks** - Flexible timer and periodic task scheduling
+- ✅ **Registry Integration Tests** - Multi-DSO compatibility validation
+- ✅ **Cross-Platform Testing** - Extended CI coverage for Linux ARM64 and Windows
+
 ### 💡 Feature Requests
 
 Have an idea for a new feature? [Open an issue](https://github.com/Katze719/ThreadSchedule/issues) or contribute via pull request!
 
 ## Performance
 
-The `HighPerformancePool` achieves:
+The `HighPerformancePool` is optimized for high-throughput scenarios:
 
-- **770k tasks/second** sustained throughput (12-core system)
-- **< 1μs** average task latency
-- **Work-stealing** for automatic load balancing
-- **Cache-optimized** data structures
+- **Work-stealing** architecture for automatic load balancing
+- **Cache-optimized** data structures for minimal memory access overhead
+- **Batch submission** support for reduced synchronization overhead
+- **Low-latency** task scheduling with minimal contention
 
-See [benchmarks/](benchmarks/) for detailed performance analysis.
+Performance varies by system configuration, workload characteristics, and task complexity. See [benchmarks/](benchmarks/) for detailed performance analysis and tuning recommendations.
 
 ## Platform-Specific Features
 
