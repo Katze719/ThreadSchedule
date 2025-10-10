@@ -35,6 +35,7 @@ Available as **header-only** or with optional **shared runtime** for multi-DSO a
 - **[Scheduled Tasks Guide](docs/SCHEDULED_TASKS.md)** - Timer and periodic task scheduling
 - **[Error Handling Guide](docs/ERROR_HANDLING.md)** - Exception handling with callbacks
 - **[CMake Reference](docs/CMAKE_REFERENCE.md)** - Build options, targets, and troubleshooting
+- **[Feature Roadmap](#feature-status--roadmap)** - Current features and future plans
 
 ## Platform Support
 
@@ -281,6 +282,61 @@ worker.set_affinity(affinity);
 ```
 
 **For more details:** See the [Integration Guide](docs/INTEGRATION.md), [Registry Guide](docs/REGISTRY.md), and [CMake Reference](docs/CMAKE_REFERENCE.md) linked at the top of this README.
+
+## Feature Status & Roadmap
+
+### ✅ Implemented Features
+
+#### Core Thread Management
+- ✅ Enhanced thread wrappers (`ThreadWrapper`, `JThreadWrapper`, `PThreadWrapper`)
+- ✅ Non-owning thread views for existing threads
+- ✅ Thread naming, priority, CPU affinity control
+- ✅ Scheduling policies (FIFO, RR, BATCH, IDLE)
+- ✅ Process-wide thread registry with chainable query API
+- ✅ Multi-DSO support (header-only + shared runtime)
+
+#### Thread Pools
+- ✅ Three pool types: `ThreadPool`, `FastThreadPool`, `HighPerformancePool`
+- ✅ Work-stealing architecture (10k+ tasks/sec)
+- ✅ Batch task submission
+- ✅ Parallel for_each support
+- ✅ Pool configuration (names, affinity, priority)
+- ✅ Built-in performance statistics
+
+#### Advanced Features
+- ✅ **Scheduled Tasks** - Run tasks at specific times, after delays, or periodically
+- ✅ **Error Handling** - Global and per-future error callbacks with detailed context
+- ✅ Template-based scheduler (works with any pool type)
+- ✅ Cancellable scheduled tasks
+- ✅ Error statistics and tracking
+
+### 🚧 In Progress / Planned Features
+
+#### High Priority
+- 📋 **Task Dependencies** - DAG-based task execution with dependencies
+- 📋 **Priority Queues** - Task prioritization within pools
+- 📋 **Resource Limits** - Max queue size, memory limits, task timeouts
+- 📋 **Thread Watchdog** - Deadlock detection and thread health monitoring
+
+#### Medium Priority
+- 📋 **Structured Concurrency** - Task groups with cancel propagation
+- 📋 **C++20 Coroutines** - co_await support for async tasks
+- 📋 **Message Channels** - Thread-safe producer-consumer channels
+- 📋 **Advanced Metrics** - Latency histograms (P50, P95, P99), historical data
+- 📋 **Dynamic Pool Sizing** - Auto-scale thread pools based on load
+- 📋 **Thread-Local Storage** - TLS management helpers
+
+#### Low Priority / Future
+- 📋 **NUMA-aware Scheduling** - Locality-aware work distribution
+- 📋 **Real-time Deadline Scheduling** - SCHED_DEADLINE support
+- 📋 **Async I/O Integration** - io_uring, IOCP integration
+- 📋 **GPU/Accelerator Support** - CUDA/OpenCL task submission
+- 📋 **Builder Pattern** - Fluent API for pool construction
+- 📋 **Pipeline API** - Stream-processing patterns
+
+### 💡 Feature Requests
+
+Have an idea for a new feature? [Open an issue](https://github.com/Katze719/ThreadSchedule/issues) or contribute via pull request!
 
 ## Performance
 
