@@ -165,14 +165,27 @@ int main() {
         // ... work ...
     });
 
-    // Example: rename and set priority for all IO-tagged threads
-    registry().apply(
-        [](const RegisteredThreadInfo& e){ return e.componentTag=="io"; },
-        [&](const RegisteredThreadInfo& e){
+    // Chainable query API - direct filter and apply operations
+    registry()
+        .filter([](const RegisteredThreadInfo& e){ return e.componentTag == "io"; })
+        .for_each([&](const RegisteredThreadInfo& e){
             (void)registry().set_name(e.tid, std::string("io-")+e.name);
             (void)registry().set_priority(e.tid, ThreadPriority{0});
-        }
-    );
+        });
+    
+    // Count threads by tag
+    auto io_count = registry()
+        .filter([](const RegisteredThreadInfo& e){ return e.componentTag == "io"; })
+        .count();
+    
+    // Check if any IO threads exist
+    bool has_io = registry().any([](const RegisteredThreadInfo& e){ return e.componentTag == "io"; });
+    
+    // Find specific thread
+    auto found = registry().find_if([](const RegisteredThreadInfo& e){ return e.name == "worker-1"; });
+    
+    // Map to extract TIDs
+    auto tids = registry().filter(...).map([](auto& e) { return e.tid; });
 
     t.join();
 }
@@ -182,7 +195,8 @@ int main() {
 
 Notes:
 - Normal wrappers (`ThreadWrapper`, `JThreadWrapper`, `PThreadWrapper`) remain zero-overhead.
-- The registry uses weak references to control blocks (Windows/Linux) when available; otherwise it falls back to direct OS APIs by TID.
+- The registry **requires control blocks** for all operations. Threads must be registered with control blocks to be controllable via the registry.
+- Use `*Reg` wrappers (e.g., `ThreadWrapperReg`) or `AutoRegisterCurrentThread` for automatic control block creation and registration.
 
 Find by name (Linux):
 
