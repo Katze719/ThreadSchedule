@@ -9,8 +9,8 @@
 using namespace threadschedule;
 
 // Benchmark configuration
-constexpr size_t MIN_THREADS = 1;
-constexpr size_t MAX_THREADS = 16;
+// constexpr size_t MIN_THREADS = 1;
+// constexpr size_t MAX_THREADS = 16; // Currently unused, kept for future reference
 
 // Task workloads for different scenarios
 struct BenchmarkWorkloads

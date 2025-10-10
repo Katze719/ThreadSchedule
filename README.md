@@ -349,27 +349,39 @@ worker.set_affinity(affinity);
 - 📋 **Builder Pattern** - Fluent API for pool construction
 - 📋 **Pipeline API** - Stream-processing patterns
 
-### 🔄 Recently Enhanced
-
-- ✅ **Error Handling System** - Comprehensive exception handling with callbacks and context
-- ✅ **Scheduled Tasks** - Flexible timer and periodic task scheduling
-- ✅ **Registry Integration Tests** - Multi-DSO compatibility validation
-- ✅ **Cross-Platform Testing** - Extended CI coverage for Linux ARM64 and Windows
-
 ### 💡 Feature Requests
 
 Have an idea for a new feature? [Open an issue](https://github.com/Katze719/ThreadSchedule/issues) or contribute via pull request!
 
 ## Performance
 
-The `HighPerformancePool` is optimized for high-throughput scenarios:
+ThreadSchedule provides comprehensive performance benchmarking with realistic real-world scenarios:
 
-- **Work-stealing** architecture for automatic load balancing
+### Benchmark Coverage
+- **7 Benchmark Suites** covering core performance, image processing, web servers, databases, and audio/video processing
+- **Real-world scenarios** including image processing workload, HTTP APIs, database operations, and streaming
+- **Platform testing** across Linux x86_64/ARM64, Windows MSVC/MinGW, and macOS
+
+### Performance Characteristics
+
+**HighPerformancePool** (Work-stealing architecture):
+- **500k-2M+ tasks/second** throughput depending on workload complexity
+- **< 20% work stealing ratio** indicates optimal load balancing
 - **Cache-optimized** data structures for minimal memory access overhead
-- **Batch submission** support for reduced synchronization overhead
-- **Low-latency** task scheduling with minimal contention
 
-Performance varies by system configuration, workload characteristics, and task complexity. See [benchmarks/](benchmarks/) for detailed performance analysis and tuning recommendations.
+**FastThreadPool** (Single queue):
+- **100k-1M tasks/second** for consistent, medium-complexity workloads
+- **Lower memory overhead** than work-stealing pools
+- **Predictable performance** for stable load patterns
+
+**ThreadPool** (Simple general-purpose):
+- **50k-500k tasks/second** for basic task distribution
+- **Lowest memory footprint** and simplest debugging
+- **Best for simple, predictable workloads**
+
+### Benchmark Results
+Performance varies by system configuration, workload characteristics, and task complexity. See [benchmarks/](benchmarks/) for detailed performance analysis, real-world scenario testing, and optimization recommendations.
+
 
 ## Platform-Specific Features
 
