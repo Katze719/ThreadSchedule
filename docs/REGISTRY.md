@@ -13,6 +13,86 @@ The registry provides a process-wide view of running threads and APIs to control
   - `threadschedule::AutoRegisterCurrentThread` – RAII auto-registration
   - `threadschedule::ThreadWrapperReg`, `JThreadWrapperReg`, `PThreadWrapperReg` – opt-in wrappers that auto-register
 
+### Architecture Overview
+
+The following diagram shows the object relationships and data flow when using `ThreadWrapperReg` (similar for `JThreadWrapperReg` and `PThreadWrapperReg`):
+
+```mermaid
+graph TB
+    subgraph "1️⃣ User Code"
+        User["<b>User creates:</b><br/>ThreadWrapperReg(name, tag, func)"]
+    end
+    
+    subgraph "2️⃣ ThreadWrapperReg Class"
+        TWR["<b>ThreadWrapperReg</b><br/>(inherits ThreadWrapper)"]
+        Lambda["<b>Wraps user function with:</b><br/>lambda capture [name, tag, func]"]
+    end
+    
+    subgraph "3️⃣ New Thread Execution"
+        Start["<b>Step 3a:</b> Thread starts"]
+        Guard["<b>Step 3b:</b> AutoRegisterCurrentThread<br/>guard(name, tag)<br/>(RAII - constructed)"]
+        Exec["<b>Step 3e:</b> Execute user function"]
+        Cleanup["<b>Step 3f:</b> AutoRegisterCurrentThread<br/>destructor called"]
+    end
+    
+    subgraph "4️⃣ ThreadControlBlock"
+        Create["<b>Step 3c:</b> create_for_current_thread()<br/>captures thread info"]
+        TCB["<b>ThreadControlBlock</b><br/>- tid (OS thread ID)<br/>- std_id (std::thread::id)<br/>- name (logical name)<br/>- componentTag (grouping)<br/>- handle (HANDLE/pthread_t)"]
+    end
+    
+    subgraph "5️⃣ ThreadRegistry (Process-Wide)"
+        Registry["<b>ThreadRegistry</b><br/>map&lt;Tid, RegisteredThreadInfo&gt;"]
+        RegInfo["<b>RegisteredThreadInfo</b><br/>- tid<br/>- stdId<br/>- name<br/>- componentTag<br/>- alive<br/>- weak_ptr&lt;ThreadControlBlock&gt;"]
+    end
+    
+    subgraph "🌐 Global Access"
+        GlobalReg["<b>registry()</b><br/>returns global singleton"]
+        ExtReg["<b>Optional:</b><br/>set_external_registry(ptr)"]
+    end
+    
+    User --> TWR
+    TWR --> Lambda
+    Lambda --> Start
+    Start --> Guard
+    Guard --> Create
+    Create -->|returns shared_ptr| TCB
+    Guard -->|Step 3d: registers with| Registry
+    TCB -->|stored as weak_ptr in| RegInfo
+    RegInfo -->|stored in map| Registry
+    Guard --> Exec
+    Exec --> Cleanup
+    Cleanup -->|unregisters from| Registry
+    
+    GlobalReg -.->|provides access to| Registry
+    ExtReg -.->|can override| GlobalReg
+    
+    RegInfo -->|uses weak_ptr to| TCB
+    
+    style User fill:#1e88e5,stroke:#0d47a1,stroke-width:3px,color:#fff
+    style TWR fill:#fb8c00,stroke:#e65100,stroke-width:3px,color:#fff
+    style Lambda fill:#fb8c00,stroke:#e65100,stroke-width:2px,color:#fff
+    style Start fill:#43a047,stroke:#1b5e20,stroke-width:2px,color:#fff
+    style Guard fill:#43a047,stroke:#1b5e20,stroke-width:3px,color:#fff
+    style Exec fill:#43a047,stroke:#1b5e20,stroke-width:2px,color:#fff
+    style Cleanup fill:#43a047,stroke:#1b5e20,stroke-width:2px,color:#fff
+    style Create fill:#f57c00,stroke:#e65100,stroke-width:2px,color:#fff
+    style TCB fill:#f57c00,stroke:#e65100,stroke-width:3px,color:#fff
+    style Registry fill:#8e24aa,stroke:#4a148c,stroke-width:3px,color:#fff
+    style RegInfo fill:#8e24aa,stroke:#4a148c,stroke-width:2px,color:#fff
+    style GlobalReg fill:#d81b60,stroke:#880e4f,stroke-width:2px,color:#fff
+    style ExtReg fill:#d81b60,stroke:#880e4f,stroke-width:2px,color:#fff
+```
+
+**Key Points:**
+
+1. **ThreadWrapperReg** wraps the user's function in a lambda that creates an `AutoRegisterCurrentThread` guard
+2. **AutoRegisterCurrentThread** (RAII) automatically registers the thread on construction and unregisters on destruction
+3. **ThreadControlBlock** holds OS-level thread handles and metadata, enabling control operations
+4. **RegisteredThreadInfo** is stored in the registry and holds a `weak_ptr` to the control block
+5. **ThreadRegistry** maintains a map of all registered threads, indexed by thread ID (Tid)
+6. **registry()** provides global access to the default registry instance
+7. Applications can query and control threads via `registry().for_each()`, `registry().apply()`, and direct control methods
+
 ### When to use which pattern?
 
 - Single app, single shared ThreadSchedule: Use `registry()` directly. Create `*Reg` threads or use `AutoRegisterCurrentThread` in worker entry.
