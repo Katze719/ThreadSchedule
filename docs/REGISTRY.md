@@ -50,17 +50,17 @@ graph TB
         ExtReg["<b>Optional:</b><br/>set_external_registry(ptr)"]
     end
     
-    User -->|| TWR
-    TWR -->|| Lambda
-    Lambda -->|| Start
-    Start -->|| Guard
-    Guard -->|| Create
+    User --> TWR
+    TWR --> Lambda
+    Lambda --> Start
+    Start --> Guard
+    Guard --> Create
     Create -->|returns shared_ptr| TCB
     Guard -->|Step 3d: registers with| Registry
     TCB -->|stored as weak_ptr in| RegInfo
     RegInfo -->|stored in map| Registry
-    Guard -->|| Exec
-    Exec -->|| Cleanup
+    Guard --> Exec
+    Exec --> Cleanup
     Cleanup -->|unregisters from| Registry
     
     GlobalReg -.->|provides access to| Registry
