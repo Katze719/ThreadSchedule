@@ -17,19 +17,21 @@ class ThreadScheduleConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     
     options = {
+        "shared_runtime": [True, False],
         "build_examples": [True, False],
         "build_tests": [True, False],
         "build_benchmarks": [True, False],
     }
     
     default_options = {
+        "shared_runtime": False,
         "build_examples": False,
         "build_tests": False,
         "build_benchmarks": False,
     }
     
-    # Header-only library - no sources
-    no_copy_source = True
+    # Header-only by default, but can build shared runtime
+    no_copy_source = False
     
     def requirements(self):
         # No runtime requirements for header-only library
@@ -53,6 +55,7 @@ class ThreadScheduleConan(ConanFile):
             else:
                 self.version = "0.0.0"
         tc = CMakeToolchain(self)
+        tc.variables["THREADSCHEDULE_RUNTIME"] = self.options.shared_runtime
         tc.variables["THREADSCHEDULE_BUILD_EXAMPLES"] = self.options.build_examples
         tc.variables["THREADSCHEDULE_BUILD_TESTS"] = self.options.build_tests
         tc.variables["THREADSCHEDULE_BUILD_BENCHMARKS"] = self.options.build_benchmarks
@@ -75,26 +78,42 @@ class ThreadScheduleConan(ConanFile):
         copy(self, "LICENSE", src=self.source_folder, dst=os.path.join(self.package_folder, "licenses"))
     
     def package_info(self):
-        # Header-only library
-        self.cpp_info.bindirs = []
-        self.cpp_info.libdirs = []
-        
         # Set include directory
         self.cpp_info.includedirs = ["include"]
         
-        # System libraries
-        if self.settings.os == "Linux":
-            self.cpp_info.system_libs = ["pthread", "rt"]
-        elif self.settings.os == "Windows":
-            pass  # Windows uses standard thread library
+        if self.options.shared_runtime:
+            # Shared runtime mode - provides both header and runtime library
+            self.cpp_info.libs = ["threadschedule"]
+            
+            # Define both components
+            self.cpp_info.components["ThreadSchedule"].includedirs = ["include"]
+            self.cpp_info.components["ThreadSchedule"].set_property("cmake_target_name", "ThreadSchedule::ThreadSchedule")
+            
+            self.cpp_info.components["Runtime"].libs = ["threadschedule"]
+            self.cpp_info.components["Runtime"].includedirs = ["include"]
+            self.cpp_info.components["Runtime"].set_property("cmake_target_name", "ThreadSchedule::Runtime")
+            
+            # System libraries
+            if self.settings.os == "Linux":
+                self.cpp_info.components["Runtime"].system_libs = ["pthread", "rt"]
+        else:
+            # Header-only mode
+            self.cpp_info.bindirs = []
+            self.cpp_info.libdirs = []
+            
+            # System libraries for header-only
+            if self.settings.os == "Linux":
+                self.cpp_info.system_libs = ["pthread", "rt"]
+            elif self.settings.os == "Windows":
+                pass  # Windows uses standard thread library
         
-        # Set the target name
+        # Set the main target name
         self.cpp_info.set_property("cmake_file_name", "ThreadSchedule")
         self.cpp_info.set_property("cmake_target_name", "ThreadSchedule::ThreadSchedule")
-        
-        # Ensure C++17 minimum
         self.cpp_info.set_property("cmake_target_aliases", ["ThreadSchedule::ThreadSchedule"])
 
     def package_id(self):
-        # Header-only library - package_id doesn't depend on settings
-        self.info.clear()
+        # Header-only mode - package_id doesn't depend on settings
+        if not self.options.shared_runtime:
+            self.info.clear()
+        # Shared runtime mode - package_id depends on settings (default behavior)
