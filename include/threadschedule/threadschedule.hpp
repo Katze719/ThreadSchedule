@@ -1,9 +1,12 @@
 #pragma once
 
 #include "concepts.hpp"
+#include "error_handler.hpp"
 #include "pthread_wrapper.hpp"
+#include "scheduled_pool.hpp"
 #include "scheduler_policy.hpp"
 #include "thread_pool.hpp"
+#include "thread_pool_with_errors.hpp"
 #include "thread_registry.hpp"
 #include "thread_wrapper.hpp"
 
@@ -36,14 +39,26 @@ namespace ts = threadschedule;
 #ifndef _WIN32
 using ts::PThreadWrapper;
 #endif
+using ts::ErrorCallback;
+using ts::ErrorHandler;
 using ts::FastThreadPool;
+using ts::FastThreadPoolWithErrors;
+using ts::FutureWithErrorHandler;
 using ts::HighPerformancePool;
+using ts::HighPerformancePoolWithErrors;
 using ts::JThreadWrapper;
 using ts::JThreadWrapperView;
+using ts::ScheduledFastThreadPool;
+using ts::ScheduledHighPerformancePool;
+using ts::ScheduledTaskHandle;
+using ts::ScheduledThreadPool;
+using ts::ScheduledThreadPoolT;
 using ts::SchedulingPolicy;
+using ts::TaskError;
 using ts::ThreadAffinity;
 using ts::ThreadByNameView;
 using ts::ThreadPool;
+using ts::ThreadPoolWithErrors;
 using ts::ThreadPriority;
 using ts::ThreadWrapper;
 using ts::ThreadWrapperView;
