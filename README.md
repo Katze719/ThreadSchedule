@@ -22,6 +22,8 @@ Available as **header-only** or with optional **shared runtime** for multi-DSO a
 - **CPU Affinity**: Pin threads to specific CPU cores
 - **Global Control Registry**: Process-wide registry to list and control running threads (affinity, priority, name)
 - **High-Performance Pools**: Work-stealing thread pool optimized for 10k+ tasks/second
+- **Scheduled Tasks**: Run tasks at specific times, after delays, or periodically
+- **Error Handling**: Comprehensive exception handling with error callbacks and context
 - **Performance Metrics**: Built-in statistics and monitoring
 - **RAII & Exception Safety**: Automatic resource management
 - **Multiple Integration Methods**: CMake, CPM, Conan, FetchContent
@@ -30,6 +32,8 @@ Available as **header-only** or with optional **shared runtime** for multi-DSO a
 
 - **[Integration Guide](docs/INTEGRATION.md)** - CMake, Conan, FetchContent, system installation
 - **[Thread Registry Guide](docs/REGISTRY.md)** - Process-wide thread control and multi-DSO patterns
+- **[Scheduled Tasks Guide](docs/SCHEDULED_TASKS.md)** - Timer and periodic task scheduling
+- **[Error Handling Guide](docs/ERROR_HANDLING.md)** - Exception handling with callbacks
 - **[CMake Reference](docs/CMAKE_REFERENCE.md)** - Build options, targets, and troubleshooting
 
 ## Platform Support
@@ -95,29 +99,34 @@ int main() {
     ThreadWrapper worker([]() {
         std::cout << "Worker running!" << std::endl;
     });
-    // Most configuration functions return expected<void, std::error_code>
-    auto set_name_result = worker.set_name("my_worker");
-    if (!set_name_result) {
-        std::cerr << "set_name failed: " << set_name_result.error().message() << std::endl;
-    }
-    auto set_prio_result = worker.set_priority(ThreadPriority::normal());
-    if (!set_prio_result) {
-        std::cerr << "set_priority failed: " << set_prio_result.error().message() << std::endl;
-    }
+    worker.set_name("my_worker");
+    worker.set_priority(ThreadPriority::normal());
     
     // High-performance thread pool
     HighPerformancePool pool(4);
-    auto cfg = pool.configure_threads("worker");
-    if (!cfg) {
-        std::cerr << "configure_threads failed: " << cfg.error().message() << std::endl;
-    }
-    auto dist = pool.distribute_across_cpus();
-    if (!dist) {
-        std::cerr << "distribute_across_cpus failed: " << dist.error().message() << std::endl;
-    }
+    pool.configure_threads("worker");
+    pool.distribute_across_cpus();
     
     auto future = pool.submit([]() { return 42; });
     std::cout << "Result: " << future.get() << std::endl;
+    
+    // Scheduled tasks (uses ThreadPool by default)
+    ScheduledThreadPool scheduler(4);
+    auto handle = scheduler.schedule_periodic(std::chrono::seconds(5), []() {
+        std::cout << "Periodic task executed!" << std::endl;
+    });
+    
+    // Or use high-performance pool for frequent tasks
+    ScheduledHighPerformancePool scheduler_hp(4);
+    auto handle_hp = scheduler_hp.schedule_periodic(std::chrono::milliseconds(100), []() {
+        std::cout << "Frequent task!" << std::endl;
+    });
+    
+    // Error handling
+    HighPerformancePoolWithErrors pool_safe(4);
+    pool_safe.add_error_callback([](const TaskError& error) {
+        std::cerr << "Task error: " << error.what() << std::endl;
+    });
     
     return 0;
 }
