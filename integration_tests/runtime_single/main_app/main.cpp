@@ -1,4 +1,3 @@
-#include <cassert>
 #include <chrono>
 #include <iostream>
 #include <library_ra/library_ra.hpp>
@@ -35,13 +34,35 @@ int main()
     });
 
     std::cout << "Total threads in runtime registry: " << total << "\n";
-    assert(total == 4);
-    assert(a == 2);
-    assert(b == 2);
+
+    bool success = true;
+    if (total != 4)
+    {
+        std::cerr << "ERROR: Expected 4 total threads, got " << total << "\n";
+        success = false;
+    }
+    if (a != 2)
+    {
+        std::cerr << "ERROR: Expected 2 threads from RuntimeLibA, got " << a << "\n";
+        success = false;
+    }
+    if (b != 2)
+    {
+        std::cerr << "ERROR: Expected 2 threads from RuntimeLibB, got " << b << "\n";
+        success = false;
+    }
 
     runtime_libA::wait_for_threads();
     runtime_libB::wait_for_threads();
 
-    std::cout << "Runtime single registry test passed!\n";
-    return 0;
+    if (success)
+    {
+        std::cout << "Runtime single registry test PASSED!\n";
+        return 0;
+    }
+    else
+    {
+        std::cerr << "Runtime single registry test FAILED!\n";
+        return 1;
+    }
 }

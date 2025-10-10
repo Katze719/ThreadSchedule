@@ -1,4 +1,3 @@
-#include <cassert>
 #include <chrono>
 #include <iostream>
 #include <library_ca/library_ca.hpp>
@@ -23,22 +22,39 @@ int main()
     // Verify individual library registries
     int a_count = 0;
     int b_count = 0;
+    bool success = true;
 
     composite_libA::get_registry().for_each([&](RegisteredThreadInfo const& info) {
         a_count++;
-        assert(info.componentTag == "CompositeLibA");
+        if (info.componentTag != "CompositeLibA")
+        {
+            std::cerr << "ERROR: LibA thread has wrong tag: " << info.componentTag << "\n";
+            success = false;
+        }
     });
 
     composite_libB::get_registry().for_each([&](RegisteredThreadInfo const& info) {
         b_count++;
-        assert(info.componentTag == "CompositeLibB");
+        if (info.componentTag != "CompositeLibB")
+        {
+            std::cerr << "ERROR: LibB thread has wrong tag: " << info.componentTag << "\n";
+            success = false;
+        }
     });
 
     std::cout << "LibA registry: " << a_count << " threads\n";
     std::cout << "LibB registry: " << b_count << " threads\n";
 
-    assert(a_count == 2 && "Expected 2 threads in LibA registry");
-    assert(b_count == 2 && "Expected 2 threads in LibB registry");
+    if (a_count != 2)
+    {
+        std::cerr << "ERROR: Expected 2 threads in LibA registry, got " << a_count << "\n";
+        success = false;
+    }
+    if (b_count != 2)
+    {
+        std::cerr << "ERROR: Expected 2 threads in LibB registry, got " << b_count << "\n";
+        success = false;
+    }
 
     // Merge library-local registries via composite view
     CompositeThreadRegistry comp;
@@ -49,11 +65,24 @@ int main()
     comp.for_each([&](RegisteredThreadInfo const&) { total++; });
 
     std::cout << "Composite registry: " << total << " threads\n";
-    assert(total == 4 && "Expected 4 threads in composite registry");
+
+    if (total != 4)
+    {
+        std::cerr << "ERROR: Expected 4 threads in composite registry, got " << total << "\n";
+        success = false;
+    }
 
     composite_libA::wait_for_threads();
     composite_libB::wait_for_threads();
 
-    std::cout << "Composite merge scenario executed.\n";
-    return 0;
+    if (success)
+    {
+        std::cout << "Composite merge scenario PASSED.\n";
+        return 0;
+    }
+    else
+    {
+        std::cerr << "Composite merge scenario FAILED.\n";
+        return 1;
+    }
 }
