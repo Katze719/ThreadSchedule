@@ -3,7 +3,6 @@
 #include "expected.hpp"
 #include "scheduler_policy.hpp"
 #include "thread_wrapper.hpp" // for ThreadInfo, ThreadAffinity
-#include <fstream>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -290,192 +289,238 @@ class ThreadRegistry
         return it->second;
     }
 
+    // Chainable query API
+    class QueryView
+    {
+      public:
+        explicit QueryView(std::vector<RegisteredThreadInfo> entries) : entries_(std::move(entries))
+        {
+        }
+
+        template <typename Predicate>
+        auto filter(Predicate&& pred) const -> QueryView
+        {
+            std::vector<RegisteredThreadInfo> filtered;
+            filtered.reserve(entries_.size());
+            for (auto const& entry : entries_)
+            {
+                if (pred(entry))
+                    filtered.push_back(entry);
+            }
+            return QueryView(std::move(filtered));
+        }
+
+        template <typename Fn>
+        void for_each(Fn&& fn) const
+        {
+            for (auto const& entry : entries_)
+            {
+                fn(entry);
+            }
+        }
+
+        [[nodiscard]] auto count() const -> size_t
+        {
+            return entries_.size();
+        }
+
+        [[nodiscard]] auto empty() const -> bool
+        {
+            return entries_.empty();
+        }
+
+        [[nodiscard]] auto entries() const -> std::vector<RegisteredThreadInfo> const&
+        {
+            return entries_;
+        }
+
+        // Transform entries to a vector of another type
+        template <typename Fn>
+        [[nodiscard]] auto map(Fn&& fn) const -> std::vector<std::invoke_result_t<Fn, RegisteredThreadInfo const&>>
+        {
+            std::vector<std::invoke_result_t<Fn, RegisteredThreadInfo const&>> result;
+            result.reserve(entries_.size());
+            for (auto const& entry : entries_)
+            {
+                result.push_back(fn(entry));
+            }
+            return result;
+        }
+
+        // Find first entry matching predicate
+        template <typename Predicate>
+        [[nodiscard]] auto find_if(Predicate&& pred) const -> std::optional<RegisteredThreadInfo>
+        {
+            for (auto const& entry : entries_)
+            {
+                if (pred(entry))
+                    return entry;
+            }
+            return std::nullopt;
+        }
+
+        template <typename Predicate>
+        [[nodiscard]] auto any(Predicate&& pred) const -> bool
+        {
+            for (auto const& entry : entries_)
+            {
+                if (pred(entry))
+                    return true;
+            }
+            return false;
+        }
+
+        template <typename Predicate>
+        [[nodiscard]] auto all(Predicate&& pred) const -> bool
+        {
+            for (auto const& entry : entries_)
+            {
+                if (!pred(entry))
+                    return false;
+            }
+            return true;
+        }
+
+        template <typename Predicate>
+        [[nodiscard]] auto none(Predicate&& pred) const -> bool
+        {
+            return !any(std::forward<Predicate>(pred));
+        }
+
+        [[nodiscard]] auto take(size_t n) const -> QueryView
+        {
+            auto result = entries_;
+            if (result.size() > n)
+                result.resize(n);
+            return QueryView(std::move(result));
+        }
+
+        [[nodiscard]] auto skip(size_t n) const -> QueryView
+        {
+            std::vector<RegisteredThreadInfo> result;
+            if (n < entries_.size())
+            {
+                result.assign(entries_.begin() + n, entries_.end());
+            }
+            return QueryView(std::move(result));
+        }
+
+      private:
+        std::vector<RegisteredThreadInfo> entries_;
+    };
+
+    // Create a query view over all registered threads
+    [[nodiscard]] auto query() const -> QueryView
+    {
+        std::vector<RegisteredThreadInfo> snapshot;
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        snapshot.reserve(threads_.size());
+        for (auto const& kv : threads_)
+        {
+            snapshot.push_back(kv.second);
+        }
+        return QueryView(std::move(snapshot));
+    }
+
+    template <typename Predicate>
+    [[nodiscard]] auto filter(Predicate&& pred) const -> QueryView
+    {
+        return query().filter(std::forward<Predicate>(pred));
+    }
+
+    [[nodiscard]] auto count() const -> size_t
+    {
+        return query().count();
+    }
+
+    [[nodiscard]] auto empty() const -> bool
+    {
+        return query().empty();
+    }
+
     template <typename Fn>
     void for_each(Fn&& fn) const
     {
-        std::shared_lock<std::shared_mutex> lock(mutex_);
-        for (auto const& kv : threads_)
-        {
-            fn(kv.second);
-        }
+        query().for_each(std::forward<Fn>(fn));
     }
 
-    // Bulk apply with predicate
     template <typename Predicate, typename Fn>
     void apply(Predicate&& pred, Fn&& fn) const
     {
-        std::vector<RegisteredThreadInfo> snapshot;
-        {
-            std::shared_lock<std::shared_mutex> lock(mutex_);
-            snapshot.reserve(threads_.size());
-            for (auto const& kv : threads_)
-            {
-                if (pred(kv.second))
-                    snapshot.push_back(kv.second);
-            }
-        }
-        for (auto const& entry : snapshot)
-        {
-            fn(entry);
-        }
+        query().filter(std::forward<Predicate>(pred)).for_each(std::forward<Fn>(fn));
     }
 
-    // Control operations (by Tid)
+    template <typename Fn>
+    [[nodiscard]] auto map(Fn&& fn) const -> std::vector<std::invoke_result_t<Fn, RegisteredThreadInfo const&>>
+    {
+        return query().map(std::forward<Fn>(fn));
+    }
+
+    template <typename Predicate>
+    [[nodiscard]] auto find_if(Predicate&& pred) const -> std::optional<RegisteredThreadInfo>
+    {
+        return query().find_if(std::forward<Predicate>(pred));
+    }
+
+    template <typename Predicate>
+    [[nodiscard]] auto any(Predicate&& pred) const -> bool
+    {
+        return query().any(std::forward<Predicate>(pred));
+    }
+
+    template <typename Predicate>
+    [[nodiscard]] auto all(Predicate&& pred) const -> bool
+    {
+        return query().all(std::forward<Predicate>(pred));
+    }
+
+    template <typename Predicate>
+    [[nodiscard]] auto none(Predicate&& pred) const -> bool
+    {
+        return query().none(std::forward<Predicate>(pred));
+    }
+
+    [[nodiscard]] auto take(size_t n) const -> QueryView
+    {
+        return query().take(n);
+    }
+
+    [[nodiscard]] auto skip(size_t n) const -> QueryView
+    {
+        return query().skip(n);
+    }
+
     [[nodiscard]] auto set_affinity(Tid tid, ThreadAffinity const& affinity) const -> expected<void, std::error_code>
     {
-#ifdef _WIN32
-        if (auto blk = lock_block(tid))
-            return blk->set_affinity(affinity);
-        HANDLE h = OpenThread(THREAD_SET_INFORMATION | THREAD_QUERY_INFORMATION, FALSE, static_cast<DWORD>(tid));
-        if (!h)
+        auto blk = lock_block(tid);
+        if (!blk)
             return unexpected(std::make_error_code(std::errc::no_such_process));
-        using SetThreadGroupAffinityFn = BOOL(WINAPI*)(HANDLE, const GROUP_AFFINITY*, PGROUP_AFFINITY);
-        HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
-        if (hMod)
-        {
-            auto set_group_affinity = reinterpret_cast<SetThreadGroupAffinityFn>(
-                reinterpret_cast<void*>(GetProcAddress(hMod, "SetThreadGroupAffinity")));
-            if (set_group_affinity && affinity.has_any())
-            {
-                GROUP_AFFINITY ga{};
-                ga.Mask = static_cast<KAFFINITY>(affinity.get_mask());
-                ga.Group = affinity.get_group();
-                BOOL ok = set_group_affinity(h, &ga, nullptr);
-                CloseHandle(h);
-                if (ok)
-                    return {};
-                return unexpected(std::make_error_code(std::errc::operation_not_permitted));
-            }
-        }
-        DWORD_PTR mask = static_cast<DWORD_PTR>(affinity.get_mask());
-        BOOL ok = SetThreadAffinityMask(h, mask);
-        CloseHandle(h);
-        if (ok)
-            return {};
-        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
-#else
-        if (auto blk = lock_block(tid))
-            return blk->set_affinity(affinity);
-        if (tid <= 0)
-            return unexpected(std::make_error_code(std::errc::invalid_argument));
-        if (sched_setaffinity(tid, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
-#endif
+        return blk->set_affinity(affinity);
     }
 
     [[nodiscard]] auto set_priority(Tid tid, ThreadPriority priority) const -> expected<void, std::error_code>
     {
-#ifdef _WIN32
-        if (auto blk = lock_block(tid))
-            return blk->set_priority(priority);
-        HANDLE h = OpenThread(THREAD_SET_INFORMATION | THREAD_QUERY_INFORMATION, FALSE, static_cast<DWORD>(tid));
-        if (!h)
+        auto blk = lock_block(tid);
+        if (!blk)
             return unexpected(std::make_error_code(std::errc::no_such_process));
-        int win_priority;
-        int prio_val = priority.value();
-        if (prio_val <= -10)
-            win_priority = THREAD_PRIORITY_IDLE;
-        else if (prio_val <= -5)
-            win_priority = THREAD_PRIORITY_LOWEST;
-        else if (prio_val < 0)
-            win_priority = THREAD_PRIORITY_BELOW_NORMAL;
-        else if (prio_val == 0)
-            win_priority = THREAD_PRIORITY_NORMAL;
-        else if (prio_val <= 5)
-            win_priority = THREAD_PRIORITY_ABOVE_NORMAL;
-        else if (prio_val <= 10)
-            win_priority = THREAD_PRIORITY_HIGHEST;
-        else
-            win_priority = THREAD_PRIORITY_TIME_CRITICAL;
-        BOOL ok = SetThreadPriority(h, win_priority);
-        CloseHandle(h);
-        if (ok)
-            return {};
-        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
-#else
-        if (auto blk = lock_block(tid))
-            return blk->set_priority(priority);
-        if (tid <= 0)
-            return unexpected(std::make_error_code(std::errc::invalid_argument));
-        int const policy = SCHED_OTHER;
-        auto params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
-        if (!params_result.has_value())
-            return unexpected(params_result.error());
-        if (sched_setscheduler(tid, policy, &params_result.value()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
-#endif
+        return blk->set_priority(priority);
     }
 
     [[nodiscard]] auto set_scheduling_policy(Tid tid, SchedulingPolicy policy, ThreadPriority priority) const
         -> expected<void, std::error_code>
     {
-#ifdef _WIN32
-        if (auto blk = lock_block(tid))
-            return blk->set_scheduling_policy(policy, priority);
-        return set_priority(tid, priority);
-#else
-        if (auto blk = lock_block(tid))
-            return blk->set_scheduling_policy(policy, priority);
-        if (tid <= 0)
-            return unexpected(std::make_error_code(std::errc::invalid_argument));
-        int policy_int = static_cast<int>(policy);
-        auto params_result = SchedulerParams::create_for_policy(policy, priority);
-        if (!params_result.has_value())
-            return unexpected(params_result.error());
-        if (sched_setscheduler(tid, policy_int, &params_result.value()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
-#endif
+        auto blk = lock_block(tid);
+        if (!blk)
+            return unexpected(std::make_error_code(std::errc::no_such_process));
+        return blk->set_scheduling_policy(policy, priority);
     }
 
     [[nodiscard]] auto set_name(Tid tid, std::string const& name) const -> expected<void, std::error_code>
     {
-#ifdef _WIN32
-        if (auto blk = lock_block(tid))
-            return blk->set_name(name);
-        HANDLE h = OpenThread(THREAD_SET_LIMITED_INFORMATION | THREAD_SET_INFORMATION, FALSE, static_cast<DWORD>(tid));
-        if (!h)
+        auto blk = lock_block(tid);
+        if (!blk)
             return unexpected(std::make_error_code(std::errc::no_such_process));
-        using SetThreadDescriptionFn = HRESULT(WINAPI*)(HANDLE, PCWSTR);
-        HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
-        if (!hMod)
-        {
-            CloseHandle(h);
-            return unexpected(std::make_error_code(std::errc::function_not_supported));
-        }
-        auto set_desc = reinterpret_cast<SetThreadDescriptionFn>(
-            reinterpret_cast<void*>(GetProcAddress(hMod, "SetThreadDescription")));
-        if (!set_desc)
-        {
-            CloseHandle(h);
-            return unexpected(std::make_error_code(std::errc::function_not_supported));
-        }
-        std::wstring wide(name.begin(), name.end());
-        HRESULT hr = set_desc(h, wide.c_str());
-        CloseHandle(h);
-        if (SUCCEEDED(hr))
-            return {};
-        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
-#else
-        if (auto blk = lock_block(tid))
-            return blk->set_name(name);
-        if (name.length() > 15)
-            return unexpected(std::make_error_code(std::errc::invalid_argument));
-        // Write to /proc/self/task/<tid>/comm
-        if (tid <= 0)
-            return unexpected(std::make_error_code(std::errc::invalid_argument));
-        std::string path = std::string("/proc/self/task/") + std::to_string(tid) + "/comm";
-        std::ofstream out(path);
-        if (!out)
-            return unexpected(std::error_code(errno, std::generic_category()));
-        out << name;
-        out.flush();
-        if (!out)
-            return unexpected(std::error_code(errno, std::generic_category()));
-        return {};
-#endif
+        return blk->set_name(name);
     }
 
   private:
@@ -530,9 +575,10 @@ class CompositeThreadRegistry
         registries_.push_back(reg);
     }
 
-    template <typename Fn>
-    void for_each(Fn&& fn) const
+    // Chainable query API
+    [[nodiscard]] auto query() const -> ThreadRegistry::QueryView
     {
+        std::vector<RegisteredThreadInfo> merged;
         std::vector<ThreadRegistry*> regs;
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -540,22 +586,79 @@ class CompositeThreadRegistry
         }
         for (auto* r : regs)
         {
-            r->for_each(fn);
+            auto view = r->query();
+            auto const& entries = view.entries();
+            merged.insert(merged.end(), entries.begin(), entries.end());
         }
+        return ThreadRegistry::QueryView(std::move(merged));
+    }
+
+    template <typename Predicate>
+    [[nodiscard]] auto filter(Predicate&& pred) const -> ThreadRegistry::QueryView
+    {
+        return query().filter(std::forward<Predicate>(pred));
+    }
+
+    [[nodiscard]] auto count() const -> size_t
+    {
+        return query().count();
+    }
+
+    [[nodiscard]] auto empty() const -> bool
+    {
+        return query().empty();
+    }
+
+    template <typename Fn>
+    void for_each(Fn&& fn) const
+    {
+        query().for_each(std::forward<Fn>(fn));
     }
 
     template <typename Predicate, typename Fn>
     void apply(Predicate&& pred, Fn&& fn) const
     {
-        std::vector<ThreadRegistry*> regs;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            regs = registries_;
-        }
-        for (auto* r : regs)
-        {
-            r->apply(pred, fn);
-        }
+        query().filter(std::forward<Predicate>(pred)).for_each(std::forward<Fn>(fn));
+    }
+
+    template <typename Fn>
+    [[nodiscard]] auto map(Fn&& fn) const -> std::vector<std::invoke_result_t<Fn, RegisteredThreadInfo const&>>
+    {
+        return query().map(std::forward<Fn>(fn));
+    }
+
+    template <typename Predicate>
+    [[nodiscard]] auto find_if(Predicate&& pred) const -> std::optional<RegisteredThreadInfo>
+    {
+        return query().find_if(std::forward<Predicate>(pred));
+    }
+
+    template <typename Predicate>
+    [[nodiscard]] auto any(Predicate&& pred) const -> bool
+    {
+        return query().any(std::forward<Predicate>(pred));
+    }
+
+    template <typename Predicate>
+    [[nodiscard]] auto all(Predicate&& pred) const -> bool
+    {
+        return query().all(std::forward<Predicate>(pred));
+    }
+
+    template <typename Predicate>
+    [[nodiscard]] auto none(Predicate&& pred) const -> bool
+    {
+        return query().none(std::forward<Predicate>(pred));
+    }
+
+    [[nodiscard]] auto take(size_t n) const -> ThreadRegistry::QueryView
+    {
+        return query().take(n);
+    }
+
+    [[nodiscard]] auto skip(size_t n) const -> ThreadRegistry::QueryView
+    {
+        return query().skip(n);
     }
 
   private:

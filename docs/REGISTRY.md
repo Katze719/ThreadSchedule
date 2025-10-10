@@ -13,6 +13,8 @@ The registry provides a process-wide view of running threads and APIs to control
   - `threadschedule::AutoRegisterCurrentThread` – RAII auto-registration
   - `threadschedule::ThreadWrapperReg`, `JThreadWrapperReg`, `PThreadWrapperReg` – opt-in wrappers that auto-register
 
+**Important:** The registry **requires control blocks** for all control operations (`set_affinity`, `set_priority`, `set_scheduling_policy`, `set_name`). Threads registered without control blocks can be queried but not controlled. Use `*Reg` wrappers or `AutoRegisterCurrentThread` to automatically create and register control blocks.
+
 ### When to use which pattern?
 
 - Single app, single shared ThreadSchedule: Use `registry()` directly. Create `*Reg` threads or use `AutoRegisterCurrentThread` in worker entry.
@@ -99,19 +101,54 @@ Notes:
 
 #### 1) Basic app usage with the default registry
 
+**New chainable API (recommended):**
 ```cpp
 #include <threadschedule/registered_threads.hpp>
 #include <threadschedule/thread_registry.hpp>
 using namespace threadschedule;
 
 int main() {
-  ThreadWrapperReg t("worker-1","io", []{ /* work */ });
-  registry().apply(
-    [](const RegisteredThreadInfo& e){ return e.componentTag=="io"; },
-    [&](const RegisteredThreadInfo& e){ (void)registry().set_priority(e.tid, ThreadPriority{0}); }
-  );
-  t.join();
+  ThreadWrapperReg t1("worker-1","io", []{ /* work */ });
+  ThreadWrapperReg t2("worker-2","compute", []{ /* work */ });
+  
+  // Filter and apply
+  registry()
+    .filter([](const RegisteredThreadInfo& e){ return e.componentTag == "io"; })
+    .for_each([&](const RegisteredThreadInfo& e){ 
+      (void)registry().set_priority(e.tid, ThreadPriority{0}); 
+    });
+  
+  // Count
+  auto io_count = registry()
+                   .filter([](const RegisteredThreadInfo& e){ return e.componentTag == "io"; })
+                   .count();
+  auto total = registry().count();
+  
+  // Predicate checks
+  bool has_io = registry().any([](auto& e){ return e.componentTag == "io"; });
+  bool all_alive = registry().all([](auto& e){ return e.alive; });
+  
+  // Find specific thread
+  auto found = registry().find_if([](auto& e){ return e.name == "worker-1"; });
+  
+  // Map - extract TIDs
+  auto tids = registry().filter([](auto& e){ return e.componentTag == "io"; })
+                        .map([](auto& e){ return e.tid; });
+  
+  // Take/Skip - pagination
+  registry().query().take(10).for_each([](auto& e){ /* ... */ });
+  
+  t1.join();
+  t2.join();
 }
+```
+
+**Legacy API (still supported):**
+```cpp
+registry().apply(
+  [](const RegisteredThreadInfo& e){ return e.componentTag=="io"; },
+  [&](const RegisteredThreadInfo& e){ (void)registry().set_priority(e.tid, ThreadPriority{0}); }
+);
 ```
 
 #### 2) App-owned global registry (injection)
@@ -190,6 +227,7 @@ void libB_start() {
 
 In the app, include the DSOs' headers (recommended) and merge via `CompositeThreadRegistry`:
 
+**New chainable API (recommended):**
 ```cpp
 // app.cpp
 #include <threadschedule/thread_registry.hpp>
@@ -209,11 +247,24 @@ int main() {
   composite.attach(&libA_registry());
   composite.attach(&libB_registry());
 
-  composite.apply(
-    [](const RegisteredThreadInfo&){ return true; },
-    [&](const RegisteredThreadInfo& e){ (void)registry().set_priority(e.tid, ThreadPriority{0}); }
-  );
+  // Query all threads across both registries - direct call
+  auto total = composite.count();
+  
+  // Filter and apply operations - direct .filter() call
+  composite
+    .filter([](const RegisteredThreadInfo& e){ return e.componentTag == "A"; })
+    .for_each([&](const RegisteredThreadInfo& e){ 
+      (void)registry().set_priority(e.tid, ThreadPriority::highest()); 
+    });
 }
+```
+
+**Legacy API (still supported):**
+```cpp
+composite.apply(
+  [](const RegisteredThreadInfo&){ return true; },
+  [&](const RegisteredThreadInfo& e){ (void)registry().set_priority(e.tid, ThreadPriority{0}); }
+);
 ```
 
 #### 4) Registering foreign threads without using wrappers
@@ -277,11 +328,16 @@ Run `runtime_main` – it will list threads from both DSOs via the single shared
 
 ### Platform notes
 
-- Linux: Control uses `pthread_*` where control blocks are present; fallback is direct `sched_*` and `/proc/self/task/<tid>/comm`.
-- Windows: Control uses a duplicated `HANDLE` where available; fallback opens a thread handle via `OpenThread`.
+- Linux: Control operations use `pthread_*` APIs via control blocks.
+- Windows: Control operations use duplicated `HANDLE`s stored in control blocks.
+
+**Control blocks are mandatory:** All registry control operations require threads to be registered with control blocks. If a thread is registered without a control block, control operations will fail with `std::errc::no_such_process`.
 
 ### Error handling
 
-All control functions return `expected<void, std::error_code>`. Typical errors include `ESRCH` (no such process/thread), `EPERM` (insufficient privileges), and `EINVAL` (invalid parameters).
+All control functions return `expected<void, std::error_code>`. Typical errors include:
+- `std::errc::no_such_process` – Thread not found in registry or no control block available
+- `std::errc::operation_not_permitted` – Insufficient privileges
+- `std::errc::invalid_argument` – Invalid parameters
 
 
