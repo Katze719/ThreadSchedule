@@ -25,9 +25,9 @@ int main()
 
     // Phase 2: Verify shared registry sees all 4 threads
     std::cout << "\nPhase 2: Verifying shared runtime registry...\n";
-    int total = registry().count();
-    int a = registry().filter([](auto const& e) { return e.componentTag == "RuntimeLibA"; }).count();
-    int b = registry().filter([](auto const& e) { return e.componentTag == "RuntimeLibB"; }).count();
+    size_t total = registry().count();
+    size_t a = registry().filter([](auto const& e) { return e.componentTag == "RuntimeLibA"; }).count();
+    size_t b = registry().filter([](auto const& e) { return e.componentTag == "RuntimeLibB"; }).count();
 
     std::cout << "  Total threads in runtime registry: " << total << "\n";
     std::cout << "  RuntimeLibA: " << a << ", RuntimeLibB: " << b << "\n";
@@ -137,7 +137,7 @@ int main()
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    int final_count = registry().count();
+    size_t final_count = registry().count();
     bool is_empty = registry().empty();
 
     std::cout << "  Final count: " << final_count << ", Empty: " << (is_empty ? "yes" : "no") << "\n";
