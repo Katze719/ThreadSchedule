@@ -19,70 +19,75 @@ The following diagram shows the object relationships and data flow when using `T
 
 ```mermaid
 graph TB
-    subgraph "User Code"
-        User["User creates:<br/>ThreadWrapperReg(name, tag, func)"]
+    subgraph "1️⃣ User Code"
+        User["<b>User creates:</b><br/>ThreadWrapperReg(name, tag, func)"]
     end
     
-    subgraph "ThreadWrapperReg Class"
-        TWR["ThreadWrapperReg<br/>(inherits ThreadWrapper)"]
-        Lambda["Wraps user function with:<br/>lambda capture [name, tag, func]"]
+    subgraph "2️⃣ ThreadWrapperReg Class"
+        TWR["<b>ThreadWrapperReg</b><br/>(inherits ThreadWrapper)"]
+        Lambda["<b>Wraps user function with:</b><br/>lambda capture [name, tag, func]"]
     end
     
-    subgraph "New Thread Execution"
-        Start["Thread starts"]
-        Guard["AutoRegisterCurrentThread<br/>guard(name, tag)<br/>(RAII - constructed)"]
-        Exec["Execute user function"]
-        Cleanup["AutoRegisterCurrentThread<br/>destructor called"]
+    subgraph "3️⃣ New Thread Execution"
+        Start["<b>Step 3a:</b> Thread starts"]
+        Guard["<b>Step 3b:</b> AutoRegisterCurrentThread<br/>guard(name, tag)<br/>(RAII - constructed)"]
+        Exec["<b>Step 3e:</b> Execute user function"]
+        Cleanup["<b>Step 3f:</b> AutoRegisterCurrentThread<br/>destructor called"]
     end
     
-    subgraph "ThreadControlBlock"
-        TCB["ThreadControlBlock<br/>• tid (OS thread ID)<br/>• std_id (std::thread::id)<br/>• name (logical name)<br/>• componentTag (grouping)<br/>• handle (HANDLE/pthread_t)"]
-        Create["create_for_current_thread()<br/>captures thread info"]
+    subgraph "4️⃣ ThreadControlBlock"
+        Create["<b>Step 3c:</b> create_for_current_thread()<br/>captures thread info"]
+        TCB["<b>ThreadControlBlock</b><br/>• tid (OS thread ID)<br/>• std_id (std::thread::id)<br/>• name (logical name)<br/>• componentTag (grouping)<br/>• handle (HANDLE/pthread_t)"]
     end
     
-    subgraph "ThreadRegistry (Process-Wide)"
-        Registry["ThreadRegistry<br/>map&lt;Tid, RegisteredThreadInfo&gt;"]
-        RegInfo["RegisteredThreadInfo<br/>• tid<br/>• stdId<br/>• name<br/>• componentTag<br/>• alive<br/>• weak_ptr&lt;ThreadControlBlock&gt;"]
+    subgraph "5️⃣ ThreadRegistry (Process-Wide)"
+        Registry["<b>ThreadRegistry</b><br/>map&lt;Tid, RegisteredThreadInfo&gt;"]
+        RegInfo["<b>RegisteredThreadInfo</b><br/>• tid<br/>• stdId<br/>• name<br/>• componentTag<br/>• alive<br/>• weak_ptr&lt;ThreadControlBlock&gt;"]
     end
     
-    subgraph "Global Access"
-        GlobalReg["registry()<br/>returns global singleton"]
-        ExtReg["Optional:<br/>set_external_registry(ptr)"]
+    subgraph "🌐 Global Access"
+        GlobalReg["<b>registry()</b><br/>returns global singleton"]
+        ExtReg["<b>Optional:</b><br/>set_external_registry(ptr)"]
     end
     
-    User -->|constructs| TWR
-    TWR -->|creates| Lambda
-    Lambda -->|spawns| Start
-    Start -->|first action| Guard
-    Guard -->|creates| Create
-    Create -->|returns shared_ptr| TCB
-    Guard -->|registers with| Registry
-    TCB -->|stored as weak_ptr in| RegInfo
-    RegInfo -->|stored in map| Registry
-    Guard -->|continues to| Exec
-    Exec -->|completes| Cleanup
-    Cleanup -->|unregisters from| Registry
+    User -->|①| TWR
+    TWR -->|②| Lambda
+    Lambda -->|③| Start
+    Start -->|④| Guard
+    Guard -->|⑤| Create
+    Create -->|⑥ returns shared_ptr| TCB
+    Guard -->|⑦ Step 3d: registers with| Registry
+    TCB -->|⑧ stored as weak_ptr in| RegInfo
+    RegInfo -->|⑨ stored in map| Registry
+    Guard -->|⑩| Exec
+    Exec -->|⑪| Cleanup
+    Cleanup -->|⑫ unregisters from| Registry
     
     GlobalReg -.->|provides access to| Registry
     ExtReg -.->|can override| GlobalReg
     
-    subgraph "Control Operations"
-        Control["Application can call:<br/>registry().set_priority(tid, prio)<br/>registry().set_affinity(tid, affinity)<br/>registry().set_name(tid, name)<br/>registry().for_each(callback)<br/>registry().apply(predicate, action)"]
+    subgraph "🔧 Control Operations"
+        Control["<b>Application can call:</b><br/>registry().set_priority(tid, prio)<br/>registry().set_affinity(tid, affinity)<br/>registry().set_name(tid, name)<br/>registry().for_each(callback)<br/>registry().apply(predicate, action)"]
     end
     
     Registry -->|enables| Control
     RegInfo -->|uses weak_ptr to| TCB
     TCB -->|provides control via| Control
     
-    style User fill:#e1f5ff
-    style TWR fill:#fff4e1
-    style Guard fill:#e8f5e9
-    style TCB fill:#fff3e0
-    style Registry fill:#f3e5f5
-    style RegInfo fill:#f3e5f5
-    style Control fill:#e0f2f1
-    style GlobalReg fill:#fce4ec
-    style ExtReg fill:#fce4ec
+    style User fill:#1e88e5,stroke:#0d47a1,stroke-width:3px,color:#fff
+    style TWR fill:#fb8c00,stroke:#e65100,stroke-width:3px,color:#fff
+    style Lambda fill:#fb8c00,stroke:#e65100,stroke-width:2px,color:#fff
+    style Start fill:#43a047,stroke:#1b5e20,stroke-width:2px,color:#fff
+    style Guard fill:#43a047,stroke:#1b5e20,stroke-width:3px,color:#fff
+    style Exec fill:#43a047,stroke:#1b5e20,stroke-width:2px,color:#fff
+    style Cleanup fill:#43a047,stroke:#1b5e20,stroke-width:2px,color:#fff
+    style Create fill:#f57c00,stroke:#e65100,stroke-width:2px,color:#fff
+    style TCB fill:#f57c00,stroke:#e65100,stroke-width:3px,color:#fff
+    style Registry fill:#8e24aa,stroke:#4a148c,stroke-width:3px,color:#fff
+    style RegInfo fill:#8e24aa,stroke:#4a148c,stroke-width:2px,color:#fff
+    style Control fill:#00897b,stroke:#004d40,stroke-width:3px,color:#fff
+    style GlobalReg fill:#d81b60,stroke:#880e4f,stroke-width:2px,color:#fff
+    style ExtReg fill:#d81b60,stroke:#880e4f,stroke-width:2px,color:#fff
 ```
 
 **Key Points:**
