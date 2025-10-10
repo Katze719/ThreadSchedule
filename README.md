@@ -7,11 +7,34 @@
 [![Documentation](https://github.com/Katze719/ThreadSchedule/workflows/Documentation/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/documentation.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A modern C++ header-only library for advanced thread management on Linux and Windows systems. ThreadSchedule provides enhanced wrappers for `std::thread`, `std::jthread`, and `pthread` with extended functionality including thread naming, priority management, CPU affinity, and high-performance thread pools.
+A modern C++ library for advanced thread management on Linux and Windows. ThreadSchedule provides enhanced wrappers for `std::thread`, `std::jthread`, and `pthread` with extended functionality including thread naming, priority management, CPU affinity, and high-performance thread pools.
 
-## Supported Platforms & Compilers
+Available as **header-only** or with optional **shared runtime** for multi-DSO applications.
 
-ThreadSchedule is continuously tested on the following configurations:
+## Key Features
+
+- **Modern C++**: Full C++17, C++20, and C++23 support with automatic feature detection
+- **Header-Only or Shared Runtime**: Choose based on your needs
+- **Enhanced Wrappers**: Extend `std::thread`, `std::jthread`, and `pthread` with powerful features
+- **Non-owning Views**: Zero-overhead views to configure existing threads or find by name (Linux)
+- **Thread Naming**: Human-readable thread names for debugging
+- **Priority & Scheduling**: Fine-grained control over thread priorities and scheduling policies
+- **CPU Affinity**: Pin threads to specific CPU cores
+- **Global Control Registry**: Process-wide registry to list and control running threads (affinity, priority, name)
+- **High-Performance Pools**: Work-stealing thread pool optimized for 10k+ tasks/second
+- **Performance Metrics**: Built-in statistics and monitoring
+- **RAII & Exception Safety**: Automatic resource management
+- **Multiple Integration Methods**: CMake, CPM, Conan, FetchContent
+
+## Documentation
+
+- **[Integration Guide](docs/INTEGRATION.md)** - CMake, Conan, FetchContent, system installation
+- **[Thread Registry Guide](docs/REGISTRY.md)** - Process-wide thread control and multi-DSO patterns
+- **[CMake Reference](docs/CMAKE_REFERENCE.md)** - Build options, targets, and troubleshooting
+
+## Platform Support
+
+ThreadSchedule is designed to work on any platform with a C++17 (or newer) compiler and standard threading support. The library is **continuously tested** on:
 
 | Platform | Compiler | C++17 | C++20 | C++23 |
 |----------|----------|:-----:|:-----:|:-----:|
@@ -24,35 +47,20 @@ ThreadSchedule is continuously tested on the following configurations:
 | **Linux (ARM64)** | | | | |
 | Ubuntu 24.04 ARM64 | GCC (system) | ✅ | ✅ | ✅ |
 | **Windows** | | | | |
-| windows-latest (2022) | MSVC 2022 | ✅ | ✅ | ✅ |
-| windows-latest (2022) | MinGW-w64 (GCC) | ✅ | ✅ | ✅ |
-| windows-2025 | MSVC 2022 | ✅ | ✅ | ✅ |
-| windows-2025 | MinGW-w64 (GCC) | ✅ | ✅ | ✅ |
+| Windows Server 2022 | MSVC 2022 | ✅ | ✅ | ✅ |
+| Windows Server 2022 | MinGW-w64 (GCC) | ✅ | ✅ | ✅ |
+| Windows Server 2025 | MSVC 2022 | ✅ | ✅ | ✅ |
+| Windows Server 2025 | MinGW-w64 (GCC) | ✅ | ✅ | ✅ |
+
+**Additional platforms:** ThreadSchedule should work on other platforms (macOS, FreeBSD, other Linux distributions) with standard C++17+ compilers, but these are not regularly tested in CI.
 
 > **Ubuntu 24.04 Clang**: Clang 14 is limited to C++17 on 24.04; for C++20/23, Clang 19 is used.
 >
-> **Windows images**: CI runs on `windows-latest` and `windows-2025` with MSVC 2022 and MinGW-w64.
->
-> **ARM64**: Linux ARM64 (`ubuntu-24.04-arm`) is included in CI. Windows ARM64 requires a self-hosted runner (not covered by GitHub-hosted runners at the moment).
+> **Windows ARM64**: Not currently covered by GitHub-hosted runners, requires self-hosted runner for testing.
 >
 > **MinGW**: MinGW-w64 provides full Windows API support including thread naming (Windows 10+).
 
-> ⚠️ Warning (Ubuntu 24.04): Clang 18 with C++23 does not build reliably on Ubuntu 24.04 due to toolchain/libstdc++ incompatibilities. Use Clang 19 for C++23 on Ubuntu 24.04.
-
-## Key Features
-
-- **Modern C++**: Full C++17, C++20, and C++23 support with automatic feature detection
-- **Header-Only**: Zero compilation, just include and go
-- **Enhanced Wrappers**: Extend `std::thread`, `std::jthread`, and `pthread` with powerful features
-- **Non-owning Views**: Zero-overhead views to configure existing threads or find by name (Linux)
-- **Thread Naming**: Human-readable thread names for debugging
-- **Priority & Scheduling**: Fine-grained control over thread priorities and scheduling policies
-- **CPU Affinity**: Pin threads to specific CPU cores
-- **Global Control Registry**: Process-wide registry to list and control running threads (affinity, priority, name)
-- **High-Performance Pools**: Work-stealing thread pool optimized for 10k+ tasks/second
-- **Performance Metrics**: Built-in statistics and monitoring
-- **RAII & Exception Safety**: Automatic resource management
-- **Multiple Integration Methods**: CMake, CPM, Conan, FetchContent
+> ⚠️ **Known Issue (Ubuntu 24.04)**: Clang 18 with C++23 does not build reliably on Ubuntu 24.04 due to toolchain/libstdc++ incompatibilities. Use Clang 19 for C++23 on Ubuntu 24.04.
 
 ## Quick Start
 
@@ -73,7 +81,7 @@ CPMAddPackage(
 target_link_libraries(your_app PRIVATE ThreadSchedule::ThreadSchedule)
 ```
 
-**Other integration methods:** See [docs/INTEGRATION.md](docs/INTEGRATION.md) for FetchContent, Conan, system installation, and more.
+**Other integration methods:** See [docs/INTEGRATION.md](docs/INTEGRATION.md) for FetchContent, Conan, system installation, and shared runtime option.
 
 ### Basic Usage
 
@@ -115,8 +123,6 @@ int main() {
 }
 ```
 
-**That's it!** 🎉 Header-only means zero compilation overhead.
-
 ### Non-owning Thread Views
 
 Operate on existing threads without owning their lifetime.
@@ -144,7 +150,7 @@ jv.request_stop();
 jv.join();
 ```
 
-### Global Thread Registry (Core Feature)
+### Global Thread Registry
 
 Opt-in registered threads with process-wide control, without imposing overhead on normal wrappers.
 
@@ -171,6 +177,8 @@ int main() {
     t.join();
 }
 ```
+
+**For multi-DSO applications:** Use the shared runtime option (`THREADSCHEDULE_RUNTIME=ON`) to ensure a single process-wide registry. See [docs/REGISTRY.md](docs/REGISTRY.md) for detailed patterns.
 
 Notes:
 - Normal wrappers (`ThreadWrapper`, `JThreadWrapper`, `PThreadWrapper`) remain zero-overhead.
@@ -249,13 +257,7 @@ ThreadAffinity affinity({0, 1, 2});  // Pin to CPUs 0, 1, 2
 worker.set_affinity(affinity);
 ```
 
-## Documentation
-
-- **[Integration Guide](docs/INTEGRATION.md)** - All integration methods (CPM, FetchContent, Conan, subdirectory, system install)
-- **[CMake Reference](docs/CMAKE_REFERENCE.md)** - Complete CMake API and configuration options
-- **[Registry Guide](docs/REGISTRY.md)** - How to use the global thread registry across apps and DSOs
-- **[Examples](examples/)** - Working code examples
-- **[Benchmarks](benchmarks/)** - Performance benchmarks and optimization guides
+**For more details:** See the [Integration Guide](docs/INTEGRATION.md), [Registry Guide](docs/REGISTRY.md), and [CMake Reference](docs/CMAKE_REFERENCE.md) linked at the top of this README.
 
 ## Performance
 
