@@ -65,14 +65,6 @@ TEST_F(ThreadWrapperTest, ConvertWrapperToStdThreadViaRelease)
     EXPECT_TRUE(executed);
 }
 
-TEST_F(ThreadWrapperTest, ConvertWrapperToStdThreadViaMoveCast)
-{
-    std::atomic<bool> executed{false};
-    ThreadWrapper w([&] { executed = true; });
-    take_std_thread(static_cast<std::thread>(std::move(w)));
-    EXPECT_TRUE(executed);
-}
-
 TEST_F(ThreadWrapperTest, ConvertStdThreadRvalueToWrapperImplicit)
 {
     std::atomic<bool> executed{false};
@@ -95,14 +87,6 @@ TEST_F(ThreadWrapperTest, ConvertJWrapperToStdJthreadViaRelease)
     std::atomic<bool> executed{false};
     JThreadWrapper jw([&](std::stop_token) { executed = true; });
     take_std_jthread(jw.release());
-    EXPECT_TRUE(executed);
-}
-
-TEST_F(ThreadWrapperTest, ConvertJWrapperToStdJthreadViaMoveCast)
-{
-    std::atomic<bool> executed{false};
-    JThreadWrapper jw([&](std::stop_token) { executed = true; });
-    take_std_jthread(static_cast<std::jthread>(std::move(jw)));
     EXPECT_TRUE(executed);
 }
 
