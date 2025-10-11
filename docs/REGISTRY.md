@@ -6,18 +6,235 @@ This guide explains how to use the process-wide thread registry in common scenar
 
 The registry provides a process-wide view of running threads and APIs to control them (affinity, priority, scheduling policy, name). It is header-only by default (with an optional shared runtime), opt-in, and compatible with both Linux and Windows.
 
+### Registry Architecture Overview
+
+```mermaid
+classDiagram
+    class ThreadRegistry {
+        +register_thread()
+        +unregister_thread()
+        +set_affinity()
+        +set_priority()
+        +set_scheduling_policy()
+        +set_name()
+        +query()
+        +filter()
+        +for_each()
+        +count()
+        +any()
+        +all()
+        +find_if()
+        +map()
+    }
+
+    class CompositeThreadRegistry {
+        +attach()
+        +query()
+        +filter()
+        +for_each()
+        +count()
+        +any()
+        +all()
+        +find_if()
+        +map()
+    }
+
+    class ThreadControlBlock {
+        +pthread_t/HANDLE
+        +thread_id
+        +name
+        +component_tag
+        +alive
+    }
+
+    class ThreadWrapperReg {
+        +ThreadWrapperReg(name, component, func)
+        +join()
+        +detach()
+    }
+
+    class AutoRegisterCurrentThread {
+        +AutoRegisterCurrentThread(name, component)
+        +AutoRegisterCurrentThread(registry, name, component)
+    }
+
+    %% Creation patterns
+    ThreadRegistry <|-- DefaultRegistry : "registry()"
+    ThreadRegistry <|-- AppRegistry : "new ThreadRegistry()"
+    ThreadRegistry <|-- ExternalRegistry : "set_external_registry"
+
+    %% Registry relationships
+    CompositeThreadRegistry "1" *-- "*" ThreadRegistry : "attaches multiple"
+
+    %% Thread registration
+    ThreadRegistry "1" *-- "*" ThreadControlBlock : "manages"
+    ThreadWrapperReg --> ThreadControlBlock : "creates and registers"
+    AutoRegisterCurrentThread --> ThreadControlBlock : "creates and registers"
+
+    %% Control operations require control blocks
+    ThreadRegistry ..> ThreadControlBlock : "control operations require"
+```
+
+**Key Components:**
+
+- **ThreadRegistry**: Core registry implementation that manages thread information and control operations
+- **CompositeThreadRegistry**: Merges multiple registries into a unified view (useful for multiple DSOs)
+- **ThreadControlBlock**: Platform-specific control structure (pthread_t on Linux, HANDLE on Windows)
+- **ThreadWrapperReg**: Thread wrapper that automatically creates and registers control blocks
+- **AutoRegisterCurrentThread**: RAII helper for registering existing threads
+
+**Creation Patterns:**
+- **Default Registry**: `registry()` returns a singleton instance
+- **App Registry**: `new ThreadRegistry()` creates application-owned instance
+- **External Registry**: `set_external_registry` injects app registry as global
+- **Runtime Registry**: Shared library provides single process-wide instance
+
+### Usage Scenarios
+
+#### 1. Single Application
+
+```mermaid
+graph TD
+    A[Application]
+    D1["registry()"]
+    T1[ThreadWrapperReg]
+    CB1["Control Block"]
+
+    A --> D1
+    D1 --> T1
+    T1 --> CB1
+
+    classDef registry fill:#1976d2
+    classDef controlBlock fill:#c2185b
+    classDef wrapper fill:#388e3c
+
+    class D1 registry
+    class CB1 controlBlock
+    class T1 wrapper
+```
+
+**Pattern**: Direct use of `registry()` singleton
+
+#### 2. Multiple DSOs - App Injection
+
+```mermaid
+graph TD
+    App[Application]
+    AR["App Registry"]
+    ER1["set_external_registry"]
+    DSO1["DSO 1"]
+    DSO2["DSO 2"]
+    T2[ThreadWrapperReg]
+    T3[ThreadWrapperReg]
+    CB2["Control Block"]
+    CB3["Control Block"]
+
+    App --> AR
+    App --> ER1
+    ER1 --> DSO1
+    ER1 --> DSO2
+    DSO1 --> T2
+    DSO2 --> T3
+    T2 --> CB2
+    T3 --> CB3
+    AR --> CB2
+    AR --> CB3
+
+    classDef registry fill:#1976d2
+    classDef controlBlock fill:#c2185b
+    classDef wrapper fill:#388e3c
+
+    class AR,DSO1,DSO2 registry
+    class CB2,CB3 controlBlock
+    class T2,T3 wrapper
+```
+
+**Pattern**: App creates registry, injects into all DSOs via `set_external_registry`
+
+#### 3. Multiple DSOs - Composite Registry
+
+```mermaid
+graph TD
+    App2[Application]
+    CR[CompositeThreadRegistry]
+    LR1["DSO 1 Local Registry"]
+    LR2["DSO 2 Local Registry"]
+    T4[ThreadWrapperReg]
+    T5[ThreadWrapperReg]
+    CB4["Control Block"]
+    CB5["Control Block"]
+
+    App2 --> CR
+    CR --> LR1
+    CR --> LR2
+    LR1 --> T4
+    LR2 --> T5
+    T4 --> CB4
+    T5 --> CB5
+    LR1 --> CB4
+    LR2 --> CB5
+
+    classDef registry fill:#1976d2
+    classDef controlBlock fill:#c2185b
+    classDef wrapper fill:#388e3c
+
+    class CR,LR1,LR2 registry
+    class CB4,CB5 controlBlock
+    class T4,T5 wrapper
+```
+
+**Pattern**: Each DSO has isolated registry, app merges views with `CompositeThreadRegistry`
+
+**Note**: Uses `ThreadWrapperReg` for automatic thread registration in each DSO's local registry
+
+#### 4. Runtime Mode
+
+```mermaid
+graph TD
+    RT["ThreadSchedule Runtime"]
+    GR["Global Registry"]
+    App3[Application]
+    DSO3["DSO 1"]
+    DSO4["DSO 2"]
+    T6[ThreadWrapperReg]
+    CB6["Control Block"]
+
+    RT --> GR
+    App3 --> GR
+    DSO3 --> GR
+    DSO4 --> GR
+    GR --> T6
+    T6 --> CB6
+
+    classDef registry fill:#1976d2
+    classDef controlBlock fill:#c2185b
+    classDef wrapper fill:#388e3c
+    classDef runtime fill:#f57c00
+
+    class GR,DSO3,DSO4 registry
+    class CB6 controlBlock
+    class T6 wrapper
+    class RT runtime
+```
+
+**Pattern**: Shared library provides single process-wide registry
+
+### Timeline:
+- **Header-only Mode**: Default registry created on first `registry()` call
+- **Runtime Mode**: Shared runtime created at startup, provides global registry instance
+
 - Core entrypoints:
   - `threadschedule::registry()` – default global registry
   - `threadschedule::set_external_registry(...)` – app-injected global registry
   - `threadschedule::CompositeThreadRegistry` – merge multiple registries (views)
   - `threadschedule::AutoRegisterCurrentThread` – RAII auto-registration
-  - `threadschedule::ThreadWrapperReg`, `JThreadWrapperReg`, `PThreadWrapperReg` – opt-in wrappers that auto-register
+  - `threadschedule::ThreadWrapperReg` – opt-in wrapper that auto-registers
 
-**Important:** The registry **requires control blocks** for all control operations (`set_affinity`, `set_priority`, `set_scheduling_policy`, `set_name`). Threads registered without control blocks can be queried but not controlled. Use `*Reg` wrappers or `AutoRegisterCurrentThread` to automatically create and register control blocks.
+**Important:** The registry **requires control blocks** for all control operations (`set_affinity`, `set_priority`, `set_scheduling_policy`, `set_name`). Threads registered without control blocks can be queried but not controlled. Use `ThreadWrapperReg` or `AutoRegisterCurrentThread` to automatically create and register control blocks.
 
 ### When to use which pattern?
 
-- Single app, single shared ThreadSchedule: Use `registry()` directly. Create `*Reg` threads or use `AutoRegisterCurrentThread` in worker entry.
+- Single app, single shared ThreadSchedule: Use `registry()` directly. Create `ThreadWrapperReg` threads or use `AutoRegisterCurrentThread` in worker entry.
 - App with multiple DSOs that also include ThreadSchedule:
   - Preferred: Ensure all components link against the same `libthreadschedule` (shared). `registry()` resolves to the same instance.
   - If components statically include ThreadSchedule: Use `set_external_registry(&appRegistry)` in `main()` and register threads to that instance everywhere.
@@ -153,23 +370,49 @@ registry().apply(
 
 #### 2) App-owned global registry (injection)
 
+**With DSO injection support:**
+
+libX (compiled into `libX.so`):
+
+```cpp
+// libX.cpp
+#include <threadschedule/thread_registry.hpp>
+#include <threadschedule/thread_wrapper.hpp>
+using namespace threadschedule;
+
+// Allow the host application to inject a registry pointer
+void libX_set_registry(ThreadRegistry* reg) {
+  set_external_registry(reg);
+}
+
+// start function used by the app
+void libX_start() {
+  ThreadWrapper t([]{
+    AutoRegisterCurrentThread guard("x-worker","X");
+    // ... work ...
+  });
+  t.detach();
+}
+```
+
+App side:
+
 ```cpp
 #include <threadschedule/thread_registry.hpp>
 using namespace threadschedule;
 
+// From each DSO's public header
+void libA_set_registry(ThreadRegistry*);
+
 int main() {
   ThreadRegistry appReg;
-  set_external_registry(&appReg); // all registry() calls now use appReg
-  // ... rest of program ...
-}
-```
+  set_external_registry(&appReg);
 
-Component thread entry (any library):
+  // Inject the same registry into DSOs
+  libA_set_registry(&appReg);
 
-```cpp
-void component_worker() {
-  AutoRegisterCurrentThread guard("comp-w","component");
-  // ... do work ...
+  libA_start();
+  // Now libA threads are registered in appReg
 }
 ```
 
@@ -290,7 +533,7 @@ libA (`examples/runtime_shared/libA.cpp`):
 ```cpp
 #include <threadschedule/thread_registry.hpp>
 #include <threadschedule/thread_wrapper.hpp>
-extern "C" void libA_start() {
+void libA_start() {
   threadschedule::ThreadWrapper t([]{
     threadschedule::AutoRegisterCurrentThread guard("rt-a1","A");
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -305,8 +548,8 @@ App (`examples/runtime_shared/main.cpp`):
 
 ```cpp
 #include <threadschedule/thread_registry.hpp>
-extern "C" void libA_start();
-extern "C" void libB_start();
+void libA_start();
+void libB_start();
 int main(){
   libA_start();
   libB_start();
@@ -339,5 +582,12 @@ All control functions return `expected<void, std::error_code>`. Typical errors i
 - `std::errc::no_such_process` – Thread not found in registry or no control block available
 - `std::errc::operation_not_permitted` – Insufficient privileges
 - `std::errc::invalid_argument` – Invalid parameters
+
+
+### Duplicate registrations
+
+- Registering the same thread more than once is safe and idempotent.
+- If a thread with the same TID is already present in the registry, subsequent registrations are a no-op.
+- Semantics: The first registration wins; existing fields (name, component tag, control block) are not overwritten by later calls.
 
 

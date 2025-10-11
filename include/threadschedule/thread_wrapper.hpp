@@ -415,7 +415,7 @@ class ThreadWrapper : public BaseThreadWrapper<std::thread, detail::OwningTag>
     ThreadWrapper() = default;
 
     // Construct by taking ownership of an existing std::thread (move)
-    explicit ThreadWrapper(std::thread&& t) noexcept
+    ThreadWrapper(std::thread&& t) noexcept
     {
         this->underlying() = std::move(t);
     }
@@ -455,6 +455,17 @@ class ThreadWrapper : public BaseThreadWrapper<std::thread, detail::OwningTag>
         }
     }
 
+    // Ownership transfer to std::thread for APIs that take plain std::thread
+    auto release() noexcept -> std::thread
+    {
+        return std::move(this->underlying());
+    }
+
+    explicit operator std::thread() && noexcept
+    {
+        return std::move(this->underlying());
+    }
+
     // Factory methods
     template <typename F, typename... Args>
     static auto create_with_config(std::string const& name, SchedulingPolicy policy, ThreadPriority priority, F&& f,
@@ -476,8 +487,18 @@ class ThreadWrapper : public BaseThreadWrapper<std::thread, detail::OwningTag>
 class ThreadWrapperView : public BaseThreadWrapper<std::thread, detail::NonOwningTag>
 {
   public:
-    explicit ThreadWrapperView(std::thread& t) : BaseThreadWrapper<std::thread, detail::NonOwningTag>(t)
+    ThreadWrapperView(std::thread& t) : BaseThreadWrapper<std::thread, detail::NonOwningTag>(t)
     {
+    }
+
+    // Non-owning access to the underlying std::thread
+    auto get() noexcept -> std::thread&
+    {
+        return this->underlying();
+    }
+    [[nodiscard]] auto get() const noexcept -> std::thread const&
+    {
+        return this->underlying();
     }
 };
 
@@ -491,9 +512,20 @@ class JThreadWrapper : public BaseThreadWrapper<std::jthread, detail::OwningTag>
     JThreadWrapper() = default;
 
     // Construct by taking ownership of an existing std::jthread (move)
-    explicit JThreadWrapper(std::jthread&& t) noexcept : BaseThreadWrapper()
+    JThreadWrapper(std::jthread&& t) noexcept : BaseThreadWrapper()
     {
         this->underlying() = std::move(t);
+    }
+
+    // Ownership transfer to std::jthread for APIs that take plain std::jthread
+    auto release() noexcept -> std::jthread
+    {
+        return std::move(this->underlying());
+    }
+
+    explicit operator std::jthread() && noexcept
+    {
+        return std::move(this->underlying());
     }
 
     template <typename F, typename... Args>
@@ -558,7 +590,7 @@ class JThreadWrapper : public BaseThreadWrapper<std::jthread, detail::OwningTag>
 class JThreadWrapperView : public BaseThreadWrapper<std::jthread, detail::NonOwningTag>
 {
   public:
-    explicit JThreadWrapperView(std::jthread& t) : BaseThreadWrapper<std::jthread, detail::NonOwningTag>(t)
+    JThreadWrapperView(std::jthread& t) : BaseThreadWrapper<std::jthread, detail::NonOwningTag>(t)
     {
     }
 
@@ -577,6 +609,16 @@ class JThreadWrapperView : public BaseThreadWrapper<std::jthread, detail::NonOwn
     std::stop_source get_stop_source()
     {
         return this->underlying().get_stop_source();
+    }
+
+    // Non-owning access to the underlying std::jthread
+    auto get() noexcept -> std::jthread&
+    {
+        return this->underlying();
+    }
+    [[nodiscard]] auto get() const noexcept -> std::jthread const&
+    {
+        return this->underlying();
     }
 };
 #else

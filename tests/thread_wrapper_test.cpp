@@ -33,6 +33,80 @@ TEST_F(ThreadWrapperTest, BasicThreadCreation)
     EXPECT_TRUE(executed);
 }
 
+namespace
+{
+void take_std_thread(std::thread t)
+{
+    t.join();
+}
+
+void take_thread_wrapper(ThreadWrapper w)
+{
+    w.join();
+}
+#if __cplusplus >= 202002L
+void take_std_jthread(std::jthread jt)
+{
+    jt.join();
+}
+
+void take_jthread_wrapper(JThreadWrapper jw)
+{
+    jw.join();
+}
+#endif
+} // namespace
+
+TEST_F(ThreadWrapperTest, ConvertWrapperToStdThreadViaRelease)
+{
+    std::atomic<bool> executed{false};
+    ThreadWrapper w([&] { executed = true; });
+    take_std_thread(w.release());
+    EXPECT_TRUE(executed);
+}
+
+TEST_F(ThreadWrapperTest, ConvertStdThreadRvalueToWrapperImplicit)
+{
+    std::atomic<bool> executed{false};
+    auto make_thread = [&]() { return std::thread([&] { executed = true; }); };
+    take_thread_wrapper(make_thread());
+    EXPECT_TRUE(executed);
+}
+
+TEST_F(ThreadWrapperTest, ConvertStdThreadMovedToWrapperImplicit)
+{
+    std::atomic<bool> executed{false};
+    std::thread t([&] { executed = true; });
+    take_thread_wrapper(std::move(t));
+    EXPECT_TRUE(executed);
+}
+
+#if __cplusplus >= 202002L
+TEST_F(ThreadWrapperTest, ConvertJWrapperToStdJthreadViaRelease)
+{
+    std::atomic<bool> executed{false};
+    JThreadWrapper jw([&](std::stop_token) { executed = true; });
+    take_std_jthread(jw.release());
+    EXPECT_TRUE(executed);
+}
+
+TEST_F(ThreadWrapperTest, ConvertStdJthreadRvalueToJWrapperImplicit)
+{
+    std::atomic<bool> executed{false};
+    auto make_jthread = [&]() { return std::jthread([&](std::stop_token) { executed = true; }); };
+    take_jthread_wrapper(make_jthread());
+    EXPECT_TRUE(executed);
+}
+
+TEST_F(ThreadWrapperTest, ConvertStdJthreadMovedToJWrapperImplicit)
+{
+    std::atomic<bool> executed{false};
+    std::jthread jt([&](std::stop_token) { executed = true; });
+    take_jthread_wrapper(std::move(jt));
+    EXPECT_TRUE(executed);
+}
+#endif
+
 // Test thread with parameters
 TEST_F(ThreadWrapperTest, ThreadWithParameters)
 {
