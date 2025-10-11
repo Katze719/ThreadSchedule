@@ -6,6 +6,202 @@ This guide explains how to use the process-wide thread registry in common scenar
 
 The registry provides a process-wide view of running threads and APIs to control them (affinity, priority, scheduling policy, name). It is header-only by default (with an optional shared runtime), opt-in, and compatible with both Linux and Windows.
 
+### Registry Architecture Overview
+
+```mermaid
+classDiagram
+    class ThreadRegistry {
+        +register_thread()
+        +unregister_thread()
+        +set_affinity()
+        +set_priority()
+        +set_scheduling_policy()
+        +set_name()
+        +query()
+        +filter()
+        +for_each()
+        +count()
+        +any()
+        +all()
+        +find_if()
+        +map()
+    }
+
+    class CompositeThreadRegistry {
+        +attach()
+        +query()
+        +filter()
+        +for_each()
+        +count()
+        +any()
+        +all()
+        +find_if()
+        +map()
+    }
+
+    class ThreadControlBlock {
+        +pthread_t/HANDLE
+        +thread_id
+        +name
+        +component_tag
+        +alive
+    }
+
+    class ThreadWrapperReg {
+        +ThreadWrapperReg(name, component, func)
+        +join()
+        +detach()
+    }
+
+    class JThreadWrapperReg {
+        +JThreadWrapperReg(name, component, func)
+        +join()
+        +detach()
+    }
+
+    class PThreadWrapperReg {
+        +PThreadWrapperReg(name, component, func)
+        +join()
+        +detach()
+    }
+
+    class AutoRegisterCurrentThread {
+        +AutoRegisterCurrentThread(name, component)
+        +AutoRegisterCurrentThread(registry, name, component)
+    }
+
+    %% Creation patterns
+    ThreadRegistry <|-- DefaultRegistry : "registry()"
+    ThreadRegistry <|-- AppRegistry : "new ThreadRegistry()"
+    ThreadRegistry <|-- ExternalRegistry : "set_external_registry"
+
+    %% Registry relationships
+    CompositeThreadRegistry "1" *-- "*" ThreadRegistry : "attaches multiple"
+
+    %% Thread registration
+    ThreadRegistry "1" *-- "*" ThreadControlBlock : "manages"
+    ThreadWrapperReg --> ThreadControlBlock : "creates and registers"
+    JThreadWrapperReg --> ThreadControlBlock : "creates and registers"
+    PThreadWrapperReg --> ThreadControlBlock : "creates and registers"
+    AutoRegisterCurrentThread --> ThreadControlBlock : "creates and registers"
+
+    %% Control operations require control blocks
+    ThreadRegistry ..> ThreadControlBlock : "control operations require"
+
+    %% Notes
+    note for DefaultRegistry "Created automatically by registry() singleton"
+    note for AppRegistry "Created by application, injected via set_external_registry"
+    note for ExternalRegistry "Runtime mode: single shared instance across process"
+    note for ThreadControlBlock "Required for all control operations (affinity, priority, etc.)"
+```
+
+**Key Components:**
+
+- **ThreadRegistry**: Core registry implementation that manages thread information and control operations
+- **CompositeThreadRegistry**: Merges multiple registries into a unified view (useful for multiple DSOs)
+- **ThreadControlBlock**: Platform-specific control structure (pthread_t on Linux, HANDLE on Windows)
+- **Wrapper Classes**: Thread wrappers that automatically create and register control blocks
+- **AutoRegisterCurrentThread**: RAII helper for registering existing threads
+
+**Creation Patterns:**
+- **Default Registry**: `registry()` returns a singleton instance
+- **App Registry**: `new ThreadRegistry()` creates application-owned instance
+- **External Registry**: `set_external_registry` injects app registry as global
+- **Runtime Registry**: Shared library provides single process-wide instance
+
+### Usage Scenarios
+
+```mermaid
+graph TD
+    %% Single Application
+    subgraph "Single App"
+        A[Application] --> D1["registry()"]
+        D1 --> T1[ThreadWrapperReg]
+        T1 --> CB1["Control Block"]
+    end
+
+    %% Multiple DSOs with Injection
+    subgraph "Multiple DSOs - App Injection"
+        App[Application] --> AR["App Registry"]
+        App --> ER1["set_external_registry"]
+        ER1 --> DSO1["DSO 1"]
+        ER1 --> DSO2["DSO 2"]
+
+        DSO1 --> T2[ThreadWrapperReg]
+        DSO2 --> T3[ThreadWrapperReg]
+        T2 --> CB2["Control Block"]
+        T3 --> CB3["Control Block"]
+        AR --> CB2
+        AR --> CB3
+    end
+
+    %% Multiple DSOs with Composite
+    subgraph "Multiple DSOs - Composite"
+        App2[Application] --> CR[CompositeThreadRegistry]
+        CR --> LR1["DSO 1 Local Registry"]
+        CR --> LR2["DSO 2 Local Registry"]
+
+        LR1 --> T4[ThreadWrapperReg]
+        LR2 --> T5[ThreadWrapperReg]
+        T4 --> CB4["Control Block"]
+        T5 --> CB5["Control Block"]
+        LR1 --> CB4
+        LR2 --> CB5
+    end
+
+    %% Runtime Mode
+    subgraph "Runtime Mode"
+        RT["ThreadSchedule Runtime"] --> GR["Global Registry"]
+        App3[Application] --> GR
+        DSO3["DSO 1"] --> GR
+        DSO4["DSO 2"] --> GR
+
+        GR --> T6[ThreadWrapperReg]
+        T6 --> CB6["Control Block"]
+    end
+
+    %% Creation timeline
+    subgraph "Creation Timeline"
+        ST[Start] --> HA["Header-only Mode"]
+        HA --> DR["Default Registry Created"]
+        DR --> TC["Thread Created"]
+        TC --> RC["Registry Control"]
+
+        ST --> RA["Runtime Mode"]
+        RA --> SR["Shared Runtime Created"]
+        SR --> TR["Thread Created"]
+        TR --> RR["Runtime Registry Control"]
+    end
+
+    %% Legend
+    subgraph "Legend"
+        CB["Control Block<br/>Required for control operations"]
+        REG["Registry<br/>Manages thread info and control"]
+        WRAP["Wrapper<br/>Auto-creates control blocks"]
+    end
+
+    classDef registry fill:#4fc3f7
+    classDef controlBlock fill:#f48fb1
+    classDef wrapper fill:#81c784
+    classDef runtime fill:#ffb74d
+
+    class AR,LR1,LR2,GR,CR,DR,SR registry
+    class CB1,CB2,CB3,CB4,CB5,CB6 controlBlock
+    class T1,T2,T3,T4,T5,T6 wrapper
+    class RT runtime
+```
+
+**Usage Patterns:**
+
+1. **Single Application**: Direct use of `registry()` singleton
+2. **Multiple DSOs - Injection**: App creates registry, injects into all DSOs via `set_external_registry()`
+3. **Multiple DSOs - Composite**: Each DSO has isolated registry, app merges views with `CompositeThreadRegistry`
+4. **Runtime Mode**: Shared library provides single process-wide registry
+
+**Thread Creation Timeline:**
+- **Header-only Mode**: Default registry created on first `registry()` call, threads created with wrappers
+- **Runtime Mode**: Shared runtime created at startup, provides global registry instance
+
 - Core entrypoints:
   - `threadschedule::registry()` – default global registry
   - `threadschedule::set_external_registry(...)` – app-injected global registry
