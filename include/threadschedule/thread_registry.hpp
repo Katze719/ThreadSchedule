@@ -248,7 +248,15 @@ class ThreadRegistry
 
         {
             std::unique_lock<std::shared_mutex> lock(mutex_);
-            threads_[tid] = std::move(info);
+            auto it = threads_.find(tid);
+            if (it == threads_.end())
+            {
+                threads_.emplace(tid, std::move(info));
+            }
+            else
+            {
+                // Duplicate registration of the same TID is a no-op (first registration wins)
+            }
         }
     }
 
@@ -264,7 +272,15 @@ class ThreadRegistry
         info.alive = true;
         info.control = controlBlock;
         std::unique_lock<std::shared_mutex> lock(mutex_);
-        threads_[info.tid] = std::move(info);
+        auto it = threads_.find(info.tid);
+        if (it == threads_.end())
+        {
+            threads_.emplace(info.tid, std::move(info));
+        }
+        else
+        {
+            // Duplicate registration of the same TID is a no-op (first registration wins)
+        }
     }
 
     void unregister_current_thread()

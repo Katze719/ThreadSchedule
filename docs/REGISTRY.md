@@ -387,7 +387,7 @@ void libX_set_registry(ThreadRegistry* reg) {
 
 // start function used by the app
 void libX_start() {
-  ThreadWrapperReg t([]{
+  ThreadWrapper t([]{
     AutoRegisterCurrentThread guard("x-worker","X");
     // ... work ...
   });
@@ -582,5 +582,12 @@ All control functions return `expected<void, std::error_code>`. Typical errors i
 - `std::errc::no_such_process` – Thread not found in registry or no control block available
 - `std::errc::operation_not_permitted` – Insufficient privileges
 - `std::errc::invalid_argument` – Invalid parameters
+
+
+### Duplicate registrations
+
+- Registering the same thread more than once is safe and idempotent.
+- If a thread with the same TID is already present in the registry, subsequent registrations are a no-op.
+- Semantics: The first registration wins; existing fields (name, component tag, control block) are not overwritten by later calls.
 
 
