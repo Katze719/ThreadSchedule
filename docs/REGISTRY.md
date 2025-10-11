@@ -47,20 +47,8 @@ classDiagram
         +alive
     }
 
-    class ThreadWrapperReg {
-        +ThreadWrapperReg(name, component, func)
-        +join()
-        +detach()
-    }
-
-    class JThreadWrapperReg {
-        +JThreadWrapperReg(name, component, func)
-        +join()
-        +detach()
-    }
-
-    class PThreadWrapperReg {
-        +PThreadWrapperReg(name, component, func)
+    class ThreadWrapper {
+        +ThreadWrapper(name, component, func)
         +join()
         +detach()
     }
@@ -80,9 +68,7 @@ classDiagram
 
     %% Thread registration
     ThreadRegistry "1" *-- "*" ThreadControlBlock : "manages"
-    ThreadWrapperReg --> ThreadControlBlock : "creates and registers"
-    JThreadWrapperReg --> ThreadControlBlock : "creates and registers"
-    PThreadWrapperReg --> ThreadControlBlock : "creates and registers"
+    ThreadWrapper --> ThreadControlBlock : "creates and registers"
     AutoRegisterCurrentThread --> ThreadControlBlock : "creates and registers"
 
     %% Control operations require control blocks
@@ -100,7 +86,7 @@ classDiagram
 - **ThreadRegistry**: Core registry implementation that manages thread information and control operations
 - **CompositeThreadRegistry**: Merges multiple registries into a unified view (useful for multiple DSOs)
 - **ThreadControlBlock**: Platform-specific control structure (pthread_t on Linux, HANDLE on Windows)
-- **Wrapper Classes**: Thread wrappers that automatically create and register control blocks
+- **ThreadWrapper**: Thread wrapper that automatically creates and registers control blocks
 - **AutoRegisterCurrentThread**: RAII helper for registering existing threads
 
 **Creation Patterns:**
@@ -111,95 +97,134 @@ classDiagram
 
 ### Usage Scenarios
 
+#### 1. Single Application
+
 ```mermaid
 graph TD
-    %% Single Application
-    subgraph "Single App"
-        A[Application] --> D1["registry()"]
-        D1 --> T1[ThreadWrapperReg]
-        T1 --> CB1["Control Block"]
-    end
+    A[Application]
+    D1["registry()"]
+    T1[ThreadWrapper]
+    CB1["Control Block"]
 
-    %% Multiple DSOs with Injection
-    subgraph "Multiple DSOs - App Injection"
-        App[Application] --> AR["App Registry"]
-        App --> ER1["set_external_registry"]
-        ER1 --> DSO1["DSO 1"]
-        ER1 --> DSO2["DSO 2"]
+    A --> D1
+    D1 --> T1
+    T1 --> CB1
 
-        DSO1 --> T2[ThreadWrapperReg]
-        DSO2 --> T3[ThreadWrapperReg]
-        T2 --> CB2["Control Block"]
-        T3 --> CB3["Control Block"]
-        AR --> CB2
-        AR --> CB3
-    end
+    classDef registry fill:#1976d2
+    classDef controlBlock fill:#c2185b
+    classDef wrapper fill:#388e3c
 
-    %% Multiple DSOs with Composite
-    subgraph "Multiple DSOs - Composite"
-        App2[Application] --> CR[CompositeThreadRegistry]
-        CR --> LR1["DSO 1 Local Registry"]
-        CR --> LR2["DSO 2 Local Registry"]
+    class D1 registry
+    class CB1 controlBlock
+    class T1 wrapper
+```
 
-        LR1 --> T4[ThreadWrapperReg]
-        LR2 --> T5[ThreadWrapperReg]
-        T4 --> CB4["Control Block"]
-        T5 --> CB5["Control Block"]
-        LR1 --> CB4
-        LR2 --> CB5
-    end
+**Pattern**: Direct use of `registry()` singleton
 
-    %% Runtime Mode
-    subgraph "Runtime Mode"
-        RT["ThreadSchedule Runtime"] --> GR["Global Registry"]
-        App3[Application] --> GR
-        DSO3["DSO 1"] --> GR
-        DSO4["DSO 2"] --> GR
+#### 2. Multiple DSOs - App Injection
 
-        GR --> T6[ThreadWrapperReg]
-        T6 --> CB6["Control Block"]
-    end
+```mermaid
+graph TD
+    App[Application]
+    AR["App Registry"]
+    ER1["set_external_registry"]
+    DSO1["DSO 1"]
+    DSO2["DSO 2"]
+    T2[ThreadWrapper]
+    T3[ThreadWrapper]
+    CB2["Control Block"]
+    CB3["Control Block"]
 
-    %% Creation timeline
-    subgraph "Creation Timeline"
-        ST[Start] --> HA["Header-only Mode"]
-        HA --> DR["Default Registry Created"]
-        DR --> TC["Thread Created"]
-        TC --> RC["Registry Control"]
+    App --> AR
+    App --> ER1
+    ER1 --> DSO1
+    ER1 --> DSO2
+    DSO1 --> T2
+    DSO2 --> T3
+    T2 --> CB2
+    T3 --> CB3
+    AR --> CB2
+    AR --> CB3
 
-        ST --> RA["Runtime Mode"]
-        RA --> SR["Shared Runtime Created"]
-        SR --> TR["Thread Created"]
-        TR --> RR["Runtime Registry Control"]
-    end
+    classDef registry fill:#1976d2
+    classDef controlBlock fill:#c2185b
+    classDef wrapper fill:#388e3c
 
-    %% Legend
-    subgraph "Legend"
-        CB["Control Block<br/>Required for control operations"]
-        REG["Registry<br/>Manages thread info and control"]
-        WRAP["Wrapper<br/>Auto-creates control blocks"]
-    end
+    class AR,DSO1,DSO2 registry
+    class CB2,CB3 controlBlock
+    class T2,T3 wrapper
+```
 
-    classDef registry fill:#4fc3f7
-    classDef controlBlock fill:#f48fb1
-    classDef wrapper fill:#81c784
-    classDef runtime fill:#ffb74d
+**Pattern**: App creates registry, injects into all DSOs via `set_external_registry`
 
-    class AR,LR1,LR2,GR,CR,DR,SR registry
-    class CB1,CB2,CB3,CB4,CB5,CB6 controlBlock
-    class T1,T2,T3,T4,T5,T6 wrapper
+#### 3. Multiple DSOs - Composite Registry
+
+```mermaid
+graph TD
+    App2[Application]
+    CR[CompositeThreadRegistry]
+    LR1["DSO 1 Local Registry"]
+    LR2["DSO 2 Local Registry"]
+    T4[ThreadWrapper]
+    T5[ThreadWrapper]
+    CB4["Control Block"]
+    CB5["Control Block"]
+
+    App2 --> CR
+    CR --> LR1
+    CR --> LR2
+    LR1 --> T4
+    LR2 --> T5
+    T4 --> CB4
+    T5 --> CB5
+    LR1 --> CB4
+    LR2 --> CB5
+
+    classDef registry fill:#1976d2
+    classDef controlBlock fill:#c2185b
+    classDef wrapper fill:#388e3c
+
+    class CR,LR1,LR2 registry
+    class CB4,CB5 controlBlock
+    class T4,T5 wrapper
+```
+
+**Pattern**: Each DSO has isolated registry, app merges views with `CompositeThreadRegistry`
+
+#### 4. Runtime Mode
+
+```mermaid
+graph TD
+    RT["ThreadSchedule Runtime"]
+    GR["Global Registry"]
+    App3[Application]
+    DSO3["DSO 1"]
+    DSO4["DSO 2"]
+    T6[ThreadWrapper]
+    CB6["Control Block"]
+
+    RT --> GR
+    App3 --> GR
+    DSO3 --> GR
+    DSO4 --> GR
+    GR --> T6
+    T6 --> CB6
+
+    classDef registry fill:#1976d2
+    classDef controlBlock fill:#c2185b
+    classDef wrapper fill:#388e3c
+    classDef runtime fill:#f57c00
+
+    class GR,DSO3,DSO4 registry
+    class CB6 controlBlock
+    class T6 wrapper
     class RT runtime
 ```
 
-**Usage Patterns:**
+**Pattern**: Shared library provides single process-wide registry
 
-1. **Single Application**: Direct use of `registry()` singleton
-2. **Multiple DSOs - Injection**: App creates registry, injects into all DSOs via `set_external_registry()`
-3. **Multiple DSOs - Composite**: Each DSO has isolated registry, app merges views with `CompositeThreadRegistry`
-4. **Runtime Mode**: Shared library provides single process-wide registry
-
-**Thread Creation Timeline:**
-- **Header-only Mode**: Default registry created on first `registry()` call, threads created with wrappers
+### Timeline:
+- **Header-only Mode**: Default registry created on first `registry()` call
 - **Runtime Mode**: Shared runtime created at startup, provides global registry instance
 
 - Core entrypoints:
@@ -207,13 +232,13 @@ graph TD
   - `threadschedule::set_external_registry(...)` – app-injected global registry
   - `threadschedule::CompositeThreadRegistry` – merge multiple registries (views)
   - `threadschedule::AutoRegisterCurrentThread` – RAII auto-registration
-  - `threadschedule::ThreadWrapperReg`, `JThreadWrapperReg`, `PThreadWrapperReg` – opt-in wrappers that auto-register
+  - `threadschedule::ThreadWrapper` – opt-in wrapper that auto-registers
 
-**Important:** The registry **requires control blocks** for all control operations (`set_affinity`, `set_priority`, `set_scheduling_policy`, `set_name`). Threads registered without control blocks can be queried but not controlled. Use `*Reg` wrappers or `AutoRegisterCurrentThread` to automatically create and register control blocks.
+**Important:** The registry **requires control blocks** for all control operations (`set_affinity`, `set_priority`, `set_scheduling_policy`, `set_name`). Threads registered without control blocks can be queried but not controlled. Use `ThreadWrapper` or `AutoRegisterCurrentThread` to automatically create and register control blocks.
 
 ### When to use which pattern?
 
-- Single app, single shared ThreadSchedule: Use `registry()` directly. Create `*Reg` threads or use `AutoRegisterCurrentThread` in worker entry.
+- Single app, single shared ThreadSchedule: Use `registry()` directly. Create `ThreadWrapper` threads or use `AutoRegisterCurrentThread` in worker entry.
 - App with multiple DSOs that also include ThreadSchedule:
   - Preferred: Ensure all components link against the same `libthreadschedule` (shared). `registry()` resolves to the same instance.
   - If components statically include ThreadSchedule: Use `set_external_registry(&appRegistry)` in `main()` and register threads to that instance everywhere.
