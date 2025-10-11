@@ -223,15 +223,15 @@ int main()
 
         std::cout << "\n=== Performance Summary ===" << std::endl;
         std::cout << "The optimized ThreadPool achieves:" << std::endl;
-        std::cout << "• 100K+ tasks/second for minimal tasks" << std::endl;
-        std::cout << "• Efficient work stealing with < 20% stealing ratio" << std::endl;
-        std::cout << "• Low overhead batch processing" << std::endl;
-        std::cout << "• Scalable parallel algorithms" << std::endl;
+        std::cout << "- 100K+ tasks/second for minimal tasks" << std::endl;
+        std::cout << "- Efficient work stealing with < 20% stealing ratio" << std::endl;
+        std::cout << "- Low overhead batch processing" << std::endl;
+        std::cout << "- Scalable parallel algorithms" << std::endl;
         std::cout << "\nFor 10K+ tasks/second workloads:" << std::endl;
-        std::cout << "• Use batch submission when possible" << std::endl;
-        std::cout << "• Keep tasks < 100μs duration" << std::endl;
-        std::cout << "• Monitor work stealing ratio" << std::endl;
-        std::cout << "• Configure CPU affinity for CPU-bound work" << std::endl;
+        std::cout << "- Use batch submission when possible" << std::endl;
+        std::cout << "- Keep tasks < 100μs duration" << std::endl;
+        std::cout << "- Monitor work stealing ratio" << std::endl;
+        std::cout << "- Configure CPU affinity for CPU-bound work" << std::endl;
     }
     catch (std::exception const& e)
     {
