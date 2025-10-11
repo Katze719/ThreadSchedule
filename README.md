@@ -165,6 +165,28 @@ v.set_affinity(ThreadAffinity({0}));
 v.join(); // joins the underlying t
 ```
 
+#### Using thread views with APIs expecting std::thread/std::jthread references
+
+- Views do not own threads. Use `.get()` to pass a reference to APIs that expect `std::thread&` or (C++20) `std::jthread&`.
+- Ownership stays with the original `std::thread`/`std::jthread` object.
+
+```cpp
+void configure(std::thread& t);
+
+std::thread t([]{ /* work */ });
+ThreadWrapperView v(t);
+configure(v.get()); // non-owning reference
+```
+
+You can also pass threads directly to APIs that take views; the view is created implicitly (non-owning):
+
+```cpp
+void operate(threadschedule::ThreadWrapperView v);
+
+std::thread t2([]{});
+operate(t2); // implicit, non-owning
+```
+
 `std::jthread` (C++20):
 
 ```cpp
@@ -256,6 +278,29 @@ auto value = pool.submit([]{ return 42; }); // standard future-based API remains
 | `ThreadWrapper` | Enhanced `std::thread` with naming, priority, affinity | Linux, Windows |
 | `JThreadWrapper` | Enhanced `std::jthread` with cooperative cancellation (C++20) | Linux, Windows |
 | `PThreadWrapper` | Modern C++ interface for POSIX threads | Linux only |
+
+#### Passing wrappers into APIs expecting std::thread/std::jthread
+
+- `std::thread` and `std::jthread` are move-only. When an API expects `std::thread&&` or `std::jthread&&`, pass the underlying thread via `release()` from the wrapper.
+- Avoid relying on implicit conversions; `release()` clearly transfers ownership and prevents accidental selection of the functor constructor of `std::thread`.
+
+```cpp
+void accept_std_thread(std::thread&& t);
+
+ThreadWrapper w([]{ /* work */ });
+accept_std_thread(w.release()); // move ownership of the underlying std::thread
+```
+
+- Conversely, you can construct wrappers from rvalue threads:
+```cpp
+void take_wrapper(ThreadWrapper w);
+
+std::thread make_thread();
+take_wrapper(make_thread());       // implicit move into ThreadWrapper
+
+std::thread t([]{});
+take_wrapper(std::move(t));        // explicit move into ThreadWrapper
+```
 
 ### Thread Views (non-owning)
 
