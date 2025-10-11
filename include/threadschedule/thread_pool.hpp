@@ -135,13 +135,16 @@ class WorkStealingDeque
 /**
  * @brief High-performance thread pool optimized for high-frequency task submission
  *
- * Optimizations for 10k+ tasks/second:
+ * Optimizations for 1k+ tasks with 10k+ tasks/second throughput:
  * - Work-stealing architecture with proper synchronization
  * - Per-thread queues with efficient load balancing
- * - Batch processing support
+ * - Batch processing support for maximum throughput
  * - Optimized wake-up mechanisms
- * - Cache-friendly data structures
+ * - Cache-friendly data structures with proper alignment
  * - Performance monitoring and statistics
+ *
+ * Note: Has overhead for small task counts (< 100 tasks) due to work-stealing complexity.
+ * Best for high-throughput scenarios like image processing, batch operations, etc.
  */
 class HighPerformancePool
 {
@@ -593,6 +596,9 @@ class HighPerformancePool
  *
  * Alternative implementation for cases where work-stealing overhead is not justified.
  * Uses a single queue with optimized batch processing and minimal locking.
+ *
+ * Best for: Medium workloads (100-10k tasks), consistent task patterns where
+ * work-stealing complexity isn't needed but better performance than basic ThreadPool is desired.
  */
 class FastThreadPool
 {
@@ -870,10 +876,13 @@ class FastThreadPool
  * @brief Simple thread pool for general-purpose use
  *
  * This is a straightforward thread pool implementation suitable for:
- * - General application use (< 1000 tasks/second)
+ * - Simple workloads with low task counts (< 1k tasks)
+ * - General application use (50k-500k tasks/second)
  * - Simple task submission patterns
- * - Lower memory overhead
+ * - Lower memory overhead and complexity
  * - Easier to understand and debug
+ *
+ * For high-throughput scenarios (> 1k tasks), consider FastThreadPool or HighPerformancePool.
  */
 class ThreadPool
 {

@@ -89,7 +89,7 @@ static void BM_CacheUnfriendly_HighPerformancePool(benchmark::State& state)
 
         for (size_t t = 0; t < num_threads; ++t)
         {
-            futures.push_back(pool.submit([&data, t, stride, elements_per_thread]() {
+            futures.push_back(pool.submit([&data, t, elements_per_thread]() {
                 CacheLineBenchmark::cache_unfriendly_task(data, t, stride, elements_per_thread);
             }));
         }
@@ -207,7 +207,7 @@ static void BM_FalseSharing_Avoided(benchmark::State& state)
 
         for (size_t t = 0; t < num_threads; ++t)
         {
-            futures.push_back(pool.submit([&test_data, t, increments_per_thread]() {
+            futures.push_back(pool.submit([&test_data, t]() {
                 std::atomic<size_t>* counter = nullptr;
                 switch (t % 4)
                 {
