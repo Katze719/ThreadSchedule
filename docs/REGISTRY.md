@@ -47,8 +47,8 @@ classDiagram
         +alive
     }
 
-    class ThreadWrapper {
-        +ThreadWrapper(name, component, func)
+    class ThreadWrapperReg {
+        +ThreadWrapperReg(name, component, func)
         +join()
         +detach()
     }
@@ -68,17 +68,11 @@ classDiagram
 
     %% Thread registration
     ThreadRegistry "1" *-- "*" ThreadControlBlock : "manages"
-    ThreadWrapper --> ThreadControlBlock : "creates and registers"
+    ThreadWrapperReg --> ThreadControlBlock : "creates and registers"
     AutoRegisterCurrentThread --> ThreadControlBlock : "creates and registers"
 
     %% Control operations require control blocks
     ThreadRegistry ..> ThreadControlBlock : "control operations require"
-
-    %% Notes
-    note for DefaultRegistry "Created automatically by registry() singleton"
-    note for AppRegistry "Created by application, injected via set_external_registry"
-    note for ExternalRegistry "Runtime mode: single shared instance across process"
-    note for ThreadControlBlock "Required for all control operations (affinity, priority, etc.)"
 ```
 
 **Key Components:**
@@ -86,7 +80,7 @@ classDiagram
 - **ThreadRegistry**: Core registry implementation that manages thread information and control operations
 - **CompositeThreadRegistry**: Merges multiple registries into a unified view (useful for multiple DSOs)
 - **ThreadControlBlock**: Platform-specific control structure (pthread_t on Linux, HANDLE on Windows)
-- **ThreadWrapper**: Thread wrapper that automatically creates and registers control blocks
+- **ThreadWrapperReg**: Thread wrapper that automatically creates and registers control blocks
 - **AutoRegisterCurrentThread**: RAII helper for registering existing threads
 
 **Creation Patterns:**
@@ -103,7 +97,7 @@ classDiagram
 graph TD
     A[Application]
     D1["registry()"]
-    T1[ThreadWrapper]
+    T1[ThreadWrapperReg]
     CB1["Control Block"]
 
     A --> D1
@@ -130,8 +124,8 @@ graph TD
     ER1["set_external_registry"]
     DSO1["DSO 1"]
     DSO2["DSO 2"]
-    T2[ThreadWrapper]
-    T3[ThreadWrapper]
+    T2[ThreadWrapperReg]
+    T3[ThreadWrapperReg]
     CB2["Control Block"]
     CB3["Control Block"]
 
@@ -165,8 +159,8 @@ graph TD
     CR[CompositeThreadRegistry]
     LR1["DSO 1 Local Registry"]
     LR2["DSO 2 Local Registry"]
-    T4[ThreadWrapper]
-    T5[ThreadWrapper]
+    T4[ThreadWrapperReg]
+    T5[ThreadWrapperReg]
     CB4["Control Block"]
     CB5["Control Block"]
 
@@ -200,7 +194,7 @@ graph TD
     App3[Application]
     DSO3["DSO 1"]
     DSO4["DSO 2"]
-    T6[ThreadWrapper]
+    T6[ThreadWrapperReg]
     CB6["Control Block"]
 
     RT --> GR
@@ -232,13 +226,13 @@ graph TD
   - `threadschedule::set_external_registry(...)` – app-injected global registry
   - `threadschedule::CompositeThreadRegistry` – merge multiple registries (views)
   - `threadschedule::AutoRegisterCurrentThread` – RAII auto-registration
-  - `threadschedule::ThreadWrapper` – opt-in wrapper that auto-registers
+  - `threadschedule::ThreadWrapperReg` – opt-in wrapper that auto-registers
 
-**Important:** The registry **requires control blocks** for all control operations (`set_affinity`, `set_priority`, `set_scheduling_policy`, `set_name`). Threads registered without control blocks can be queried but not controlled. Use `ThreadWrapper` or `AutoRegisterCurrentThread` to automatically create and register control blocks.
+**Important:** The registry **requires control blocks** for all control operations (`set_affinity`, `set_priority`, `set_scheduling_policy`, `set_name`). Threads registered without control blocks can be queried but not controlled. Use `ThreadWrapperReg` or `AutoRegisterCurrentThread` to automatically create and register control blocks.
 
 ### When to use which pattern?
 
-- Single app, single shared ThreadSchedule: Use `registry()` directly. Create `ThreadWrapper` threads or use `AutoRegisterCurrentThread` in worker entry.
+- Single app, single shared ThreadSchedule: Use `registry()` directly. Create `ThreadWrapperReg` threads or use `AutoRegisterCurrentThread` in worker entry.
 - App with multiple DSOs that also include ThreadSchedule:
   - Preferred: Ensure all components link against the same `libthreadschedule` (shared). `registry()` resolves to the same instance.
   - If components statically include ThreadSchedule: Use `set_external_registry(&appRegistry)` in `main()` and register threads to that instance everywhere.
