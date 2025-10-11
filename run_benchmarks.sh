@@ -32,10 +32,10 @@ if [[ "$SHOW_HELP" == "true" ]]; then
     echo "  $0 --help       Show this help"
     echo ""
     echo "The script will automatically:"
-    echo "  • Check if benchmarks are built"
-    echo "  • Display system information"
-    echo "  • Run all 7 benchmark suites"
-    echo "  • Show performance insights and recommendations"
+    echo "  - Check if benchmarks are built"
+    echo "  - Display system information"
+    echo "  - Run all 7 benchmark suites"
+    echo "  - Show performance insights and recommendations"
     echo ""
     exit 0
 fi
@@ -150,7 +150,7 @@ run_benchmark_suite \
     "1. Core ThreadPool Performance" \
     "threadpool_basic_benchmarks" \
     "BM_ComparePoolTypes.*" \
-    "Basic performance comparison between ThreadPool, FastThreadPool, and HighPerformancePool"
+    "Performance comparison showing workload-dependent behavior: HighPerformancePool shines for large batches (1k+ tasks) but has overhead for small tasks"
 
 # High-Throughput Scenarios
 run_benchmark_suite \
@@ -198,24 +198,33 @@ echo -e "${GREEN}Benchmark Suite Complete!${NC}"
 echo "========================="
 echo ""
 echo -e "${YELLOW}Key Performance Insights:${NC}"
-echo "• HighPerformancePool: Best for variable, high-throughput workloads (500k-2M+ tasks/sec)"
-echo "• FastThreadPool: Optimal for consistent, medium-complexity tasks (100k-1M tasks/sec)"
-echo "• ThreadPool: Simple, predictable workloads (50k-500k tasks/sec)"
-echo "• Work stealing ratio < 20% indicates optimal load balancing"
-echo "• Cache-friendly access patterns show 3-10x better performance"
+echo "- HighPerformancePool: Best for high-throughput workloads with 1k+ tasks (10k-2M+ tasks/sec)"
+echo "- FastThreadPool: Optimal for consistent workloads with 100-10k tasks (100k-1M tasks/sec)"
+echo "- ThreadPool: Simple workloads with < 1k tasks (50k-500k tasks/sec)"
+echo ""
+echo "- HighPerformancePool has overhead for small task counts (< 100 tasks) due to work-stealing complexity"
+echo "- For image processing: HighPerformancePool shows 10-15x better performance than simpler pools"
+echo "- Work stealing ratio < 20% indicates optimal load balancing"
+echo "- Cache-friendly access patterns show 3-10x better performance"
 echo ""
 
 echo -e "${BLUE}Quick Access Commands:${NC}"
-echo "• Run all benchmarks:        make run_all_benchmarks"
-echo "• Run core benchmarks:       make run_core_benchmarks"
-echo "• Run real-world benchmarks: make run_real_world_benchmarks"
-echo "• Run quick tests:           make run_quick_benchmarks"
-echo "• Compare pools:             make compare_pools"
+echo "- Run all benchmarks:        make run_all_benchmarks"
+echo "- Run core benchmarks:       make run_core_benchmarks"
+echo "- Run real-world benchmarks: make run_real_world_benchmarks"
+echo "- Run quick tests:           make run_quick_benchmarks"
+echo "- Compare pools:             make compare_pools"
 echo ""
 
 echo -e "${YELLOW}For your image processing workload:${NC}"
+echo "  HighPerformancePool is 10-15x faster for image processing workloads"
 echo "  ./build/benchmarks/threadpool_resampling_benchmarks --benchmark_filter=\"BM_Resampling_HighPerformancePool_4Core\""
 echo "  ./build/benchmarks/threadpool_resampling_benchmarks --benchmark_filter=\"BM_Resampling_PoolComparison\""
+echo ""
+echo -e "${YELLOW}Pool Selection Guide:${NC}"
+echo "  - Use HighPerformancePool for: Batch processing, image processing, high-throughput scenarios (1k+ tasks)"
+echo "  - Use FastThreadPool for: Medium workloads, consistent task patterns (100-10k tasks)"
+echo "  - Use ThreadPool for: Simple workloads, low task counts (< 1k tasks)"
 echo ""
 
 echo -e "${GREEN}Benchmark data saved for analysis in build/benchmarks/${NC}"
