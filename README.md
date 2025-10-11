@@ -165,6 +165,28 @@ v.set_affinity(ThreadAffinity({0}));
 v.join(); // joins the underlying t
 ```
 
+#### Using thread views with APIs expecting std::thread/std::jthread references
+
+- Views do not own threads. Use `.get()` to pass a reference to APIs that expect `std::thread&` or (C++20) `std::jthread&`.
+- Ownership stays with the original `std::thread`/`std::jthread` object.
+
+```cpp
+void configure(std::thread& t);
+
+std::thread t([]{ /* work */ });
+ThreadWrapperView v(t);
+configure(v.get()); // non-owning reference
+```
+
+You can also pass threads directly to APIs that take views; the view is created implicitly (non-owning):
+
+```cpp
+void operate(threadschedule::ThreadWrapperView v);
+
+std::thread t2([]{});
+operate(t2); // implicit, non-owning
+```
+
 `std::jthread` (C++20):
 
 ```cpp
