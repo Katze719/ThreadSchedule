@@ -31,6 +31,11 @@ if [[ "$SHOW_HELP" == "true" ]]; then
     echo "  $0 --quick      Run quick benchmarks (0.5s per test, 1 repetition)"
     echo "  $0 --help       Show this help"
     echo ""
+    echo "Building benchmarks:"
+    echo "  mkdir -p build && cd build"
+    echo "  cmake .. -DCMAKE_BUILD_TYPE=Release -DTHREADSCHEDULE_BUILD_BENCHMARKS=ON"
+    echo "  cmake --build . --target threadpool_basic_benchmarks"
+    echo ""
     echo "The script will automatically:"
     echo "  - Check if benchmarks are built"
     echo "  - Display system information"
@@ -62,7 +67,7 @@ if [[ ! -d "${BUILD_DIR}" ]]; then
     echo "Please build first:"
     echo "  mkdir -p build && cd build"
     echo "  cmake .. -DCMAKE_BUILD_TYPE=Release -DTHREADSCHEDULE_BUILD_BENCHMARKS=ON"
-    echo "  cmake --build ."
+    echo "  cmake --build . --target threadpool_basic_benchmarks"
     exit 1
 fi
 
@@ -93,7 +98,7 @@ if [[ ${#MISSING_BENCHMARKS[@]} -gt 0 ]]; then
     for target in "${ALL_BENCHMARK_TARGETS[@]}"; do
         echo "  cmake --build . --target ${target}"
     done
-    echo "  # Or build all at once:"
+    echo "  # Or build all benchmarks at once:"
     echo "  cmake --build ."
     exit 1
 fi
@@ -129,7 +134,7 @@ run_benchmark_suite() {
                 --benchmark_filter="$filter"
         else
             "${BENCHMARK_DIR}/${executable}" \
-                --benchmark_min_time=2.0s \
+                --benchmark_min_time=2s \
                 --benchmark_repetitions=3 \
                 --benchmark_counters_tabular=true \
                 --benchmark_filter="$filter"
@@ -209,11 +214,17 @@ echo "- Cache-friendly access patterns show 3-10x better performance"
 echo ""
 
 echo -e "${BLUE}Quick Access Commands:${NC}"
-echo "- Run all benchmarks:        make run_all_benchmarks"
-echo "- Run core benchmarks:       make run_core_benchmarks"
-echo "- Run real-world benchmarks: make run_real_world_benchmarks"
-echo "- Run quick tests:           make run_quick_benchmarks"
-echo "- Compare pools:             make compare_pools"
+echo "- Run all benchmarks:        $0"
+echo "- Run core benchmarks:       $0 --quick"
+echo "- Run specific benchmark:    ./build/benchmarks/BENCHMARK_NAME"
+echo "- Build benchmarks:          cmake --build build --target BENCHMARK_TARGET"
+echo "- Configure with benchmarks: cmake .. -DCMAKE_BUILD_TYPE=Release -DTHREADSCHEDULE_BUILD_BENCHMARKS=ON"
+echo ""
+echo "- Alternative cmake targets (only run when explicitly requested):"
+echo "  cmake --build build --target run_core_benchmarks"
+echo "  cmake --build build --target run_real_world_benchmarks"
+echo "  cmake --build build --target run_all_benchmarks"
+echo "  cmake --build build --target run_quick_benchmarks"
 echo ""
 
 echo -e "${YELLOW}For your image processing workload:${NC}"
