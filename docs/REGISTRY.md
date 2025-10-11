@@ -100,7 +100,7 @@ graph TD
     T1[ThreadWrapperReg]
     CB1["Control Block"]
 
-    A --> D1
+    A --> |owns| D1
     D1 --> T1
     T1 --> CB1
 
@@ -129,7 +129,7 @@ graph TD
     CB2["Control Block"]
     CB3["Control Block"]
 
-    App --> AR
+    App --> |owns| AR
     App --> ER1
     ER1 --> DSO1
     ER1 --> DSO2
@@ -143,8 +143,10 @@ graph TD
     classDef registry fill:#1976d2
     classDef controlBlock fill:#c2185b
     classDef wrapper fill:#388e3c
+    classDef lib fill:#aa5500
 
-    class AR,DSO1,DSO2 registry
+    class DSO1,DSO2 lib
+    class AR registry
     class CB2,CB3 controlBlock
     class T2,T3 wrapper
 ```
@@ -157,28 +159,34 @@ graph TD
 graph TD
     App2[Application]
     CR[CompositeThreadRegistry]
-    LR1["DSO 1 Local Registry"]
-    LR2["DSO 2 Local Registry"]
+    L1["DSO 1"]
+    L2["DSO 2"]
+    R1["Local Registry"]
+    R2["Local Registry"]
     T4[ThreadWrapperReg]
     T5[ThreadWrapperReg]
     CB4["Control Block"]
     CB5["Control Block"]
 
     App2 --> CR
-    CR --> LR1
-    CR --> LR2
-    LR1 --> T4
-    LR2 --> T5
+    L1 --> |owns| R1
+    CR --> R1
+    CR --> R2
+    L2 --> |owns| R2
+    R1 --> T4
+    R2 --> T5
     T4 --> CB4
     T5 --> CB5
-    LR1 --> CB4
-    LR2 --> CB5
+    R1 --> CB4
+    R2 --> CB5
 
     classDef registry fill:#1976d2
     classDef controlBlock fill:#c2185b
     classDef wrapper fill:#388e3c
+    classDef lib fill:#aa5500
 
-    class CR,LR1,LR2 registry
+    class L1,L2 lib
+    class CR,R1,R2 registry
     class CB4,CB5 controlBlock
     class T4,T5 wrapper
 ```
@@ -199,7 +207,7 @@ graph TD
     T6[ThreadWrapperReg]
     CB6["Control Block"]
 
-    RT --> GR
+    RT --> |owns| GR
     App3 --> GR
     DSO3 --> GR
     DSO4 --> GR
@@ -207,11 +215,13 @@ graph TD
     T6 --> CB6
 
     classDef registry fill:#1976d2
+    classDef lib fill:#aa5500
     classDef controlBlock fill:#c2185b
     classDef wrapper fill:#388e3c
-    classDef runtime fill:#f57c00
+    classDef runtime fill:#aa5500
 
-    class GR,DSO3,DSO4 registry
+    class DSO3,DSO4 lib
+    class GR registry
     class CB6 controlBlock
     class T6 wrapper
     class RT runtime
