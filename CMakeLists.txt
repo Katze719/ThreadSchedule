@@ -102,6 +102,16 @@ if(THREADSCHEDULE_BUILD_BENCHMARKS)
             "BENCHMARK_ENABLE_INSTALL OFF"
             "BENCHMARK_DOWNLOAD_DEPENDENCIES ON"
     )
+
+    # Add nlohmann/json for web server and database benchmarks
+    CPMAddPackage(
+        NAME nlohmann_json
+        GITHUB_REPOSITORY nlohmann/json
+        VERSION 3.11.3
+        OPTIONS
+            "JSON_BuildTests OFF"
+            "JSON_Install OFF"
+    )
 endif()
 
 # Platform-specific requirements

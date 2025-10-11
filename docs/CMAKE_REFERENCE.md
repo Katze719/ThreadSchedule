@@ -240,7 +240,7 @@ cmake --build build
 ```
 CMake Error: CMake 3.14 or higher is required.
 ```
-**Solution**: Upgrade CMake or edit `CMakeLists.txt` to lower the requirement (at your own risk).
+**Solution**: Upgrade CMake to version 3.14 or higher. ThreadSchedule requires modern CMake features for proper dependency management and cross-platform support.
 
 ### C++ Standard Too Old
 ```
