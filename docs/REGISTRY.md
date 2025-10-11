@@ -185,6 +185,8 @@ graph TD
 
 **Pattern**: Each DSO has isolated registry, app merges views with `CompositeThreadRegistry`
 
+**Note**: Uses `ThreadWrapperReg` for automatic thread registration in each DSO's local registry
+
 #### 4. Runtime Mode
 
 ```mermaid
@@ -368,23 +370,49 @@ registry().apply(
 
 #### 2) App-owned global registry (injection)
 
+**With DSO injection support:**
+
+libX (compiled into `libX.so`):
+
+```cpp
+// libX.cpp
+#include <threadschedule/thread_registry.hpp>
+#include <threadschedule/thread_wrapper.hpp>
+using namespace threadschedule;
+
+// Allow the host application to inject a registry pointer
+void libX_set_registry(ThreadRegistry* reg) {
+  set_external_registry(reg);
+}
+
+// start function used by the app
+void libX_start() {
+  ThreadWrapperReg t([]{
+    AutoRegisterCurrentThread guard("x-worker","X");
+    // ... work ...
+  });
+  t.detach();
+}
+```
+
+App side:
+
 ```cpp
 #include <threadschedule/thread_registry.hpp>
 using namespace threadschedule;
 
+// From each DSO's public header
+void libA_set_registry(ThreadRegistry*);
+
 int main() {
   ThreadRegistry appReg;
-  set_external_registry(&appReg); // all registry() calls now use appReg
-  // ... rest of program ...
-}
-```
+  set_external_registry(&appReg);
 
-Component thread entry (any library):
+  // Inject the same registry into DSOs
+  libA_set_registry(&appReg);
 
-```cpp
-void component_worker() {
-  AutoRegisterCurrentThread guard("comp-w","component");
-  // ... do work ...
+  libA_start();
+  // Now libA threads are registered in appReg
 }
 ```
 
@@ -505,7 +533,7 @@ libA (`examples/runtime_shared/libA.cpp`):
 ```cpp
 #include <threadschedule/thread_registry.hpp>
 #include <threadschedule/thread_wrapper.hpp>
-extern "C" void libA_start() {
+void libA_start() {
   threadschedule::ThreadWrapper t([]{
     threadschedule::AutoRegisterCurrentThread guard("rt-a1","A");
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -520,8 +548,8 @@ App (`examples/runtime_shared/main.cpp`):
 
 ```cpp
 #include <threadschedule/thread_registry.hpp>
-extern "C" void libA_start();
-extern "C" void libB_start();
+void libA_start();
+void libB_start();
 int main(){
   libA_start();
   libB_start();
