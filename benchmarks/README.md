@@ -42,39 +42,47 @@ cmake --build . --target database_benchmarks
 
 ### Quick Development Tests
 ```bash
-# Run quick benchmarks (0.5s per test)
-make run_quick_benchmarks
+# Run quick benchmarks (0.5s per test) - use the run_benchmarks.sh script
+./run_benchmarks.sh --quick
 
-# Run specific benchmark suites
-./web_server_benchmarks --benchmark_min_time=0.5
-./database_benchmarks --benchmark_min_time=0.5
+# Or run specific benchmark suites directly
+./build/benchmarks/threadpool_basic_benchmarks --benchmark_min_time=0.5s
+./build/benchmarks/web_server_benchmarks --benchmark_min_time=0.5s
+./build/benchmarks/database_benchmarks --benchmark_min_time=0.5s
+
+# Use cmake targets (only run when explicitly requested - they do NOT run during normal builds)
+cmake --build build --target run_quick_benchmarks
 ```
 
 ### Full Performance Analysis
 ```bash
-# Run all core benchmarks (2s per test, 3 repetitions)
-make run_core_benchmarks
+# Run all core benchmarks (2s per test, 3 repetitions) - use the run_benchmarks.sh script
+./run_benchmarks.sh
 
-# Run all real-world benchmarks
-make run_real_world_benchmarks
+# Or run specific benchmark suites with custom settings
+./build/benchmarks/threadpool_basic_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3
+./build/benchmarks/web_server_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3
+./build/benchmarks/database_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3
 
-# Run complete benchmark suite
-make run_all_benchmarks
+# Use cmake targets (only run when explicitly requested - they do NOT run during normal builds)
+cmake --build build --target run_core_benchmarks
+cmake --build build --target run_real_world_benchmarks
+cmake --build build --target run_all_benchmarks
 ```
 
 ### Specific Scenario Testing
 ```bash
 # Compare pool performance for your image processing workload
-make compare_pools
+./build/benchmarks/threadpool_resampling_benchmarks --benchmark_filter="BM_Resampling_PoolComparison"
 
 # Test web server performance
-./web_server_benchmarks --benchmark_filter="BM_WebServer_JSON_API_Processing"
+./build/benchmarks/web_server_benchmarks --benchmark_filter="BM_WebServer_JSON_API_Processing"
 
 # Test database performance
-./database_benchmarks --benchmark_filter="BM_Database_CRUD_Operations"
+./build/benchmarks/database_benchmarks --benchmark_filter="BM_Database_CRUD_Operations"
 
 # Test audio/video processing
-./audio_video_benchmarks --benchmark_filter="BM_RealTime_Streaming_Processing"
+./build/benchmarks/audio_video_benchmarks --benchmark_filter="BM_RealTime_Streaming_Processing"
 ```
 
 ## Benchmark Categories
