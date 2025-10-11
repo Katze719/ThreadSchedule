@@ -125,3 +125,32 @@ TEST_F(ThreadWrapperViewTest, ThreadByNameBindToCpu0)
     view.join();
 }
 #endif
+
+TEST_F(ThreadWrapperViewTest, ImplicitConversionFromStdThread)
+{
+    std::atomic<bool> ran{false};
+    std::thread t([&] { ran = true; });
+
+    // foo takes a view by value; implicit conversion from std::thread& should work
+    auto foo = [](ThreadWrapperView v) {
+        EXPECT_TRUE(v.joinable());
+        v.join();
+    };
+    foo(t);
+    EXPECT_TRUE(ran.load());
+}
+
+#if __cplusplus >= 202002L
+TEST_F(ThreadWrapperViewTest, ImplicitConversionFromStdJthread)
+{
+    std::atomic<bool> ran{false};
+    std::jthread jt([&](std::stop_token) { ran = true; });
+
+    auto bar = [](JThreadWrapperView v) {
+        v.request_stop();
+        v.join();
+    };
+    bar(jt);
+    EXPECT_TRUE(ran.load());
+}
+#endif

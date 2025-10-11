@@ -487,8 +487,18 @@ class ThreadWrapper : public BaseThreadWrapper<std::thread, detail::OwningTag>
 class ThreadWrapperView : public BaseThreadWrapper<std::thread, detail::NonOwningTag>
 {
   public:
-    explicit ThreadWrapperView(std::thread& t) : BaseThreadWrapper<std::thread, detail::NonOwningTag>(t)
+    ThreadWrapperView(std::thread& t) : BaseThreadWrapper<std::thread, detail::NonOwningTag>(t)
     {
+    }
+
+    // Non-owning access to the underlying std::thread
+    auto get() noexcept -> std::thread&
+    {
+        return this->underlying();
+    }
+    [[nodiscard]] auto get() const noexcept -> std::thread const&
+    {
+        return this->underlying();
     }
 };
 
@@ -580,7 +590,7 @@ class JThreadWrapper : public BaseThreadWrapper<std::jthread, detail::OwningTag>
 class JThreadWrapperView : public BaseThreadWrapper<std::jthread, detail::NonOwningTag>
 {
   public:
-    explicit JThreadWrapperView(std::jthread& t) : BaseThreadWrapper<std::jthread, detail::NonOwningTag>(t)
+    JThreadWrapperView(std::jthread& t) : BaseThreadWrapper<std::jthread, detail::NonOwningTag>(t)
     {
     }
 
@@ -599,6 +609,16 @@ class JThreadWrapperView : public BaseThreadWrapper<std::jthread, detail::NonOwn
     std::stop_source get_stop_source()
     {
         return this->underlying().get_stop_source();
+    }
+
+    // Non-owning access to the underlying std::jthread
+    auto get() noexcept -> std::jthread&
+    {
+        return this->underlying();
+    }
+    [[nodiscard]] auto get() const noexcept -> std::jthread const&
+    {
+        return this->underlying();
     }
 };
 #else
