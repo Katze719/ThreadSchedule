@@ -100,7 +100,7 @@ graph TD
     T1[ThreadWrapperReg]
     CB1["Control Block"]
 
-    A --> D1
+    A --> |owns| D1
     D1 --> T1
     T1 --> CB1
 
@@ -129,7 +129,7 @@ graph TD
     CB2["Control Block"]
     CB3["Control Block"]
 
-    App --> AR
+    App --> |owns| AR
     App --> ER1
     ER1 --> DSO1
     ER1 --> DSO2
@@ -169,10 +169,10 @@ graph TD
     CB5["Control Block"]
 
     App2 --> CR
-    L1 --> R1
+    L1 --> |owns| R1
     CR --> R1
     CR --> R2
-    L2 --> R2
+    L2 --> |owns| R2
     R1 --> T4
     R2 --> T5
     T4 --> CB4
@@ -207,7 +207,7 @@ graph TD
     T6[ThreadWrapperReg]
     CB6["Control Block"]
 
-    RT --> GR
+    RT --> |owns| GR
     App3 --> GR
     DSO3 --> GR
     DSO4 --> GR
