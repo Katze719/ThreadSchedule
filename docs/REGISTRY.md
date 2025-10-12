@@ -600,4 +600,13 @@ All control functions return `expected<void, std::error_code>`. Typical errors i
 - If a thread with the same TID is already present in the registry, subsequent registrations are a no-op.
 - Semantics: The first registration wins; existing fields (name, component tag, control block) are not overwritten by later calls.
 
+- System integration hooks:
+  - `registry().set_on_register([](const RegisteredThreadInfo& e){ /* e.tid, e.name, e.componentTag */ });`
+  - `registry().set_on_unregister([](Tid tid){ /* cleanup */ });`
+  - Use hooks to integrate with external systems (e.g., attach to cgroups on Linux, adjust QoS, logging).
+
+- Linux cgroup helper (best-effort):
+  - `cgroup_attach_tid("/sys/fs/cgroup/mygroup", e.tid)` attempts to write the TID into common cgroup files (`cgroup.threads`, `tasks`, `cgroup.procs`).
+  - Requires appropriate privileges; returns `operation_not_permitted` on failure.
+
 

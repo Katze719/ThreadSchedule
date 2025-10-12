@@ -3,6 +3,7 @@
 #include "expected.hpp"
 #include "scheduler_policy.hpp"
 #include "thread_wrapper.hpp" // for ThreadInfo, ThreadAffinity
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -251,7 +252,11 @@ class ThreadRegistry
             auto it = threads_.find(tid);
             if (it == threads_.end())
             {
+                auto stored = info; // copy for callback
                 threads_.emplace(tid, std::move(info));
+                lock.unlock();
+                if (onRegister_)
+                    onRegister_(stored);
             }
             else
             {
@@ -275,7 +280,11 @@ class ThreadRegistry
         auto it = threads_.find(info.tid);
         if (it == threads_.end())
         {
+            auto stored = info; // copy for callback
             threads_.emplace(info.tid, std::move(info));
+            lock.unlock();
+            if (onRegister_)
+                onRegister_(stored);
         }
         else
         {
@@ -292,6 +301,9 @@ class ThreadRegistry
         {
             it->second.alive = false;
             threads_.erase(it);
+            lock.unlock();
+            if (onUnregister_)
+                onUnregister_(tid);
         }
     }
 
@@ -539,6 +551,19 @@ class ThreadRegistry
         return blk->set_name(name);
     }
 
+    // Register/unregister hooks (system integration)
+    void set_on_register(std::function<void(RegisteredThreadInfo const&)> cb)
+    {
+        std::unique_lock<std::shared_mutex> lock(mutex_);
+        onRegister_ = std::move(cb);
+    }
+
+    void set_on_unregister(std::function<void(Tid)> cb)
+    {
+        std::unique_lock<std::shared_mutex> lock(mutex_);
+        onUnregister_ = std::move(cb);
+    }
+
   private:
     [[nodiscard]] auto lock_block(Tid tid) const -> std::shared_ptr<ThreadControlBlock>
     {
@@ -550,6 +575,10 @@ class ThreadRegistry
     }
     mutable std::shared_mutex mutex_;
     std::unordered_map<Tid, RegisteredThreadInfo> threads_;
+
+    // Integration hooks
+    std::function<void(RegisteredThreadInfo const&)> onRegister_;
+    std::function<void(Tid)> onUnregister_;
 };
 
 // Registry access methods
@@ -733,3 +762,26 @@ class AutoRegisterCurrentThread
 };
 
 } // namespace threadschedule
+
+#ifndef _WIN32
+// Helper: attach a TID to a cgroup directory (cgroup v2 tries cgroup.threads, then tasks, then cgroup.procs)
+namespace threadschedule
+{
+inline auto cgroup_attach_tid(std::string const& cgroupDir, Tid tid) -> expected<void, std::error_code>
+{
+    std::vector<std::string> candidates = {"cgroup.threads", "tasks", "cgroup.procs"};
+    for (auto const& file : candidates)
+    {
+        std::string path = cgroupDir + "/" + file;
+        std::ofstream out(path);
+        if (!out)
+            continue;
+        out << tid;
+        out.flush();
+        if (out)
+            return {};
+    }
+    return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+}
+} // namespace threadschedule
+#endif
