@@ -245,7 +245,11 @@ if (by_name.found()) {
 
 ### Error handling with expected
 
-ThreadSchedule uses `threadschedule::expected<T, std::error_code>` (and `expected<void, std::error_code>`), which aliases to `std::expected` when available and otherwise uses a compatible fallback. Recommended usage:
+ThreadSchedule uses `threadschedule::expected<T, std::error_code>` (and `expected<void, std::error_code>`). When available, this aliases to `std::expected`, otherwise, a compatible fallback based on [P0323R3](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/p0323r3.pdf) is used. 
+
+> Note: when building with `-fno-exceptions`, behavior is not standard-conforming because `value()`/`operator*` cannot throw `bad_expected_access` on error (exceptions are disabled). In that mode, always check `has_value()` or use `value_or()` before accessing the value. 
+
+Recommended usage:
 
 ```cpp
 auto r = worker.set_name("my_worker");
