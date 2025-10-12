@@ -75,19 +75,6 @@ ThreadSchedule is designed to work on any platform with a C++17 (or newer) compi
 Add to your CMakeLists.txt using [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake):
 
 ```cmake
-cmake_minimum_required(VERSION 3.14)
-project(YourProject LANGUAGES CXX)
-
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# Download CPM.cmake if not already present
-if(NOT EXISTS "${CMAKE_BINARY_DIR}/cmake/CPM.cmake")
-    file(DOWNLOAD
-        https://github.com/cpm-cmake/CPM.cmake/releases/download/v0.40.8/CPM.cmake
-        ${CMAKE_BINARY_DIR}/cmake/CPM.cmake
-    )
-endif()
 include(${CMAKE_BINARY_DIR}/cmake/CPM.cmake)
 
 CPMAddPackage(
