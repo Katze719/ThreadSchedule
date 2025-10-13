@@ -58,7 +58,7 @@ endif()
 
 # Options
 option(THREADSCHEDULE_BUILD_EXAMPLES "Build examples" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
-option(THREADSCHEDULE_BUILD_TESTS "Build tests" OFF)
+option(THREADSCHEDULE_BUILD_TESTS "Build tests" ON)
 option(THREADSCHEDULE_BUILD_BENCHMARKS "Build benchmarks" OFF)
 option(THREADSCHEDULE_INSTALL "Generate install target" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
 option(THREADSCHEDULE_RUNTIME "Build shared runtime for global registry (non header-only)" OFF)

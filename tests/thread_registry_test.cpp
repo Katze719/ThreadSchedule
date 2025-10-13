@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <atomic>
 #include <gtest/gtest.h>
 #include <thread>
 #include <threadschedule/registered_threads.hpp>
@@ -81,4 +82,58 @@ TEST(ThreadRegistryTest, DuplicateRegistrationIsNoOp)
     // Expect first registration values to persist
     EXPECT_EQ(it->name, std::string("first-name"));
     EXPECT_EQ(it->componentTag, std::string("first-comp"));
+}
+
+TEST(ThreadRegistryTest, CallbackOnRegisterFires)
+{
+    // Ensure clean state and no side effects from other tests
+    registry().unregister_current_thread();
+
+    std::atomic<int> calls{0};
+    std::atomic<Tid> lastTid{0};
+    std::string lastName;
+    std::string lastComp;
+
+    registry().set_on_register([&](RegisteredThreadInfo const& e) {
+        calls.fetch_add(1, std::memory_order_relaxed);
+        lastTid.store(e.tid, std::memory_order_relaxed);
+        lastName = e.name;
+        lastComp = e.componentTag;
+    });
+
+    {
+        AutoRegisterCurrentThread guard("cb-name", "cb-comp");
+        EXPECT_GE(calls.load(std::memory_order_relaxed), 1);
+        EXPECT_EQ(lastTid.load(std::memory_order_relaxed), ThreadInfo::get_thread_id());
+        EXPECT_EQ(lastName, std::string("cb-name"));
+        EXPECT_EQ(lastComp, std::string("cb-comp"));
+    }
+
+    // Reset hook
+    registry().set_on_register({});
+}
+
+TEST(ThreadRegistryTest, CallbackOnUnregisterFires)
+{
+    registry().unregister_current_thread();
+
+    std::atomic<int> calls{0};
+    std::atomic<Tid> lastTid{0};
+
+    registry().set_on_unregister([&](RegisteredThreadInfo const& e) {
+        calls.fetch_add(1, std::memory_order_relaxed);
+        lastTid.store(e.tid, std::memory_order_relaxed);
+    });
+
+    Tid currentTid = 0;
+    {
+        AutoRegisterCurrentThread guard("cb2-name", "cb2-comp");
+        currentTid = ThreadInfo::get_thread_id();
+    } // guard dtor should unregister
+
+    EXPECT_GE(calls.load(std::memory_order_relaxed), 1);
+    EXPECT_EQ(lastTid.load(std::memory_order_relaxed), currentTid);
+
+    // Reset hook
+    registry().set_on_unregister({});
 }
