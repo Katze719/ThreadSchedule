@@ -533,4 +533,4 @@ public:
 
 - Run [benchmarks](../../benchmarks/README.md) to understand performance characteristics
 - Review [thread pool documentation](../user-guide/thread-pools.md) for advanced usage
-- Check the [API reference](../api/ThreadSchedule/index.md) for detailed information
+- Check the [API reference](../ThreadSchedule/annotated.md) for detailed information

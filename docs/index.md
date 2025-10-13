@@ -86,7 +86,7 @@ Explore the comprehensive documentation:
 - **[Scheduled Tasks Guide](SCHEDULED_TASKS.md)** - Timer and periodic task scheduling
 - **[Error Handling Guide](ERROR_HANDLING.md)** - Exception handling with callbacks
 - **[CMake Reference](CMAKE_REFERENCE.md)** - Build options, targets, and troubleshooting
-- **[API Reference](api/ThreadSchedule/index.md)** - Complete API documentation
+- **[API Reference](ThreadSchedule/annotated.md)** - Complete API documentation
 
 ## Platform Support
 

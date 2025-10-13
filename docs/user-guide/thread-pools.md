@@ -534,4 +534,4 @@ if (stats.idle_threads > stats.total_threads * 0.5) {
 - Learn about [Scheduled Tasks](../SCHEDULED_TASKS.md) for advanced scheduling
 - Explore [Error Handling](../ERROR_HANDLING.md) for robust error management
 - Check [Thread Registry](../REGISTRY.md) for process-wide thread management
-- Review the [API Reference](../api/ThreadSchedule/index.md) for complete details
+- Review the [API Reference](../ThreadSchedule/annotated.md) for complete details

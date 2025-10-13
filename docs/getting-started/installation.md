@@ -179,4 +179,4 @@ cmake --build .
 
 - Read the [Quick Start Guide](quick-start.md) for basic usage examples
 - Explore the [Integration Guide](../INTEGRATION.md) for advanced configuration options
-- Check the [API Reference](../api/ThreadSchedule/index.md) for detailed documentation
+- Check the [API Reference](../ThreadSchedule/annotated.md) for detailed documentation

@@ -97,7 +97,7 @@ nav:
       - Error Handling: ERROR_HANDLING.md
   - Reference:
       - CMake Reference: CMAKE_REFERENCE.md
-      - API Reference: api/ThreadSchedule/index.md
+      - API Reference: ThreadSchedule/annotated.md
   - Development:
       - Building from Source: development/building.md
       - Contributing: development/contributing.md

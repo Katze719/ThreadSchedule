@@ -359,4 +359,4 @@ int main() {
 - Learn about [Thread Registry](../REGISTRY.md) for process-wide thread management
 - Check [Scheduled Tasks](../SCHEDULED_TASKS.md) for advanced scheduling
 - Read [Error Handling](../ERROR_HANDLING.md) for robust error management
-- Review the [API Reference](../api/ThreadSchedule/index.md) for complete API details
+- Review the [API Reference](../ThreadSchedule/annotated.md) for complete API details
