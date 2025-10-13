@@ -1,13 +1,5 @@
 # ThreadSchedule
 
-[![Tests](https://github.com/Katze719/ThreadSchedule/actions/workflows/tests.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/tests.yml)
-[![Integration](https://github.com/Katze719/ThreadSchedule/actions/workflows/integration.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/integration.yml)
-[![Registry Integration](https://github.com/Katze719/ThreadSchedule/actions/workflows/registry-integration.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/registry-integration.yml)
-[![Runtime Tests](https://github.com/Katze719/ThreadSchedule/actions/workflows/runtime-tests.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/runtime-tests.yml)
-[![Code Quality](https://github.com/Katze719/ThreadSchedule/actions/workflows/code-quality.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/code-quality.yml)
-[![Documentation](https://github.com/Katze719/ThreadSchedule/actions/workflows/documentation.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/documentation.yml)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-
 A modern C++ library for advanced thread management on Linux and Windows. ThreadSchedule provides enhanced wrappers for `std::thread`, `std::jthread`, and `pthread` with extended functionality including thread naming, priority management, CPU affinity, and high-performance thread pools.
 
 Available as **header-only** or with optional **shared runtime** for multi-DSO applications.
@@ -122,7 +114,3 @@ All platforms support C++17, C++20, and C++23 standards.
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](https://github.com/Katze719/ThreadSchedule/blob/main/LICENSE) file for details.
-
-## Contributing
-
-Contributions are welcome! Check out our [Contributing Guide](development/contributing.md) to get started.
