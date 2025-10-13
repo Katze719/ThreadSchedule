@@ -543,9 +543,11 @@ libA (`examples/runtime_shared/libA.cpp`):
 ```cpp
 #include <threadschedule/thread_registry.hpp>
 #include <threadschedule/thread_wrapper.hpp>
+using namespace threadschedule;
+
 void libA_start() {
-  threadschedule::ThreadWrapper t([]{
-    threadschedule::AutoRegisterCurrentThread guard("rt-a1","A");
+  ThreadWrapper t([]{
+    AutoRegisterCurrentThread guard("rt-a1","A");
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   });
   t.detach();
@@ -558,6 +560,8 @@ App (`examples/runtime_shared/main.cpp`):
 
 ```cpp
 #include <threadschedule/thread_registry.hpp>
+using namespace threadschedule;
+
 void libA_start();
 void libB_start();
 int main(){
@@ -565,7 +569,7 @@ int main(){
   libB_start();
   std::this_thread::sleep_for(std::chrono::milliseconds(30));
   int count = 0;
-  threadschedule::registry().for_each([&](const threadschedule::RegisteredThreadInfo&){ count++; });
+  registry().for_each([&](const RegisteredThreadInfo&){ count++; });
   return count > 0 ? 0 : 1;
 }
 ```
@@ -599,5 +603,14 @@ All control functions return `expected<void, std::error_code>`. Typical errors i
 - Registering the same thread more than once is safe and idempotent.
 - If a thread with the same TID is already present in the registry, subsequent registrations are a no-op.
 - Semantics: The first registration wins; existing fields (name, component tag, control block) are not overwritten by later calls.
+
+- System integration hooks:
+  - `registry().set_on_register([](const RegisteredThreadInfo& e){ /* e.tid, e.name, e.componentTag */ });`
+  - `registry().set_on_unregister([](const RegisteredThreadInfo& e){ /* cleanup */ });`
+  - Use hooks to integrate with external systems (e.g., attach to cgroups on Linux, adjust QoS, logging).
+
+- Linux cgroup helper (best-effort):
+  - `cgroup_attach_tid("/sys/fs/cgroup/mygroup", e.tid)` attempts to write the TID into common cgroup files (`cgroup.threads`, `tasks`, `cgroup.procs`).
+  - Requires appropriate privileges; returns `operation_not_permitted` on failure.
 
 

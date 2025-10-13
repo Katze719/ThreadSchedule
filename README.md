@@ -75,19 +75,6 @@ ThreadSchedule is designed to work on any platform with a C++17 (or newer) compi
 Add to your CMakeLists.txt using [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake):
 
 ```cmake
-cmake_minimum_required(VERSION 3.14)
-project(YourProject LANGUAGES CXX)
-
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# Download CPM.cmake if not already present
-if(NOT EXISTS "${CMAKE_BINARY_DIR}/cmake/CPM.cmake")
-    file(DOWNLOAD
-        https://github.com/cpm-cmake/CPM.cmake/releases/download/v0.40.8/CPM.cmake
-        ${CMAKE_BINARY_DIR}/cmake/CPM.cmake
-    )
-endif()
 include(${CMAKE_BINARY_DIR}/cmake/CPM.cmake)
 
 CPMAddPackage(
@@ -258,7 +245,11 @@ if (by_name.found()) {
 
 ### Error handling with expected
 
-ThreadSchedule uses `threadschedule::expected<T, std::error_code>` (and `expected<void, std::error_code>`), which aliases to `std::expected` when available and otherwise uses a compatible fallback. Recommended usage:
+ThreadSchedule uses `threadschedule::expected<T, std::error_code>` (and `expected<void, std::error_code>`). When available, this aliases to `std::expected`, otherwise, a compatible fallback based on [P0323R3](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/p0323r3.pdf) is used. 
+
+> Note: when building with `-fno-exceptions`, behavior is not standard-conforming because `value()`/`operator*` cannot throw `bad_expected_access` on error (exceptions are disabled). In that mode, always check `has_value()` or use `value_or()` before accessing the value. 
+
+Recommended usage:
 
 ```cpp
 auto r = worker.set_name("my_worker");
