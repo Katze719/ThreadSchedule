@@ -120,9 +120,9 @@ TEST(ThreadRegistryTest, CallbackOnUnregisterFires)
     std::atomic<int> calls{0};
     std::atomic<Tid> lastTid{0};
 
-    registry().set_on_unregister([&](Tid tid) {
+    registry().set_on_unregister([&](RegisteredThreadInfo const& e) {
         calls.fetch_add(1, std::memory_order_relaxed);
-        lastTid.store(tid, std::memory_order_relaxed);
+        lastTid.store(e.tid, std::memory_order_relaxed);
     });
 
     Tid currentTid = 0;

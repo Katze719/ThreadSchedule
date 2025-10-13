@@ -606,7 +606,7 @@ All control functions return `expected<void, std::error_code>`. Typical errors i
 
 - System integration hooks:
   - `registry().set_on_register([](const RegisteredThreadInfo& e){ /* e.tid, e.name, e.componentTag */ });`
-  - `registry().set_on_unregister([](Tid tid){ /* cleanup */ });`
+  - `registry().set_on_unregister([](const RegisteredThreadInfo& e){ /* cleanup */ });`
   - Use hooks to integrate with external systems (e.g., attach to cgroups on Linux, adjust QoS, logging).
 
 - Linux cgroup helper (best-effort):
