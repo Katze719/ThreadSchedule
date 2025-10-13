@@ -39,12 +39,20 @@ XML_OUTPUT             = xml
 
 # Doxygen Awesome theme integration (downloaded into build dir by CMake)
 HTML_EXTRA_STYLESHEET  = \
-  @CMAKE_BINARY_DIR@/docs/theme/doxygen-awesome.css \
-  @CMAKE_BINARY_DIR@/docs/theme/doxygen-awesome-sidebar-only.css
+  @CMAKE_BINARY_DIR@/docs/theme/doxygen-awesome.css
 HTML_EXTRA_FILES       = \
-  @CMAKE_BINARY_DIR@/docs/theme/doxygen-awesome-darkmode-toggle.js
+  @CMAKE_BINARY_DIR@/docs/theme/doxygen-awesome-darkmode-toggle.js \
+  @CMAKE_BINARY_DIR@/docs/theme/doxygen-awesome-tabs.js
 
 HTML_COLORSTYLE        = LIGHT
+FULL_SIDEBAR           = NO
+GENERATE_TREEVIEW      = YES
+DISABLE_INDEX          = NO
+ALPHABETICAL_INDEX     = YES
+GENERATE_DEPRECATEDLIST= YES
+GENERATE_NAMESPACES    = YES
+GENERATE_CLASSES       = YES
+GENERATE_FILES         = YES
 
 # Source browsing
 SOURCE_BROWSER         = YES
