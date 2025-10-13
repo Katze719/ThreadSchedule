@@ -6,6 +6,7 @@
 [![Runtime Tests](https://github.com/Katze719/ThreadSchedule/actions/workflows/runtime-tests.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/runtime-tests.yml)
 [![Code Quality](https://github.com/Katze719/ThreadSchedule/actions/workflows/code-quality.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/code-quality.yml)
 [![Documentation](https://github.com/Katze719/ThreadSchedule/actions/workflows/documentation.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/documentation.yml)
+[![Docs](https://img.shields.io/badge/docs-MkDocs-blue.svg)](https://katze719.github.io/ThreadSchedule/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A modern C++ library for advanced thread management on Linux and Windows. ThreadSchedule provides enhanced wrappers for `std::thread`, `std::jthread`, and `pthread` with extended functionality including thread naming, priority management, CPU affinity, and high-performance thread pools.
@@ -30,6 +31,10 @@ Available as **header-only** or with optional **shared runtime** for multi-DSO a
 - **Multiple Integration Methods**: CMake, CPM, Conan, FetchContent
 
 ## Documentation
+
+📚 **[Full Documentation](https://katze719.github.io/ThreadSchedule/)** - Complete documentation with API reference hosted on GitHub Pages
+
+### Quick Links
 
 - **[Integration Guide](docs/INTEGRATION.md)** - CMake, Conan, FetchContent, system installation
 - **[Thread Registry Guide](docs/REGISTRY.md)** - Process-wide thread control and multi-DSO patterns
