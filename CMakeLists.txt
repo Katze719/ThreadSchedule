@@ -236,18 +236,18 @@ if(THREADSCHEDULE_BUILD_DOCS)
         file(MAKE_DIRECTORY ${DOXYGEN_THEME_DIR})
 
         # Download minimal set of files from doxygen-awesome-css
-        set(DOXYGEN_AWESOME_BASE_URL https://raw.githubusercontent.com/jothepro/doxygen-awesome-css/v2.3.3)
+        set(DOXYGEN_AWESOME_BASE_URL https://raw.githubusercontent.com/jothepro/doxygen-awesome-css/v2.4.1)
         file(DOWNLOAD ${DOXYGEN_AWESOME_BASE_URL}/doxygen-awesome.css
             ${DOXYGEN_THEME_DIR}/doxygen-awesome.css
             STATUS _dl_status_css)
         if(NOT _dl_status_css EQUAL 0)
             message(FATAL_ERROR "Failed to download doxygen-awesome.css: ${_dl_status_css}")
         endif()
-        file(DOWNLOAD ${DOXYGEN_AWESOME_BASE_URL}/doxygen-awesome-sidebar-only.css
-            ${DOXYGEN_THEME_DIR}/doxygen-awesome-sidebar-only.css
-            STATUS _dl_status_sidebar)
-        if(NOT _dl_status_sidebar EQUAL 0)
-            message(FATAL_ERROR "Failed to download doxygen-awesome-sidebar-only.css: ${_dl_status_sidebar}")
+        file(DOWNLOAD ${DOXYGEN_AWESOME_BASE_URL}/doxygen-awesome-tabs.js
+            ${DOXYGEN_THEME_DIR}/doxygen-awesome-tabs.js
+            STATUS _dl_status_tabs_js)
+        if(NOT _dl_status_tabs_js EQUAL 0)
+            message(FATAL_ERROR "Failed to download doxygen-awesome-tabs.js: ${_dl_status_tabs_js}")
         endif()
         file(DOWNLOAD ${DOXYGEN_AWESOME_BASE_URL}/doxygen-awesome-darkmode-toggle.js
             ${DOXYGEN_THEME_DIR}/doxygen-awesome-darkmode-toggle.js
