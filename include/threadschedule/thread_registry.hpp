@@ -10,6 +10,7 @@
 #include <shared_mutex>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -214,6 +215,7 @@ class ThreadControlBlock
 #else
         block->pthreadHandle_ = pthread_self();
 #endif
+        (void)block->set_name(block->name_);
         return block;
     }
 
