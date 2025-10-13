@@ -58,10 +58,11 @@ endif()
 
 # Options
 option(THREADSCHEDULE_BUILD_EXAMPLES "Build examples" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
-option(THREADSCHEDULE_BUILD_TESTS "Build tests" ON)
+option(THREADSCHEDULE_BUILD_TESTS "Build tests" OFF)
 option(THREADSCHEDULE_BUILD_BENCHMARKS "Build benchmarks" OFF)
 option(THREADSCHEDULE_INSTALL "Generate install target" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
 option(THREADSCHEDULE_RUNTIME "Build shared runtime for global registry (non header-only)" OFF)
+option(THREADSCHEDULE_BUILD_DOCS "Build API documentation with Doxygen" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
 
 # CPM support (optional, download if building tests or benchmarks)
 if(THREADSCHEDULE_BUILD_TESTS OR THREADSCHEDULE_BUILD_BENCHMARKS)
@@ -224,6 +225,54 @@ if(THREADSCHEDULE_RUNTIME)
     endif()
     set_target_properties(ThreadScheduleRuntime PROPERTIES OUTPUT_NAME "threadschedule")
     add_library(ThreadSchedule::Runtime ALIAS ThreadScheduleRuntime)
+endif()
+
+# Documentation (Doxygen + Awesome theme)
+if(THREADSCHEDULE_BUILD_DOCS)
+    find_package(Doxygen QUIET)
+    if(DOXYGEN_FOUND)
+        # Prepare theme assets directory in the build tree
+        set(DOXYGEN_THEME_DIR ${CMAKE_BINARY_DIR}/docs/theme)
+        file(MAKE_DIRECTORY ${DOXYGEN_THEME_DIR})
+
+        # Download minimal set of files from doxygen-awesome-css
+        set(DOXYGEN_AWESOME_BASE_URL https://raw.githubusercontent.com/jothepro/doxygen-awesome-css/v2.3.3)
+        file(DOWNLOAD ${DOXYGEN_AWESOME_BASE_URL}/doxygen-awesome.css
+            ${DOXYGEN_THEME_DIR}/doxygen-awesome.css
+            STATUS _dl_status_css)
+        if(NOT _dl_status_css EQUAL 0)
+            message(FATAL_ERROR "Failed to download doxygen-awesome.css: ${_dl_status_css}")
+        endif()
+        file(DOWNLOAD ${DOXYGEN_AWESOME_BASE_URL}/doxygen-awesome-sidebar-only.css
+            ${DOXYGEN_THEME_DIR}/doxygen-awesome-sidebar-only.css
+            STATUS _dl_status_sidebar)
+        if(NOT _dl_status_sidebar EQUAL 0)
+            message(FATAL_ERROR "Failed to download doxygen-awesome-sidebar-only.css: ${_dl_status_sidebar}")
+        endif()
+        file(DOWNLOAD ${DOXYGEN_AWESOME_BASE_URL}/doxygen-awesome-darkmode-toggle.js
+            ${DOXYGEN_THEME_DIR}/doxygen-awesome-darkmode-toggle.js
+            STATUS _dl_status_js)
+        if(NOT _dl_status_js EQUAL 0)
+            message(FATAL_ERROR "Failed to download doxygen-awesome-darkmode-toggle.js: ${_dl_status_js}")
+        endif()
+        # Configure Doxygen file
+        set(DOXYGEN_OUTPUT_DIR ${CMAKE_BINARY_DIR}/docs/doxygen)
+        configure_file(
+            ${CMAKE_SOURCE_DIR}/Doxyfile
+            ${CMAKE_BINARY_DIR}/Doxyfile
+            @ONLY
+        )
+
+        add_custom_target(docs
+            COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_BINARY_DIR}/Doxyfile
+            BYPRODUCTS ${DOXYGEN_OUTPUT_DIR}/html/index.html
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMENT "Generating API documentation with Doxygen (Awesome theme)"
+            VERBATIM
+        )
+    else()
+        message(STATUS "Doxygen not found. 'docs' target will not be available.")
+    endif()
 endif()
 
 # Installation
