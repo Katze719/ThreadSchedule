@@ -47,3 +47,7 @@ compile_commands.json
 build/
 install/
 build_runtime/
+
+# MkDocs
+site/
+.mkdoxy/

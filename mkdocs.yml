@@ -1,0 +1,113 @@
+site_name: ThreadSchedule Documentation
+site_description: A modern C++ library for advanced thread management on Linux and Windows
+site_author: Katze719
+site_url: https://katze719.github.io/ThreadSchedule/
+repo_name: Katze719/ThreadSchedule
+repo_url: https://github.com/Katze719/ThreadSchedule
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    # Palette toggle for light mode
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - mkdoxy:
+      projects:
+        ThreadSchedule:
+          src-dirs: include/threadschedule
+          full-doc: true
+          doxy-cfg:
+            FILE_PATTERNS: "*.hpp"
+            RECURSIVE: true
+            EXTRACT_ALL: true
+            EXTRACT_PRIVATE: false
+            EXTRACT_STATIC: true
+            JAVADOC_AUTOBRIEF: true
+            OPTIMIZE_OUTPUT_FOR_C: false
+            ENABLE_PREPROCESSING: true
+            MACRO_EXPANSION: true
+            EXPAND_ONLY_PREDEF: false
+            SKIP_FUNCTION_MACROS: true
+            HIDE_UNDOC_MEMBERS: false
+            HIDE_UNDOC_CLASSES: false
+            SORT_MEMBER_DOCS: true
+            SORT_BRIEF_DOCS: true
+            GENERATE_TODOLIST: true
+            GENERATE_TESTLIST: true
+            GENERATE_BUGLIST: true
+            GENERATE_DEPRECATEDLIST: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quick-start.md
+      - Integration Guide: INTEGRATION.md
+  - User Guide:
+      - Thread Wrappers: user-guide/thread-wrappers.md
+      - Thread Pools: user-guide/thread-pools.md
+      - Thread Registry: REGISTRY.md
+      - Scheduled Tasks: SCHEDULED_TASKS.md
+      - Error Handling: ERROR_HANDLING.md
+  - Reference:
+      - CMake Reference: CMAKE_REFERENCE.md
+      - API Reference: api/ThreadSchedule/index.md
+  - Development:
+      - Building from Source: development/building.md
+      - Contributing: development/contributing.md
+      - Performance: development/performance.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Katze719/ThreadSchedule
+  version:
+    provider: mike
+
+copyright: Copyright &copy; 2024 Katze719

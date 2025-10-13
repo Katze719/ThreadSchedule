@@ -1,0 +1,4 @@
+# MkDocs and plugins for building documentation
+mkdocs>=1.5.0
+mkdocs-material>=9.5.0
+mkdoxy>=1.0.0
