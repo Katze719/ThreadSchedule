@@ -1,0 +1,64 @@
+PROJECT_NAME           = "ThreadSchedule"
+PROJECT_NUMBER         = @PROJECT_VERSION@
+PROJECT_BRIEF          = "Modern C++ thread management library"
+OUTPUT_DIRECTORY       = @CMAKE_BINARY_DIR@/docs/doxygen
+CREATE_SUBDIRS         = NO
+ALLOW_UNICODE_NAMES    = YES
+OPTIMIZE_OUTPUT_FOR_C  = NO
+OPTIMIZE_OUTPUT_JAVA   = NO
+OPTIMIZE_FOR_FORTRAN   = NO
+OPTIMIZE_OUTPUT_VHDL   = NO
+OPTIMIZE_OUTPUT_SLICE  = NO
+MARKDOWN_SUPPORT       = YES
+AUTOLINK_SUPPORT       = YES
+USE_MDFILE_AS_MAINPAGE = README.md
+
+FULL_PATH_NAMES        = NO
+STRIP_FROM_PATH        = @CMAKE_SOURCE_DIR@
+
+INPUT                  = README.md include docs
+FILE_PATTERNS          = *.hpp *.md
+RECURSIVE              = YES
+EXCLUDE_PATTERNS       = */build/* */.git/* */install/*
+
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+EXTRACT_LOCAL_CLASSES  = YES
+EXTRACT_ANON_NSPACES   = YES
+
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_AS_ERROR          = NO
+
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_LATEX         = NO
+GENERATE_XML           = YES
+XML_OUTPUT             = xml
+
+# Doxygen Awesome theme integration (downloaded into build dir by CMake)
+HTML_EXTRA_STYLESHEET  = \
+  @CMAKE_BINARY_DIR@/docs/theme/doxygen-awesome.css \
+  @CMAKE_BINARY_DIR@/docs/theme/doxygen-awesome-sidebar-only.css
+HTML_EXTRA_FILES       = \
+  @CMAKE_BINARY_DIR@/docs/theme/doxygen-awesome-darkmode-toggle.js
+
+HTML_COLORSTYLE        = LIGHT
+
+# Source browsing
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+STRIP_CODE_COMMENTS    = YES
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+VERBATIM_HEADERS       = YES
+
+# Diagrams
+HAVE_DOT               = YES
+DOT_NUM_THREADS        = 0
+CALL_GRAPH             = NO
+CALLER_GRAPH           = NO
+DOT_IMAGE_FORMAT       = svg
+INTERACTIVE_SVG        = YES
+
