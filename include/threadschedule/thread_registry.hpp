@@ -254,9 +254,12 @@ class ThreadRegistry
             {
                 auto stored = info; // copy for callback
                 threads_.emplace(tid, std::move(info));
-                lock.unlock();
                 if (onRegister_)
-                    onRegister_(stored);
+                {
+                    auto cb = onRegister_;
+                    lock.unlock();
+                    cb(stored);
+                }
             }
             else
             {
@@ -282,9 +285,12 @@ class ThreadRegistry
         {
             auto stored = info; // copy for callback
             threads_.emplace(info.tid, std::move(info));
-            lock.unlock();
             if (onRegister_)
-                onRegister_(stored);
+            {
+                auto cb = onRegister_;
+                lock.unlock();
+                cb(stored);
+            }
         }
         else
         {
@@ -300,10 +306,14 @@ class ThreadRegistry
         if (it != threads_.end())
         {
             it->second.alive = false;
+            auto info = it->second;
             threads_.erase(it);
-            lock.unlock();
             if (onUnregister_)
-                onUnregister_(tid);
+            {
+                auto cb = onUnregister_;
+                lock.unlock();
+                cb(info);
+            }
         }
     }
 
@@ -558,7 +568,7 @@ class ThreadRegistry
         onRegister_ = std::move(cb);
     }
 
-    void set_on_unregister(std::function<void(Tid)> cb)
+    void set_on_unregister(std::function<void(RegisteredThreadInfo const&)> cb)
     {
         std::unique_lock<std::shared_mutex> lock(mutex_);
         onUnregister_ = std::move(cb);
@@ -578,7 +588,7 @@ class ThreadRegistry
 
     // Integration hooks
     std::function<void(RegisteredThreadInfo const&)> onRegister_;
-    std::function<void(Tid)> onUnregister_;
+    std::function<void(RegisteredThreadInfo const&)> onUnregister_;
 };
 
 // Registry access methods
