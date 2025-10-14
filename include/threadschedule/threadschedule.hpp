@@ -1,7 +1,9 @@
 #pragma once
 
+#include "chaos.hpp"
 #include "concepts.hpp"
 #include "error_handler.hpp"
+#include "profiles.hpp"
 #include "pthread_wrapper.hpp"
 #include "scheduled_pool.hpp"
 #include "scheduler_policy.hpp"
@@ -9,6 +11,7 @@
 #include "thread_pool_with_errors.hpp"
 #include "thread_registry.hpp"
 #include "thread_wrapper.hpp"
+#include "topology.hpp"
 
 /**
  * @file threadschedule.hpp
@@ -39,6 +42,12 @@ namespace ts = threadschedule;
 #ifndef _WIN32
 using ts::PThreadWrapper;
 #endif
+using ts::affinity_for_node;
+using ts::apply_profile;
+using ts::ChaosConfig;
+using ts::ChaosController;
+using ts::CpuTopology;
+using ts::distribute_affinities_by_numa;
 using ts::ErrorCallback;
 using ts::ErrorHandler;
 using ts::FastThreadPool;
@@ -48,6 +57,7 @@ using ts::HighPerformancePool;
 using ts::HighPerformancePoolWithErrors;
 using ts::JThreadWrapper;
 using ts::JThreadWrapperView;
+using ts::read_topology;
 using ts::ScheduledFastThreadPool;
 using ts::ScheduledHighPerformancePool;
 using ts::ScheduledTaskHandle;
@@ -60,6 +70,7 @@ using ts::ThreadByNameView;
 using ts::ThreadPool;
 using ts::ThreadPoolWithErrors;
 using ts::ThreadPriority;
+using ts::ThreadProfile;
 using ts::ThreadWrapper;
 using ts::ThreadWrapperView;
 

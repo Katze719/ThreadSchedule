@@ -22,6 +22,9 @@ Available as **header-only** or with optional **shared runtime** for multi-DSO a
 - **Priority & Scheduling**: Fine-grained control over thread priorities and scheduling policies
 - **CPU Affinity**: Pin threads to specific CPU cores
 - **Global Control Registry**: Process-wide registry to list and control running threads (affinity, priority, name)
+- **Profiles**: High-level presets for priority/policy/affinity
+- **NUMA-aware Topology Helpers**: Easy affinity builders across nodes
+- **Chaos Testing**: RAII controller to perturb affinity/priority for validation
 - **High-Performance Pools**: Work-stealing thread pool optimized for 10k+ tasks/second
 - **Scheduled Tasks**: Run tasks at specific times, after delays, or periodically
 - **Error Handling**: Comprehensive exception handling with error callbacks and context
@@ -36,6 +39,9 @@ Available as **header-only** or with optional **shared runtime** for multi-DSO a
 - **[Scheduled Tasks Guide](docs/SCHEDULED_TASKS.md)** - Timer and periodic task scheduling
 - **[Error Handling Guide](docs/ERROR_HANDLING.md)** - Exception handling with callbacks
 - **[CMake Reference](docs/CMAKE_REFERENCE.md)** - Build options, targets, and troubleshooting
+- **[Profiles](docs/PROFILES.md)** - High-level presets for priority/policy/affinity
+- **[Topology & NUMA](docs/TOPOLOGY_NUMA.md)** - NUMA-aware affinity builders
+- **[Chaos Testing](docs/CHAOS_TESTING.md)** - RAII controller to perturb affinity/priority for validation
 - **Feature Roadmap** - Current features and future plans (see below)
 
 ## Platform Support
