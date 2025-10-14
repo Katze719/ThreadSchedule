@@ -2,6 +2,7 @@
 
 ThreadSchedule is a modern, cross-platform, header-only C++ library for thread management. This guide covers all integration methods.
 
+<!--
 ## Table of Contents
 
 - [Requirements](#requirements)
@@ -14,6 +15,7 @@ ThreadSchedule is a modern, cross-platform, header-only C++ library for thread m
 - [C++ Standard Compatibility](#c-standard-compatibility)
 - [Cross-Compilation](#cross-compilation)
 - [Configuration Options](#configuration-options)
+-->
 
 ## Requirements
 
