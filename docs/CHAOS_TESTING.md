@@ -9,7 +9,7 @@ Header: `include/threadschedule/chaos.hpp`
 #include <threadschedule/threadschedule.hpp>
 using namespace threadschedule;
 
-// Apply chaos to all threads with a specific component tag
+// Apply chaos to all threads with a specific component tag (uses global registry)
 ChaosConfig cfg;
 cfg.interval = std::chrono::milliseconds(200);
 cfg.priority_jitter = 2;      // +/-2 around baseline

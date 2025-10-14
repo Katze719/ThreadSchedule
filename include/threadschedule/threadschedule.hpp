@@ -43,6 +43,7 @@ namespace ts = threadschedule;
 using ts::PThreadWrapper;
 #endif
 using ts::affinity_for_node;
+using ts::apply_profile;
 using ts::ChaosConfig;
 using ts::ChaosController;
 using ts::CpuTopology;
