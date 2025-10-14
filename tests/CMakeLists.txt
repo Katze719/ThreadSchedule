@@ -7,6 +7,7 @@ add_test(NAME CompileTest COMMAND compile_test)
 
 # Google Test based tests
 if(TARGET gtest)
+    include(GoogleTest)
     # ThreadWrapper tests
     add_executable(thread_wrapper_test thread_wrapper_test.cpp)
     target_link_libraries(thread_wrapper_test 
@@ -14,7 +15,10 @@ if(TARGET gtest)
         gtest 
         gtest_main
     )
-    add_test(NAME ThreadWrapperTest COMMAND thread_wrapper_test)
+    gtest_discover_tests(thread_wrapper_test 
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES TIMEOUT 120
+    )
 
     # ThreadWrapperView tests
     add_executable(thread_wrapper_view_test thread_wrapper_view_test.cpp)
@@ -23,7 +27,10 @@ if(TARGET gtest)
         gtest 
         gtest_main
     )
-    add_test(NAME ThreadWrapperViewTest COMMAND thread_wrapper_view_test)
+    gtest_discover_tests(thread_wrapper_view_test 
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES TIMEOUT 120
+    )
 
     # ThreadConfig tests (Priority, Affinity, SchedulingPolicy)
     add_executable(thread_config_test thread_config_test.cpp)
@@ -32,7 +39,10 @@ if(TARGET gtest)
         gtest 
         gtest_main
     )
-    add_test(NAME ThreadConfigTest COMMAND thread_config_test)
+    gtest_discover_tests(thread_config_test 
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES TIMEOUT 120
+    )
 
     # ThreadPool tests
     add_executable(thread_pool_test thread_pool_test.cpp)
@@ -41,7 +51,10 @@ if(TARGET gtest)
         gtest 
         gtest_main
     )
-    add_test(NAME ThreadPoolTest COMMAND thread_pool_test)
+    gtest_discover_tests(thread_pool_test 
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES TIMEOUT 120
+    )
 
     # Expected tests
     add_executable(expected_test expected_test.cpp)
@@ -50,14 +63,20 @@ if(TARGET gtest)
         gtest 
         gtest_main
     )
-    add_test(NAME ExpectedTest COMMAND expected_test)
+    gtest_discover_tests(expected_test 
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES TIMEOUT 120
+    )
     add_executable(thread_registry_stress_test thread_registry_stress_test.cpp)
     target_link_libraries(thread_registry_stress_test 
         ThreadSchedule::ThreadSchedule 
         gtest 
         gtest_main
     )
-    add_test(NAME ThreadRegistryStressTest COMMAND thread_registry_stress_test)
+    gtest_discover_tests(thread_registry_stress_test 
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES TIMEOUT 120
+    )
 
     # ThreadRegistry tests
     add_executable(thread_registry_test thread_registry_test.cpp)
@@ -66,7 +85,10 @@ if(TARGET gtest)
         gtest 
         gtest_main
     )
-    add_test(NAME ThreadRegistryTest COMMAND thread_registry_test)
+    gtest_discover_tests(thread_registry_test 
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES TIMEOUT 120
+    )
 
     if(THREADSCHEDULE_RUNTIME)
         add_executable(runtime_registry_test runtime_registry_test.cpp)
@@ -77,7 +99,10 @@ if(TARGET gtest)
             ThreadSchedule::Runtime
         )
         target_compile_definitions(runtime_registry_test PRIVATE THREADSCHEDULE_RUNTIME)
-        add_test(NAME RuntimeRegistryTest COMMAND runtime_registry_test)
+        gtest_discover_tests(runtime_registry_test 
+            DISCOVERY_TIMEOUT 60
+            PROPERTIES TIMEOUT 120
+        )
 
         if(WIN32)
             add_custom_command(TARGET runtime_registry_test POST_BUILD
@@ -88,9 +113,5 @@ if(TARGET gtest)
         endif()
     endif()
 
-    # Set test properties for better output
-    set_tests_properties(ThreadWrapperTest ThreadWrapperViewTest ThreadConfigTest ThreadPoolTest
-        PROPERTIES
-        TIMEOUT 120
-    )
+    # Discovered tests already carry TIMEOUT=120 via PROPERTIES above
 endif() 
