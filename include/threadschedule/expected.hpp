@@ -18,13 +18,13 @@
 // Exception handling control
 // Automatically detects if exceptions are available using __cpp_exceptions
 // When exceptions are disabled (e.g., with -fno-exceptions):
-// - value() becomes a no-op if called on an error state
-// - Use value_or(), operator*, or check has_value() before accessing the value
-// - Compatible with exception-free builds for better performance
+// - value() will call std::terminate() if accessed in an error state
+// - Prefer value_or(), operator*, or check has_value() before accessing the value
+// - Compatible with exception-free builds
 #ifdef __cpp_exceptions
 #define THREADSCHEDULE_EXPECTED_THROW(ex) throw ex
 #else
-#define THREADSCHEDULE_EXPECTED_THROW(ex) ((void)0)
+#define THREADSCHEDULE_EXPECTED_THROW(ex) ::std::terminate()
 #endif
 
 namespace threadschedule
@@ -128,13 +128,14 @@ class expected
     using unexpected_type = unexpected<E>;
 
     // constructors
+    template <typename U = T, typename std::enable_if_t<std::is_default_constructible_v<U>, int> = 0>
     constexpr expected() : has_(true)
     {
-        if constexpr (std::is_default_constructible_v<T>)
-        {
-            new (&storage_.value_) T();
-        }
+        new (&storage_.value_) T();
     }
+
+    template <typename U = T, typename std::enable_if_t<!std::is_default_constructible_v<U>, int> = 0>
+    constexpr expected() = delete;
 
     constexpr expected(expected const& other) : has_(other.has_)
     {
@@ -225,7 +226,8 @@ class expected
     {
         if (has_)
         {
-            storage_.value_ = std::forward<U>(value);
+            storage_.value_.~T();
+            new (&storage_.value_) T(std::forward<U>(value));
         }
         else
         {
