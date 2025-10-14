@@ -51,6 +51,7 @@ inline constexpr unexpect_t unexpect{};
 template <typename E>
 class bad_expected_access;
 
+/// @cond INTERNAL
 template <>
 class bad_expected_access<void> : public std::exception
 {
@@ -64,6 +65,7 @@ class bad_expected_access<void> : public std::exception
 
 template <typename E>
 class bad_expected_access : public bad_expected_access<void>
+/// @endcond
 {
   public:
     explicit bad_expected_access(E e) : error_(std::move(e))
