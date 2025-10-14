@@ -36,7 +36,7 @@ Available as **header-only** or with optional **shared runtime** for multi-DSO a
 - **[Scheduled Tasks Guide](docs/SCHEDULED_TASKS.md)** - Timer and periodic task scheduling
 - **[Error Handling Guide](docs/ERROR_HANDLING.md)** - Exception handling with callbacks
 - **[CMake Reference](docs/CMAKE_REFERENCE.md)** - Build options, targets, and troubleshooting
-- **[Feature Roadmap](#feature-status--roadmap)** - Current features and future plans
+- **Feature Roadmap** - Current features and future plans (see below)
 
 ## Platform Support
 

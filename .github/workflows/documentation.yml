@@ -93,10 +93,15 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install dependencies
+    - name: Install Doxygen 1.14.0
       run: |
+        cd /tmp
+        wget -q https://github.com/doxygen/doxygen/releases/download/Release_1_14_0/doxygen-1.14.0.linux.bin.tar.gz
+        tar -xzf doxygen-1.14.0.linux.bin.tar.gz
+        sudo cp doxygen-1.14.0/bin/doxygen /usr/local/bin/
+        doxygen --version
         sudo apt-get update
-        sudo apt-get install -y doxygen graphviz
+        sudo apt-get install -y graphviz
 
     - name: Configure (enable docs)
       run: cmake -S . -B build -DTHREADSCHEDULE_BUILD_DOCS=ON
