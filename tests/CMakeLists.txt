@@ -101,6 +101,8 @@ if(TARGET gtest)
         target_compile_definitions(runtime_registry_test PRIVATE THREADSCHEDULE_RUNTIME)
         gtest_discover_tests(runtime_registry_test 
             DISCOVERY_TIMEOUT 60
+            DISCOVERY_MODE PRE_TEST
+            WORKING_DIRECTORY $<TARGET_FILE_DIR:runtime_registry_test>
             PROPERTIES TIMEOUT 120
         )
 
