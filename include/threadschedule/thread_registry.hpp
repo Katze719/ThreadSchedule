@@ -50,7 +50,7 @@ struct RegisteredThreadInfo
     std::string name;
     std::string componentTag;
     bool alive{true};
-    std::weak_ptr<class ThreadControlBlock> control;
+    std::shared_ptr<class ThreadControlBlock> control;
 };
 
 class ThreadControlBlock
@@ -81,14 +81,7 @@ class ThreadControlBlock
     {
         return stdId_;
     }
-    [[nodiscard]] auto name() const noexcept -> std::string const&
-    {
-        return name_;
-    }
-    [[nodiscard]] auto component_tag() const noexcept -> std::string const&
-    {
-        return componentTag_;
-    }
+    // Removed name/component metadata from control block; metadata lives in RegisteredThreadInfo
 
     [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) const -> expected<void, std::error_code>
     {
@@ -199,14 +192,11 @@ class ThreadControlBlock
 #endif
     }
 
-    static auto create_for_current_thread(std::string const& name, std::string const& componentTag)
-        -> std::shared_ptr<ThreadControlBlock>
+    static auto create_for_current_thread() -> std::shared_ptr<ThreadControlBlock>
     {
         auto block = std::make_shared<ThreadControlBlock>();
         block->tid_ = ThreadInfo::get_thread_id();
         block->stdId_ = std::this_thread::get_id();
-        block->name_ = name;
-        block->componentTag_ = componentTag;
 #ifdef _WIN32
         HANDLE realHandle = nullptr;
         DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &realHandle,
@@ -215,15 +205,12 @@ class ThreadControlBlock
 #else
         block->pthreadHandle_ = pthread_self();
 #endif
-        (void)block->set_name(block->name_);
         return block;
     }
 
   private:
     Tid tid_{};
     std::thread::id stdId_;
-    std::string name_;
-    std::string componentTag_;
 #ifdef _WIN32
     HANDLE handle_ = nullptr;
 #else
@@ -270,15 +257,16 @@ class ThreadRegistry
         }
     }
 
-    void register_current_thread(std::shared_ptr<ThreadControlBlock> const& controlBlock)
+    void register_current_thread(std::shared_ptr<ThreadControlBlock> const& controlBlock,
+                                 std::string name = std::string(), std::string componentTag = std::string())
     {
         if (!controlBlock)
             return;
         RegisteredThreadInfo info;
         info.tid = controlBlock->tid();
         info.stdId = controlBlock->std_id();
-        info.name = controlBlock->name();
-        info.componentTag = controlBlock->component_tag();
+        info.name = std::move(name);
+        info.componentTag = std::move(componentTag);
         info.alive = true;
         info.control = controlBlock;
         std::unique_lock<std::shared_mutex> lock(mutex_);
@@ -583,7 +571,7 @@ class ThreadRegistry
         auto it = threads_.find(tid);
         if (it == threads_.end())
             return nullptr;
-        return it->second.control.lock();
+        return it->second.control;
     }
     mutable std::shared_mutex mutex_;
     std::unordered_map<Tid, RegisteredThreadInfo> threads_;
@@ -731,16 +719,18 @@ class AutoRegisterCurrentThread
                                        std::string const& componentTag = std::string())
         : active_(true), externalReg_(nullptr)
     {
-        auto block = ThreadControlBlock::create_for_current_thread(name, componentTag);
-        registry().register_current_thread(block);
+        auto block = ThreadControlBlock::create_for_current_thread();
+        (void)block->set_name(name);
+        registry().register_current_thread(block, name, componentTag);
     }
 
     explicit AutoRegisterCurrentThread(ThreadRegistry& reg, std::string const& name = std::string(),
                                        std::string const& componentTag = std::string())
         : active_(true), externalReg_(&reg)
     {
-        auto block = ThreadControlBlock::create_for_current_thread(name, componentTag);
-        externalReg_->register_current_thread(block);
+        auto block = ThreadControlBlock::create_for_current_thread();
+        (void)block->set_name(name);
+        externalReg_->register_current_thread(block, name, componentTag);
     }
     ~AutoRegisterCurrentThread()
     {
