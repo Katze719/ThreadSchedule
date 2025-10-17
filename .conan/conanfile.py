@@ -33,6 +33,35 @@ class ThreadScheduleConan(ConanFile):
     # Header-only by default, but can build shared runtime
     no_copy_source = False
     
+    def set_version(self):
+        # Resolve version from VERSION file in parent directory if not provided
+        if not self.version:
+            version_file = os.path.join(self.recipe_folder, "..", "VERSION")
+            if os.path.exists(version_file):
+                with open(version_file, "r", encoding="utf-8") as f:
+                    self.version = f.read().strip()
+            else:
+                self.version = "0.0.0"
+    
+    def export_sources(self):
+        # Export sources from parent directory (project root)
+        parent_dir = os.path.join(self.recipe_folder, "..")
+        copy(self, "CMakeLists.txt", src=parent_dir, dst=self.export_sources_folder)
+        copy(self, "VERSION", src=parent_dir, dst=self.export_sources_folder)
+        copy(self, "LICENSE", src=parent_dir, dst=self.export_sources_folder)
+        copy(self, "*.hpp", src=os.path.join(parent_dir, "include"), dst=os.path.join(self.export_sources_folder, "include"), keep_path=True)
+        copy(self, "*.h", src=os.path.join(parent_dir, "include"), dst=os.path.join(self.export_sources_folder, "include"), keep_path=True)
+        copy(self, "*.cpp", src=os.path.join(parent_dir, "src"), dst=os.path.join(self.export_sources_folder, "src"), keep_path=True)
+        copy(self, "*.cmake*", src=os.path.join(parent_dir, "cmake"), dst=os.path.join(self.export_sources_folder, "cmake"), keep_path=True)
+        copy(self, "*.in", src=os.path.join(parent_dir, "cmake"), dst=os.path.join(self.export_sources_folder, "cmake"), keep_path=True)
+        # Optional directories (may not exist in all cases)
+        if os.path.exists(os.path.join(parent_dir, "examples")):
+            copy(self, "*", src=os.path.join(parent_dir, "examples"), dst=os.path.join(self.export_sources_folder, "examples"), keep_path=True)
+        if os.path.exists(os.path.join(parent_dir, "tests")):
+            copy(self, "*", src=os.path.join(parent_dir, "tests"), dst=os.path.join(self.export_sources_folder, "tests"), keep_path=True)
+        if os.path.exists(os.path.join(parent_dir, "benchmarks")):
+            copy(self, "*", src=os.path.join(parent_dir, "benchmarks"), dst=os.path.join(self.export_sources_folder, "benchmarks"), keep_path=True)
+    
     def requirements(self):
         # No runtime requirements for header-only library
         pass
@@ -46,14 +75,6 @@ class ThreadScheduleConan(ConanFile):
         cmake_layout(self)
     
     def generate(self):
-        # Resolve version from VERSION file if not provided by recipe/CLI
-        if not self.version:
-            version_file = os.path.join(self.recipe_folder, "VERSION")
-            if os.path.exists(version_file):
-                with open(version_file, "r", encoding="utf-8") as f:
-                    self.version = f.read().strip()
-            else:
-                self.version = "0.0.0"
         tc = CMakeToolchain(self)
         tc.variables["THREADSCHEDULE_RUNTIME"] = self.options.shared_runtime
         tc.variables["THREADSCHEDULE_BUILD_EXAMPLES"] = self.options.build_examples

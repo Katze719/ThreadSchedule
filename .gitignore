@@ -47,3 +47,9 @@ compile_commands.json
 build/
 install/
 build_runtime/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc

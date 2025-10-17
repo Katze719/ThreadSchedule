@@ -343,10 +343,10 @@ FetchContent_MakeAvailable(ThreadSchedule)
 ```
 
 ### Conan
-See [conanfile.py](../conanfile.py) for Conan package definition.
+See [conanfile.py](../.conan/conanfile.py) for Conan package definition.
 
 ```bash
-conan create . --build=missing
+conan create .conan --build=missing
 ```
 
 ## Best Practices
