@@ -61,7 +61,7 @@ option(THREADSCHEDULE_BUILD_EXAMPLES "Build examples" ${THREADSCHEDULE_IS_TOPLEV
 option(THREADSCHEDULE_BUILD_TESTS "Build tests" OFF)
 option(THREADSCHEDULE_BUILD_BENCHMARKS "Build benchmarks" OFF)
 option(THREADSCHEDULE_INSTALL "Generate install target" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
-option(THREADSCHEDULE_RUNTIME "Build shared runtime for global registry (non header-only)" OFF)
+option(THREADSCHEDULE_RUNTIME "Build shared runtime for global registry (non header-only)" ON)
 option(THREADSCHEDULE_BUILD_DOCS "Build API documentation with Doxygen" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
 
 # CPM support (optional, download if building tests or benchmarks)
