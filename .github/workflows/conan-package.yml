@@ -9,7 +9,7 @@ on:
 
 jobs:
   conan-package-test:
-    name: Conan Package (${{ matrix.os }}, ${{ matrix.config }})
+    name: Conan Package (${{ matrix.os }}, ${{ matrix.config.name }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -41,26 +41,14 @@ jobs:
         pip install conan
         conan --version
     
-    - name: Detect Conan profile (Linux)
-      if: runner.os == 'Linux'
+    - name: Detect Conan profile
       run: |
         conan profile detect --force
     
-    - name: Detect Conan profile (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        conan profile detect --force
-    
-    - name: Create Conan package (Linux)
-      if: runner.os == 'Linux'
+    - name: Create Conan package
       run: |
         conan create .conan --build=missing ${{ matrix.config.options }}
     
-    - name: Create Conan package (Windows)
-      if: runner.os == 'Windows'
+    - name: Verify package installation
       run: |
-        conan create .conan --build=missing ${{ matrix.config.options }}
-    
-    - name: Test package import
-      run: |
-        python -c "import os; print('Package created successfully')"
+        conan list "threadschedule/*"

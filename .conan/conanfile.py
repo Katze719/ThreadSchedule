@@ -49,15 +49,18 @@ class ThreadScheduleConan(ConanFile):
         copy(self, "CMakeLists.txt", src=parent_dir, dst=self.export_sources_folder)
         copy(self, "VERSION", src=parent_dir, dst=self.export_sources_folder)
         copy(self, "LICENSE", src=parent_dir, dst=self.export_sources_folder)
-        copy(self, "*.hpp", src=os.path.join(parent_dir, "include"), dst=os.path.join(self.export_sources_folder, "include"))
+        copy(self, "*.hpp", src=os.path.join(parent_dir, "include"), dst=os.path.join(self.export_sources_folder, "include"), keep_path=True)
+        copy(self, "*.h", src=os.path.join(parent_dir, "include"), dst=os.path.join(self.export_sources_folder, "include"), keep_path=True)
         copy(self, "*.cpp", src=os.path.join(parent_dir, "src"), dst=os.path.join(self.export_sources_folder, "src"), keep_path=True)
-        copy(self, "*.cmake*", src=os.path.join(parent_dir, "cmake"), dst=os.path.join(self.export_sources_folder, "cmake"))
-        copy(self, "*.cpp", src=os.path.join(parent_dir, "examples"), dst=os.path.join(self.export_sources_folder, "examples"), keep_path=True)
-        copy(self, "*.cmake", src=os.path.join(parent_dir, "examples"), dst=os.path.join(self.export_sources_folder, "examples"), keep_path=True)
-        copy(self, "*.cpp", src=os.path.join(parent_dir, "tests"), dst=os.path.join(self.export_sources_folder, "tests"), keep_path=True)
-        copy(self, "*.cmake", src=os.path.join(parent_dir, "tests"), dst=os.path.join(self.export_sources_folder, "tests"), keep_path=True)
-        copy(self, "*.cpp", src=os.path.join(parent_dir, "benchmarks"), dst=os.path.join(self.export_sources_folder, "benchmarks"), keep_path=True)
-        copy(self, "*.cmake", src=os.path.join(parent_dir, "benchmarks"), dst=os.path.join(self.export_sources_folder, "benchmarks"), keep_path=True)
+        copy(self, "*.cmake*", src=os.path.join(parent_dir, "cmake"), dst=os.path.join(self.export_sources_folder, "cmake"), keep_path=True)
+        copy(self, "*.in", src=os.path.join(parent_dir, "cmake"), dst=os.path.join(self.export_sources_folder, "cmake"), keep_path=True)
+        # Optional directories (may not exist in all cases)
+        if os.path.exists(os.path.join(parent_dir, "examples")):
+            copy(self, "*", src=os.path.join(parent_dir, "examples"), dst=os.path.join(self.export_sources_folder, "examples"), keep_path=True)
+        if os.path.exists(os.path.join(parent_dir, "tests")):
+            copy(self, "*", src=os.path.join(parent_dir, "tests"), dst=os.path.join(self.export_sources_folder, "tests"), keep_path=True)
+        if os.path.exists(os.path.join(parent_dir, "benchmarks")):
+            copy(self, "*", src=os.path.join(parent_dir, "benchmarks"), dst=os.path.join(self.export_sources_folder, "benchmarks"), keep_path=True)
     
     def requirements(self):
         # No runtime requirements for header-only library
