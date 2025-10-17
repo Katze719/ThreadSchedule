@@ -390,7 +390,7 @@ wget https://github.com/cpm-cmake/CPM.cmake/releases/download/v0.40.8/CPM.cmake
 ### Conan Package Not Found
 **Solution**: Build from source:
 ```bash
-conan create . --build=missing
+conan create .conan --build=missing
 ```
 
 ### MinGW: Missing Windows APIs

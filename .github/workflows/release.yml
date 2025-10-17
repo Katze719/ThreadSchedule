@@ -38,8 +38,8 @@ jobs:
           --exclude='build*' \
           --exclude='.github' \
           --transform "s,^,threadschedule-${{ steps.get_version.outputs.version }}/," \
-          include/ cmake/ examples/ tests/ benchmarks/ docs/ \
-          CMakeLists.txt conanfile.py README.md LICENSE
+          include/ cmake/ examples/ tests/ benchmarks/ docs/ .conan/ \
+          CMakeLists.txt README.md LICENSE
     
     - name: Create header-only package
       run: |

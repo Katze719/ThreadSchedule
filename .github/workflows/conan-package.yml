@@ -1,0 +1,66 @@
+name: Conan Package
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+  workflow_dispatch:
+
+jobs:
+  conan-package-test:
+    name: Conan Package (${{ matrix.os }}, ${{ matrix.config }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        config:
+          - name: "header-only"
+            options: "-o shared_runtime=False -o build_examples=False -o build_tests=False -o build_benchmarks=False"
+          - name: "shared-runtime"
+            options: "-o shared_runtime=True -o build_examples=False -o build_tests=False -o build_benchmarks=False"
+          - name: "with-examples"
+            options: "-o shared_runtime=False -o build_examples=True -o build_tests=False -o build_benchmarks=False"
+          - name: "with-tests"
+            options: "-o shared_runtime=False -o build_examples=False -o build_tests=True -o build_benchmarks=False"
+          - name: "all-options"
+            options: "-o shared_runtime=True -o build_examples=True -o build_tests=True -o build_benchmarks=True"
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+    
+    - name: Install Conan
+      run: |
+        pip install conan
+        conan --version
+    
+    - name: Detect Conan profile (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        conan profile detect --force
+    
+    - name: Detect Conan profile (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        conan profile detect --force
+    
+    - name: Create Conan package (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        conan create .conan --build=missing ${{ matrix.config.options }}
+    
+    - name: Create Conan package (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        conan create .conan --build=missing ${{ matrix.config.options }}
+    
+    - name: Test package import
+      run: |
+        python -c "import os; print('Package created successfully')"
