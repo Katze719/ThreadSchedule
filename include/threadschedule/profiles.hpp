@@ -10,10 +10,10 @@
  * priority, and optional CPU affinity into a single intent.
  */
 
+#include "concepts.hpp"
 #include "scheduler_policy.hpp"
 #include "thread_pool.hpp"
 #include "thread_registry.hpp"
-#include "thread_wrapper.hpp"
 #include <optional>
 #include <string>
 
@@ -76,7 +76,7 @@ inline auto background() -> ThreadProfile
 /**
  * @brief Apply a profile to a single thread wrapper or view.
  */
-template <typename ThreadLike>
+template <typename ThreadLike, std::enable_if_t<is_thread_like_v<ThreadLike>, int> = 0>
 inline auto apply_profile(ThreadLike& t, ThreadProfile const& p) -> expected<void, std::error_code>
 {
     bool ok = true;
@@ -90,6 +90,32 @@ inline auto apply_profile(ThreadLike& t, ThreadProfile const& p) -> expected<voi
     if (ok)
         return {};
     return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+}
+
+/**
+ * @brief Apply a profile to a thread control block.
+ */
+inline auto apply_profile(ThreadControlBlock& t, ThreadProfile const& p) -> expected<void, std::error_code>
+{
+    bool ok = true;
+    if (!t.set_scheduling_policy(p.policy, p.priority).has_value())
+        ok = false;
+    if (p.affinity.has_value())
+    {
+        if (!t.set_affinity(*p.affinity).has_value())
+            ok = false;
+    }
+    if (ok)
+        return {};
+    return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+}
+
+/**
+ * @brief Apply a profile to a registered thread info.
+ */
+inline auto apply_profile(RegisteredThreadInfo& t, ThreadProfile const& p) -> expected<void, std::error_code>
+{
+    return apply_profile(*t.control, p);
 }
 
 /**
