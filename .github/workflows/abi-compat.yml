@@ -1,0 +1,126 @@
+name: ABI Compatibility (runtime)
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+  workflow_dispatch:
+    inputs:
+      expected_abi_break:
+        description: "Allow ABI failures"
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  abi-compat:
+    name: ${{ matrix.os }} old-offset:${{ matrix.offset }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+        offset: [ 1, 2, 3 ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Fetch tags (ensure up-to-date)
+        run: git fetch --tags --force
+
+      - name: Compute major-change flag
+        id: major_flag
+        shell: bash
+        run: |
+          set -euo pipefail
+          REF="${GITHUB_REF}"
+          # Default
+          echo "changed=false" >> "$GITHUB_OUTPUT"
+          # Only for tag refs like refs/tags/vX.Y.Z
+          if [[ "$REF" =~ ^refs/tags/v([0-9]+)\..* ]]; then
+            CUR_MAJ="${BASH_REMATCH[1]}"
+            # Collect tags newest first
+            mapfile -t TAGS < <(git tag --sort=-creatordate)
+            PREV=""
+            for t in "${TAGS[@]}"; do
+              if [[ "$t" != "${REF#refs/tags/}" ]]; then
+                PREV="$t"; break
+              fi
+            done
+            if [[ -n "$PREV" && "$PREV" =~ ^v([0-9]+)\..* ]]; then
+              PREV_MAJ="${BASH_REMATCH[1]}"
+              if [[ "$CUR_MAJ" != "$PREV_MAJ" ]]; then
+                echo "changed=true" >> "$GITHUB_OUTPUT"
+              fi
+            fi
+          fi
+
+      - name: Set up CMake
+        uses: jwlawson/actions-setup-cmake@v2
+
+      - name: Configure (current) with runtime
+        if: runner.os != 'Windows'
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DTHREADSCHEDULE_RUNTIME=ON -DCMAKE_INSTALL_PREFIX=${RUNNER_TEMP}/ts-install
+      - name: Build (current)
+        if: runner.os != 'Windows'
+        run: cmake --build build --config Release --parallel
+      - name: Install (current)
+        if: runner.os != 'Windows'
+        run: cmake --install build --config Release
+
+      - name: Configure (current) with runtime [Windows]
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake -B build -G "Visual Studio 17 2022" -A x64 -DTHREADSCHEDULE_RUNTIME=ON -DCMAKE_INSTALL_PREFIX="$env:RUNNER_TEMP/ts-install"
+      - name: Build (current) [Windows]
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cmake --build build --config Release --parallel
+      - name: Install (current) [Windows]
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cmake --install build --config Release
+
+      - name: Configure integration test (runtime_abi_compat)
+        if: runner.os != 'Windows'
+        working-directory: integration_tests/runtime_abi_compat
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DTHREADSCHEDULE_RUNTIME=ON -DRUNTIME_ABI_OLD_OFFSET=${{ matrix.offset }} -DCMAKE_PREFIX_PATH="${RUNNER_TEMP}/ts-install"
+      - name: Build integration test
+        if: runner.os != 'Windows'
+        working-directory: integration_tests/runtime_abi_compat
+        run: cmake --build build --config Release --parallel
+      - name: Run tests (ctest)
+        if: runner.os != 'Windows'
+        working-directory: integration_tests/runtime_abi_compat
+        env:
+          CTEST_OUTPUT_ON_FAILURE: 1
+        run: ctest --test-dir build -C Release --output-on-failure
+        continue-on-error: ${{ inputs.expected_abi_break == true || steps.major_flag.outputs.changed == 'true' }}
+
+      - name: Configure integration test (runtime_abi_compat) [Windows]
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: integration_tests/runtime_abi_compat
+        run: |
+          cmake -B build -G "Visual Studio 17 2022" -A x64 -DTHREADSCHEDULE_RUNTIME=ON -DRUNTIME_ABI_OLD_OFFSET=${{ matrix.offset }} -DCMAKE_PREFIX_PATH="$env:RUNNER_TEMP/ts-install"
+      - name: Build integration test [Windows]
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: integration_tests/runtime_abi_compat
+        run: cmake --build build --config Release --parallel
+      - name: Run tests (ctest) [Windows]
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: integration_tests/runtime_abi_compat
+        run: ctest --test-dir build -C Release --output-on-failure
+        continue-on-error: ${{ inputs.expected_abi_break == true || steps.major_flag.outputs.changed == 'true' }}
+
+
