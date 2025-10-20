@@ -1,6 +1,10 @@
 ## Unreleased
 
 - Added: Windows thread affinity retrieval via `GetThreadGroupAffinity` in `include/threadschedule/thread_wrapper.hpp`
+- Added: Integration test `integration_tests/runtime_abi_compat` to validate ABI compatibility (shared runtime) between current library and older tags
+- Added: Parameterization for ABI test old version selection via `RUNTIME_ABI_OLD_REF` or `RUNTIME_ABI_OLD_OFFSET`
+- Added: GitHub Actions workflow `abi-compat.yml` to run ABI tests on Linux and Windows for the last 3 tags; allowed failure only on major version bumps (or when explicitly enabled)
+- Docs: Updated `integration_tests/README.md` with usage for ABI compatibility scenario
 
 ## v1.1.0
 
