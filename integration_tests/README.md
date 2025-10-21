@@ -93,6 +93,36 @@ registry().for_each([](RegisteredThreadInfo const& info){ /* sees all threads */
 set_external_registry(nullptr); // reset to local
 ```
 
+---
+
+### 4. runtime_abi_compat/
+
+**Pattern:** ABI compatibility check in shared runtime mode across versions
+
+**Setup:**
+- `libA` builds against the current ThreadSchedule (this workspace)
+- `libB` builds against the last git tag of ThreadSchedule (fetched via ExternalProject)
+- Main app links both, and at runtime only the current `ThreadSchedule::Runtime` is provided next to the executable
+
+**What it tests:**
+- Mixed-version DSOs interoperate through a single shared runtime without ABI breaks
+- Old consumer (`libB`) can register and enumerate threads via the new runtime
+
+**Build requirement:** `THREADSCHEDULE_RUNTIME=ON`
+
+**Run:**
+```bash
+cd integration_tests/runtime_abi_compat
+# Option A: pick a specific tag/ref
+cmake -B build -DTHREADSCHEDULE_RUNTIME=ON -DRUNTIME_ABI_OLD_REF=v1.0.0
+
+# Option B: pick N-th latest tag (1=latest, 2=previous, ...)
+cmake -B build -DTHREADSCHEDULE_RUNTIME=ON -DRUNTIME_ABI_OLD_OFFSET=2
+
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
 ## How It Works
 
 These are **true integration tests**, not unit tests:
