@@ -315,9 +315,30 @@ class BaseThreadWrapper : protected detail::ThreadStorage<ThreadType, OwnershipT
     [[nodiscard]] auto get_affinity() const -> std::optional<ThreadAffinity>
     {
 #ifdef _WIN32
-        // Windows doesn't have a direct API to get thread affinity
-        // We can only set it, not get it reliably
-        // Return nullopt to indicate this is not supported on Windows
+        const auto handle = const_cast<BaseThreadWrapper*>(this)->native_handle();
+        using GetThreadGroupAffinityFn = BOOL(WINAPI*)(HANDLE, PGROUP_AFFINITY);
+        HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
+        if (hMod)
+        {
+            auto get_group_affinity = reinterpret_cast<GetThreadGroupAffinityFn>(
+                reinterpret_cast<void*>(GetProcAddress(hMod, "GetThreadGroupAffinity")));
+            if (get_group_affinity)
+            {
+                GROUP_AFFINITY ga{};
+                if (get_group_affinity(handle, &ga) != 0)
+                {
+                    ThreadAffinity affinity;
+                    for (int i = 0; i < 64; ++i)
+                    {
+                        if ((ga.Mask & (static_cast<KAFFINITY>(1) << i)) != 0)
+                        {
+                            affinity.add_cpu(static_cast<int>(ga.Group) * 64 + i);
+                        }
+                    }
+                    return affinity.has_any() ? affinity : std::nullopt;
+                }
+            }
+        }
         return std::nullopt;
 #else
         ThreadAffinity affinity;
