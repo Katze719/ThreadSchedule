@@ -45,6 +45,8 @@ using Tid = pid_t; // Linux TID via gettid()
 
 struct RegisteredThreadInfo
 {
+    // ABI marker inserted to intentionally change layout (major bump)
+    unsigned int abiMarker{0xAB10};
     Tid tid{};
     std::thread::id stdId;
     std::string name;
