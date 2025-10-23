@@ -335,11 +335,15 @@ class BaseThreadWrapper : protected detail::ThreadStorage<ThreadType, OwnershipT
                             affinity.add_cpu(static_cast<int>(ga.Group) * 64 + i);
                         }
                     }
-                    return affinity.has_any() ? affinity : std::nullopt;
+                    if (affinity.has_any())
+                    {
+                        return affinity;
+                    }
+                    return std::nullopt;
                 }
             }
+            return std::nullopt;
         }
-        return std::nullopt;
 #else
         ThreadAffinity affinity;
         auto const handle = const_cast<BaseThreadWrapper*>(this)->native_handle();
