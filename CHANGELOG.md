@@ -1,5 +1,10 @@
 ## Unreleased
 
+## v1.2.1
+
+- fix build for some older mingw version
+- fix ABI test
+
 ## v1.2.0
 
 - Added: Windows thread affinity retrieval via `GetThreadGroupAffinity` in `include/threadschedule/thread_wrapper.hpp`
