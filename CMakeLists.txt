@@ -160,11 +160,39 @@ if(UNIX AND NOT APPLE AND NOT WIN32)
 endif()
 # Windows (MSVC and MinGW) use Threads::Threads which is already linked above
 
+# Check support for optional warning flags (e.g. -Wnrvo)
+include(CheckCXXCompilerFlag)
+
+function(ts_add_warning_if_supported flag out_var)
+    string(REPLACE "-" "_" _flag_var "${flag}")
+    check_cxx_compiler_flag("${flag}" ${_flag_var})
+    if(${_flag_var})
+        if(DEFINED ${out_var} AND NOT "${${out_var}}" STREQUAL "")
+            set(${out_var} "${${out_var}};${flag}" PARENT_SCOPE)
+        else()
+            set(${out_var} "${flag}" PARENT_SCOPE)
+        endif()
+    endif()
+endfunction()
+
+# Collect optional warnings conditionally
+set(TS_OPTIONAL_WARNINGS "")
+ts_add_warning_if_supported("-Wnrvo" TS_OPTIONAL_WARNINGS)
+
+# Wrap optional warnings in BUILD_INTERFACE generator expressions, one per flag
+set(TS_OPTIONAL_WARNINGS_GE "")
+foreach(_w ${TS_OPTIONAL_WARNINGS})
+    list(APPEND TS_OPTIONAL_WARNINGS_GE $<BUILD_INTERFACE:${_w}>)
+endforeach()
+
 # Compiler-specific warnings and flags (only for top-level project to avoid polluting parent)
 if(THREADSCHEDULE_IS_TOPLEVEL_PROJECT)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(ThreadSchedule INTERFACE
-            $<BUILD_INTERFACE:-Wall -Wextra -Wpedantic>
+            $<BUILD_INTERFACE:-Wall>
+            $<BUILD_INTERFACE:-Wextra>
+            $<BUILD_INTERFACE:-Wpedantic>
+            ${TS_OPTIONAL_WARNINGS_GE}
         )
         # MinGW (GCC): allow permissive mode for broader compatibility when requested
         if(MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
