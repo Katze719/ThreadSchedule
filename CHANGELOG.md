@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Build: Conditionally enable `-Wnrvo` via compiler feature detection
+- Fix: Ensure NRVO in `affinity_for_node` by returning a single named local
+  `ThreadAffinity` on all paths (removes `-Wnrvo` warning).
+
 ## v1.2.1
 
 - fix build for some older mingw version
