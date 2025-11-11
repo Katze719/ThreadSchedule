@@ -223,7 +223,10 @@ if(THREADSCHEDULE_RUNTIME)
     if(UNIX AND NOT APPLE AND NOT WIN32)
         target_link_libraries(ThreadScheduleRuntime PUBLIC pthread rt)
     endif()
-    set_target_properties(ThreadScheduleRuntime PROPERTIES OUTPUT_NAME "threadschedule")
+    set_target_properties(ThreadScheduleRuntime PROPERTIES 
+        OUTPUT_NAME "threadschedule"
+        OUTPUT_NAME_DEBUG "threadscheduled"
+    )
     add_library(ThreadSchedule::Runtime ALIAS ThreadScheduleRuntime)
 endif()
 

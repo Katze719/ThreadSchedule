@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Changed: Debug builds of `ThreadScheduleRuntime` now output `libthreadscheduled.so` instead of `libthreadschedule.so` to distinguish debug from release artifacts
+
 ## v1.2.1
 
 - fix build for some older mingw version
