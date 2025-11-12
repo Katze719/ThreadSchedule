@@ -1,5 +1,14 @@
 ## Unreleased
 
+## v1.2.3
+
+- Build/Style: Update `.clang-format` (`IndentPPDirectives: AfterHash`) for clearer
+  preprocessor indentation.
+- Core: Improve `expected.hpp` header detection — check `<version>` or
+  `<experimental/version>` presence before including `<expected>`.
+- Refactor: Simplify and clarify conditional compilation in `expected.hpp` for
+  maintainability.
+
 ## v1.2.2
 
 - fix: Debug builds of `ThreadScheduleRuntime` now output `libthreadscheduled.so` instead of `libthreadschedule.so` to distinguish debug from release artifacts

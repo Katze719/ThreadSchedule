@@ -5,26 +5,36 @@
 #include <system_error>
 #include <type_traits>
 #include <utility>
-#if (defined(__cplusplus) && __cplusplus >= 202302L) || (defined(_MSVC_LANG) && _MSVC_LANG >= 202302L)
-#include <expected>
-#define THREADSCHEDULE_HAS_STD_EXPECTED 1
-#elif defined(__cpp_lib_expected) && __cpp_lib_expected >= 202202L
-#include <expected>
-#define THREADSCHEDULE_HAS_STD_EXPECTED 1
+
+#if defined(__has_include)
+#    if __has_include(<version>)
+#        include <version>
+#    elif __has_include(<experimental/version>)
+#        include <experimental/version>
+#    endif
+#endif
+
+#if defined(__cpp_lib_expected) && __cpp_lib_expected >= 202202L
+#    include <expected>
+#    define THREADSCHEDULE_HAS_STD_EXPECTED 1
+#elif (defined(__cplusplus) && __cplusplus >= 202302L) || (defined(_MSVC_LANG) && _MSVC_LANG >= 202302L)
+#    include <expected>
+#    define THREADSCHEDULE_HAS_STD_EXPECTED 1
 #else
-#define THREADSCHEDULE_HAS_STD_EXPECTED 0
+#    define THREADSCHEDULE_HAS_STD_EXPECTED 0
 #endif
 
 // Exception handling control
 // Automatically detects if exceptions are available using __cpp_exceptions
 // When exceptions are disabled (e.g., with -fno-exceptions):
 // - value() will call std::terminate() if accessed in an error state
-// - Prefer value_or(), operator*, or check has_value() before accessing the value
+// - Prefer value_or(), operator*, or check has_value() before accessing the
+// value
 // - Compatible with exception-free builds
 #ifdef __cpp_exceptions
-#define THREADSCHEDULE_EXPECTED_THROW(ex) throw ex
+#    define THREADSCHEDULE_EXPECTED_THROW(ex) throw ex
 #else
-#define THREADSCHEDULE_EXPECTED_THROW(ex) ::std::terminate()
+#    define THREADSCHEDULE_EXPECTED_THROW(ex) ::std::terminate()
 #endif
 
 namespace threadschedule
@@ -159,9 +169,9 @@ class expected
               typename = std::enable_if_t<
                   !std::is_same_v<std::decay_t<U>, expected> && !std::is_same_v<std::decay_t<U>, std::in_place_t> &&
                   !std::is_same_v<std::decay_t<U>, unexpected<E>> && std::is_constructible_v<T, U>>>
-#if __cplusplus >= 202002L
+#    if __cplusplus >= 202002L
     constexpr explicit(!std::is_convertible_v<U, T>) expected(U&& value) : has_(true)
-#else
+#    else
     constexpr expected(U&& value, std::enable_if_t<std::is_convertible_v<U, T>, int> /*unused*/ = 0) : has_(true)
     {
         new (&storage_.value_) T(std::forward<U>(value));
@@ -173,7 +183,7 @@ class expected
                                           !std::is_same_v<std::decay_t<U>, unexpected<E>> &&
                                           std::is_constructible_v<T, U> && !std::is_convertible_v<U, T>>>
     constexpr explicit expected(U&& value) : has_(true)
-#endif
+#    endif
     {
         new (&storage_.value_) T(std::forward<U>(value));
     }
@@ -621,12 +631,8 @@ class expected
   private:
     bool has_;
     union Storage {
-        Storage()
-        {
-        }
-        ~Storage()
-        {
-        }
+        Storage() {};
+        ~Storage() {};
         T value_;
         E error_;
     } storage_;
