@@ -629,11 +629,13 @@ class expected
     }
 
   private:
+    bool has_;
     union Storage {
+        Storage() {};
+        ~Storage() {};
         T value_;
         E error_;
     } storage_;
-    bool has_;
 };
 
 template <typename E>
@@ -929,8 +931,8 @@ class expected<void, E>
     }
 
   private:
-    E error_{};
     bool has_;
+    E error_{};
 };
 
 #endif // std::expected fallback
