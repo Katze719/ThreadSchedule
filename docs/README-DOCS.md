@@ -27,4 +27,5 @@ Additional guides:
 - [Profiles](PROFILES.md)
 - [Topology & NUMA](TOPOLOGY_NUMA.md)
 - [Chaos Testing](CHAOS_TESTING.md)
+- [Struct Reflection](REFLECT.md)
 
