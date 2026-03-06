@@ -42,6 +42,7 @@ Available as **header-only** or with optional **shared runtime** for multi-DSO a
 - **[Profiles](docs/PROFILES.md)** - High-level presets for priority/policy/affinity
 - **[Topology & NUMA](docs/TOPOLOGY_NUMA.md)** - NUMA-aware affinity builders
 - **[Chaos Testing](docs/CHAOS_TESTING.md)** - RAII controller to perturb affinity/priority for validation
+- **[Struct Reflection](docs/REFLECT.md)** - Define struct + reflection in one macro; each member written once as (Type, name) (C++17+)
 - **Feature Roadmap** - Current features and future plans (see below)
 
 ## Platform Support
