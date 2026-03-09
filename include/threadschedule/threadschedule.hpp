@@ -74,4 +74,9 @@ using ts::ThreadProfile;
 using ts::ThreadWrapper;
 using ts::ThreadWrapperView;
 
+// Build-mode introspection
+using ts::BuildMode;
+using ts::build_mode;
+using ts::build_mode_string;
+
 } // namespace threadschedule

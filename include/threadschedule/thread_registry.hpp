@@ -608,6 +608,29 @@ inline void set_external_registry(ThreadRegistry* reg)
 }
 #endif
 
+// Build-mode detection (compile-time constant + runtime query)
+enum class BuildMode : std::uint8_t
+{
+    HEADER_ONLY,
+    RUNTIME
+};
+
+#if defined(THREADSCHEDULE_RUNTIME)
+inline constexpr bool is_runtime_build = true;
+THREADSCHEDULE_API auto build_mode() -> BuildMode;
+#else
+inline constexpr bool is_runtime_build = false;
+inline auto build_mode() -> BuildMode
+{
+    return BuildMode::HEADER_ONLY;
+}
+#endif
+
+inline auto build_mode_string() -> char const*
+{
+    return is_runtime_build ? "runtime" : "header-only";
+}
+
 // Composite registry to aggregate multiple registries when explicit merging is desired
 class CompositeThreadRegistry
 {
