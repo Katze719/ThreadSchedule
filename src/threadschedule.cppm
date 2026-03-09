@@ -122,7 +122,9 @@ using ::threadschedule::ChaosController;
 
 // -- registered_threads.hpp -------------------------------------------------
 using ::threadschedule::ThreadWrapperReg;
+#if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
 using ::threadschedule::JThreadWrapperReg;
+#endif
 #ifndef _WIN32
 using ::threadschedule::PThreadWrapperReg;
 using ::threadschedule::PThreadWrapper;
