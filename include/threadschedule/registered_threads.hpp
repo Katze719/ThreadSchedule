@@ -31,7 +31,7 @@ class ThreadWrapperReg : public ThreadWrapper
     // No generic constructor without name/tag to avoid accidental misuse
 };
 
-#if __cplusplus >= 202002L
+#if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
 class JThreadWrapperReg : public JThreadWrapper
 {
   public:
