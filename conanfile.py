@@ -12,12 +12,13 @@ class ThreadScheduleConan(ConanFile):
     author = "Katze719"
     url = "https://github.com/Katze719/ThreadSchedule"
     description = "Modern C++ thread management library for Linux and Windows"
-    topics = ("threading", "concurrency", "thread-pool", "cpp17", "cpp20", "cpp23", "header-only")
+    topics = ("threading", "concurrency", "thread-pool", "cpp17", "cpp20", "cpp23", "cpp26", "header-only", "modules")
     
     settings = "os", "compiler", "build_type", "arch"
     
     options = {
         "shared_runtime": [True, False],
+        "cpp_module": [True, False],
         "build_examples": [True, False],
         "build_tests": [True, False],
         "build_benchmarks": [True, False],
@@ -25,6 +26,7 @@ class ThreadScheduleConan(ConanFile):
     
     default_options = {
         "shared_runtime": False,
+        "cpp_module": False,
         "build_examples": False,
         "build_tests": False,
         "build_benchmarks": False,
@@ -56,6 +58,7 @@ class ThreadScheduleConan(ConanFile):
                 self.version = "0.0.0"
         tc = CMakeToolchain(self)
         tc.variables["THREADSCHEDULE_RUNTIME"] = self.options.shared_runtime
+        tc.variables["THREADSCHEDULE_MODULE"] = self.options.cpp_module
         tc.variables["THREADSCHEDULE_BUILD_EXAMPLES"] = self.options.build_examples
         tc.variables["THREADSCHEDULE_BUILD_TESTS"] = self.options.build_tests
         tc.variables["THREADSCHEDULE_BUILD_BENCHMARKS"] = self.options.build_benchmarks

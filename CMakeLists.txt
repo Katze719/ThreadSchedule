@@ -8,9 +8,9 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
     string(STRIP "${THREADSCHEDULE_VERSION}" THREADSCHEDULE_VERSION)
 endif()
 
-project(ThreadSchedule 
+project(ThreadSchedule
     VERSION ${THREADSCHEDULE_VERSION}
-    DESCRIPTION "Modern C++ thread management library"
+    DESCRIPTION "Modern C++17/20/23/26 thread management library"
     HOMEPAGE_URL "https://github.com/Katze719/ThreadSchedule"
     LANGUAGES CXX
 )
@@ -18,7 +18,7 @@ project(ThreadSchedule
 # Ensure MSVC uses the shared runtime (/MD, /MDd) to avoid CRT mismatches with dependencies
 if(MSVC)
     foreach(flag_var CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_C_FLAGS_MINSIZEREL
-                    CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_MINSIZEREL)
+        CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_MINSIZEREL)
         if(DEFINED ${flag_var})
             string(REGEX REPLACE "/MTd" "/MDd" ${flag_var} "${${flag_var}}")
             string(REGEX REPLACE "/MT" "/MD" ${flag_var} "${${flag_var}}")
@@ -62,6 +62,7 @@ option(THREADSCHEDULE_BUILD_TESTS "Build tests" OFF)
 option(THREADSCHEDULE_BUILD_BENCHMARKS "Build benchmarks" OFF)
 option(THREADSCHEDULE_INSTALL "Generate install target" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
 option(THREADSCHEDULE_RUNTIME "Build shared runtime for global registry (non header-only)" OFF)
+option(THREADSCHEDULE_MODULE "Build C++20 module target (requires CMake >= 3.28 and C++20+)" OFF)
 option(THREADSCHEDULE_BUILD_DOCS "Build API documentation with Doxygen" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
 
 # CPM support (optional, download if building tests or benchmarks)
@@ -85,9 +86,9 @@ if(THREADSCHEDULE_BUILD_TESTS)
         GITHUB_REPOSITORY google/googletest
         VERSION 1.14.0
         OPTIONS
-            "INSTALL_GTEST OFF"
-            "BUILD_GMOCK OFF"
-            "gtest_force_shared_crt ON"
+        "INSTALL_GTEST OFF"
+        "BUILD_GMOCK OFF"
+        "gtest_force_shared_crt ON"
     )
 endif()
 
@@ -98,10 +99,10 @@ if(THREADSCHEDULE_BUILD_BENCHMARKS)
         GITHUB_REPOSITORY google/benchmark
         VERSION 1.9.4
         OPTIONS
-            "BENCHMARK_ENABLE_TESTING OFF"
-            "BENCHMARK_ENABLE_GTEST_TESTS OFF"
-            "BENCHMARK_ENABLE_INSTALL OFF"
-            "BENCHMARK_DOWNLOAD_DEPENDENCIES ON"
+        "BENCHMARK_ENABLE_TESTING OFF"
+        "BENCHMARK_ENABLE_GTEST_TESTS OFF"
+        "BENCHMARK_ENABLE_INSTALL OFF"
+        "BENCHMARK_DOWNLOAD_DEPENDENCIES ON"
     )
 
     # Add nlohmann/json for web server and database benchmarks
@@ -110,8 +111,8 @@ if(THREADSCHEDULE_BUILD_BENCHMARKS)
         GITHUB_REPOSITORY nlohmann/json
         VERSION 3.11.3
         OPTIONS
-            "JSON_BuildTests OFF"
-            "JSON_Install OFF"
+        "JSON_BuildTests OFF"
+        "JSON_Install OFF"
     )
 endif()
 
@@ -123,7 +124,11 @@ add_library(ThreadSchedule INTERFACE)
 add_library(ThreadSchedule::ThreadSchedule ALIAS ThreadSchedule)
 
 # Set target properties based on selected C++ standard
-if(CMAKE_CXX_STANDARD GREATER_EQUAL 23)
+if(CMAKE_CXX_STANDARD GREATER_EQUAL 26)
+    set_target_properties(ThreadSchedule PROPERTIES
+        INTERFACE_COMPILE_FEATURES cxx_std_26
+    )
+elseif(CMAKE_CXX_STANDARD GREATER_EQUAL 23)
     set_target_properties(ThreadSchedule PROPERTIES
         INTERFACE_COMPILE_FEATURES cxx_std_23
     )
@@ -216,18 +221,56 @@ if(THREADSCHEDULE_RUNTIME)
     target_compile_definitions(ThreadScheduleRuntime INTERFACE THREADSCHEDULE_RUNTIME)
     target_include_directories(ThreadScheduleRuntime
         PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-            $<INSTALL_INTERFACE:include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
     )
     target_link_libraries(ThreadScheduleRuntime PUBLIC Threads::Threads)
     if(UNIX AND NOT APPLE AND NOT WIN32)
         target_link_libraries(ThreadScheduleRuntime PUBLIC pthread rt)
     endif()
-    set_target_properties(ThreadScheduleRuntime PROPERTIES 
+    set_target_properties(ThreadScheduleRuntime PROPERTIES
         OUTPUT_NAME "threadschedule"
         OUTPUT_NAME_DEBUG "threadscheduled"
     )
     add_library(ThreadSchedule::Runtime ALIAS ThreadScheduleRuntime)
+endif()
+
+# Optional C++20 module target (requires CMake >= 3.28 and C++20 or later)
+if(THREADSCHEDULE_MODULE)
+    if(CMAKE_VERSION VERSION_LESS "3.28")
+        message(FATAL_ERROR "THREADSCHEDULE_MODULE requires CMake >= 3.28 for C++20 module support")
+    endif()
+    if(CMAKE_CXX_STANDARD LESS 20)
+        message(FATAL_ERROR "THREADSCHEDULE_MODULE requires at least C++20 (CMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD})")
+    endif()
+
+    add_library(ThreadScheduleModule)
+    add_library(ThreadSchedule::Module ALIAS ThreadScheduleModule)
+
+    target_sources(ThreadScheduleModule
+        PUBLIC
+        FILE_SET CXX_MODULES FILES
+        src/threadschedule.cppm
+    )
+
+    target_include_directories(ThreadScheduleModule
+        PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    )
+
+    target_link_libraries(ThreadScheduleModule PUBLIC Threads::Threads)
+    if(UNIX AND NOT APPLE AND NOT WIN32)
+        target_link_libraries(ThreadScheduleModule PUBLIC pthread rt)
+    endif()
+
+    if(CMAKE_CXX_STANDARD GREATER_EQUAL 26)
+        target_compile_features(ThreadScheduleModule PUBLIC cxx_std_26)
+    elseif(CMAKE_CXX_STANDARD GREATER_EQUAL 23)
+        target_compile_features(ThreadScheduleModule PUBLIC cxx_std_23)
+    else()
+        target_compile_features(ThreadScheduleModule PUBLIC cxx_std_20)
+    endif()
 endif()
 
 # Documentation (Doxygen + Awesome theme)
@@ -240,7 +283,7 @@ if(THREADSCHEDULE_BUILD_DOCS)
 
         # Download all files from doxygen-awesome-css for full feature set
         set(DOXYGEN_AWESOME_BASE_URL https://raw.githubusercontent.com/jothepro/doxygen-awesome-css/v2.4.1)
-        
+
         # Base theme CSS
         file(DOWNLOAD ${DOXYGEN_AWESOME_BASE_URL}/doxygen-awesome.css
             ${DOXYGEN_THEME_DIR}/doxygen-awesome.css
@@ -248,7 +291,7 @@ if(THREADSCHEDULE_BUILD_DOCS)
         if(NOT _dl_status_css EQUAL 0)
             message(FATAL_ERROR "Failed to download doxygen-awesome.css: ${_dl_status_css}")
         endif()
-        
+
         # Sidebar-only theme variant (optional alternative layout)
         file(DOWNLOAD ${DOXYGEN_AWESOME_BASE_URL}/doxygen-awesome-sidebar-only.css
             ${DOXYGEN_THEME_DIR}/doxygen-awesome-sidebar-only.css
@@ -256,14 +299,14 @@ if(THREADSCHEDULE_BUILD_DOCS)
         if(NOT _dl_status_sidebar_css EQUAL 0)
             message(FATAL_ERROR "Failed to download doxygen-awesome-sidebar-only.css: ${_dl_status_sidebar_css}")
         endif()
-        
+
         file(DOWNLOAD ${DOXYGEN_AWESOME_BASE_URL}/doxygen-awesome-sidebar-only-darkmode-toggle.css
             ${DOXYGEN_THEME_DIR}/doxygen-awesome-sidebar-only-darkmode-toggle.css
             STATUS _dl_status_sidebar_dm_css)
         if(NOT _dl_status_sidebar_dm_css EQUAL 0)
             message(FATAL_ERROR "Failed to download doxygen-awesome-sidebar-only-darkmode-toggle.css: ${_dl_status_sidebar_dm_css}")
         endif()
-        
+
         # JavaScript extensions
         file(DOWNLOAD ${DOXYGEN_AWESOME_BASE_URL}/doxygen-awesome-darkmode-toggle.js
             ${DOXYGEN_THEME_DIR}/doxygen-awesome-darkmode-toggle.js
@@ -271,35 +314,35 @@ if(THREADSCHEDULE_BUILD_DOCS)
         if(NOT _dl_status_dm_js EQUAL 0)
             message(FATAL_ERROR "Failed to download doxygen-awesome-darkmode-toggle.js: ${_dl_status_dm_js}")
         endif()
-        
+
         file(DOWNLOAD ${DOXYGEN_AWESOME_BASE_URL}/doxygen-awesome-fragment-copy-button.js
             ${DOXYGEN_THEME_DIR}/doxygen-awesome-fragment-copy-button.js
             STATUS _dl_status_copy_js)
         if(NOT _dl_status_copy_js EQUAL 0)
             message(FATAL_ERROR "Failed to download doxygen-awesome-fragment-copy-button.js: ${_dl_status_copy_js}")
         endif()
-        
+
         file(DOWNLOAD ${DOXYGEN_AWESOME_BASE_URL}/doxygen-awesome-paragraph-link.js
             ${DOXYGEN_THEME_DIR}/doxygen-awesome-paragraph-link.js
             STATUS _dl_status_para_js)
         if(NOT _dl_status_para_js EQUAL 0)
             message(FATAL_ERROR "Failed to download doxygen-awesome-paragraph-link.js: ${_dl_status_para_js}")
         endif()
-        
+
         file(DOWNLOAD ${DOXYGEN_AWESOME_BASE_URL}/doxygen-awesome-interactive-toc.js
             ${DOXYGEN_THEME_DIR}/doxygen-awesome-interactive-toc.js
             STATUS _dl_status_toc_js)
         if(NOT _dl_status_toc_js EQUAL 0)
             message(FATAL_ERROR "Failed to download doxygen-awesome-interactive-toc.js: ${_dl_status_toc_js}")
         endif()
-        
+
         file(DOWNLOAD ${DOXYGEN_AWESOME_BASE_URL}/doxygen-awesome-tabs.js
             ${DOXYGEN_THEME_DIR}/doxygen-awesome-tabs.js
             STATUS _dl_status_tabs_js)
         if(NOT _dl_status_tabs_js EQUAL 0)
             message(FATAL_ERROR "Failed to download doxygen-awesome-tabs.js: ${_dl_status_tabs_js}")
         endif()
-        
+
         # Configure Doxygen file
         set(DOXYGEN_OUTPUT_DIR ${CMAKE_BINARY_DIR}/docs/doxygen)
         configure_file(
@@ -343,6 +386,16 @@ if(THREADSCHEDULE_INSTALL)
             LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        )
+    endif()
+
+    if(THREADSCHEDULE_MODULE)
+        install(TARGETS ThreadScheduleModule
+            EXPORT ThreadScheduleTargets
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            FILE_SET CXX_MODULES DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ThreadSchedule/modules
             INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         )
     endif()

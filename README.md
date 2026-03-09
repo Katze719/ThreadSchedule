@@ -4,7 +4,6 @@
 [![Integration](https://github.com/Katze719/ThreadSchedule/actions/workflows/integration.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/integration.yml)
 [![Registry Integration](https://github.com/Katze719/ThreadSchedule/actions/workflows/registry-integration.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/registry-integration.yml)
 [![Runtime Tests](https://github.com/Katze719/ThreadSchedule/actions/workflows/runtime-tests.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/runtime-tests.yml)
-[![Code Quality](https://github.com/Katze719/ThreadSchedule/actions/workflows/code-quality.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/code-quality.yml)
 [![Documentation](https://github.com/Katze719/ThreadSchedule/actions/workflows/documentation.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/documentation.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -13,13 +12,14 @@ ThreadSchedule provides enhanced wrappers for `std::thread`, `std::jthread`, and
 `pthread` with extended functionality including thread naming, priority
 management, CPU affinity, and high-performance thread pools.
 
-Available as **header-only** or with optional **shared runtime** for multi-DSO
-applications.
+Available as **header-only**, as a **C++20 module** (`import threadschedule;`),
+or with optional **shared runtime** for multi-DSO applications.
 
 ## Key Features
 
-- **Modern C++**: Full C++17, C++20, and C++23 support with automatic feature
-  detection and optimization
+- **Modern C++**: Full C++17, C++20, C++23, and C++26 support with automatic
+  feature detection and optimization
+- **C++20 Modules**: Optional `import threadschedule;` support (C++20+)
 - **Header-Only or Shared Runtime**: Choose based on your needs
 - **Enhanced Wrappers**: Extend `std::thread`, `std::jthread`, and `pthread`
   with powerful features
@@ -69,28 +69,33 @@ ThreadSchedule is designed to work on any platform with a C++17 (or newer)
 compiler and standard threading support. The library is **continuously tested**
 on:
 
-| Platform            | Compiler        | C++17 | C++20 | C++23 |
-| ------------------- | --------------- | :---: | :---: | :---: |
-| **Linux (x86_64)**  |                 |       |       |       |
-| Ubuntu 22.04        | GCC 11          |  ✅   |  ✅   |  ✅   |
-| Ubuntu 22.04        | Clang 14        |  ✅   |  ✅   |  ✅   |
-| Ubuntu 24.04        | GCC 11          |  ✅   |  ✅   |  ✅   |
-| Ubuntu 24.04        | Clang 14        |  ✅   |   -   |   -   |
-| Ubuntu 24.04        | Clang 19        |   -   |  ✅   |  ✅   |
-| **Linux (ARM64)**   |                 |       |       |       |
-| Ubuntu 24.04 ARM64  | GCC (system)    |  ✅   |  ✅   |  ✅   |
-| **Windows**         |                 |       |       |       |
-| Windows Server 2022 | MSVC 2022       |  ✅   |  ✅   |  ✅   |
-| Windows Server 2022 | MinGW-w64 (GCC) |  ✅   |  ✅   |  ✅   |
-| Windows Server 2025 | MSVC 2022       |  ✅   |  ✅   |  ✅   |
-| Windows Server 2025 | MinGW-w64 (GCC) |  ✅   |  ✅   |  ✅   |
+| Platform            | Compiler        | C++17 | C++20 | C++23 | C++26 |
+| ------------------- | --------------- | :---: | :---: | :---: | :---: |
+| **Linux (x86_64)**  |                 |       |       |       |       |
+| Ubuntu 22.04        | GCC 11          |  ✅   |  ✅   |  ✅   |   -   |
+| Ubuntu 22.04        | Clang 14        |  ✅   |  ✅   |  ✅   |   -   |
+| Ubuntu 24.04        | GCC 11          |  ✅   |  ✅   |  ✅   |   -   |
+| Ubuntu 24.04        | GCC 14          |   -   |   -   |   -   |  ✅   |
+| Ubuntu 24.04        | Clang 14        |  ✅   |   -   |   -   |   -   |
+| Ubuntu 24.04        | Clang 19        |   -   |  ✅   |  ✅   |  ✅   |
+| **Linux (ARM64)**   |                 |       |       |       |       |
+| Ubuntu 24.04 ARM64  | GCC (system)    |   -   |   -   |  ✅   |   -   |
+| Ubuntu 24.04 ARM64  | GCC 14          |   -   |   -   |   -   |  ✅   |
+| **Windows**         |                 |       |       |       |       |
+| Windows Server 2022 | MSVC 2022       |  ✅   |  ✅   |  ✅   |   -   |
+| Windows Server 2022 | MinGW-w64 (GCC) |  ✅   |  ✅   |  ✅   |   -   |
+| Windows Server 2025 | MSVC 2022       |  ✅   |  ✅   |  ✅   |   -   |
+| Windows Server 2025 | MinGW-w64 (GCC) |  ✅   |  ✅   |  ✅   |   -   |
 
 **Additional platforms:** ThreadSchedule should work on other platforms (macOS,
 FreeBSD, other Linux distributions) with standard C++17+ compilers, but these
 are not regularly tested in CI.
 
-> **Ubuntu 24.04 Clang**: Clang 14 are limited to C++17/C++20 on 24.04; for
-> C++23, Clang 19 is used.
+> **C++26**: Requires GCC 14+ or Clang 19+. MSVC does not yet expose
+> `cxx_std_26` to CMake; C++26 on Windows is not tested.
+>
+> **Ubuntu 24.04 Clang**: Clang 14 is limited to C++17 on 24.04; for C++20/23,
+> Clang 19 is used.
 >
 > **Windows ARM64**: Not currently covered by GitHub-hosted runners, requires
 > self-hosted runner for testing.
@@ -99,8 +104,8 @@ are not regularly tested in CI.
 > (Windows 10+).
 
 > ⚠️ **Known Issue (Ubuntu 24.04)**: Older Clang versions with newer GCC
-> libstdc++ may have compatibility issues. Use Clang 19 for best C++23 support
-> on Ubuntu 24.04.
+> libstdc++ may have compatibility issues. Use Clang 19 for best C++23/26
+> support on Ubuntu 24.04.
 
 ## Quick Start
 
@@ -125,6 +130,37 @@ target_link_libraries(your_app PRIVATE ThreadSchedule::ThreadSchedule)
 
 **Other integration methods:** See [docs/INTEGRATION.md](docs/INTEGRATION.md)
 for FetchContent, Conan, system installation, and shared runtime option.
+
+### C++20 Module Usage
+
+ThreadSchedule can also be consumed as a C++20 module (requires CMake 3.28+ and
+Ninja or Visual Studio 17.4+):
+
+```cmake
+# In your CMakeLists.txt
+set(CMAKE_CXX_STANDARD 20)
+
+CPMAddPackage(
+    NAME ThreadSchedule
+    GITHUB_REPOSITORY Katze719/ThreadSchedule
+    GIT_TAG main
+    OPTIONS "THREADSCHEDULE_MODULE ON"
+)
+
+add_executable(your_app src/main.cpp)
+target_link_libraries(your_app PRIVATE ThreadSchedule::Module)
+```
+
+```cpp
+// src/main.cpp
+import threadschedule;
+
+int main() {
+    ts::HighPerformancePool pool(4);
+    auto future = pool.submit([]() { return 42; });
+    return future.get() != 42;
+}
+```
 
 ### Basic Usage
 
@@ -437,4 +473,4 @@ for details.
 - POSIX threads documentation
 - Modern C++ threading best practices
 - Linux kernel scheduling documentation
-- C++20/23 concurrency improvements
+- C++20/23/26 concurrency improvements
