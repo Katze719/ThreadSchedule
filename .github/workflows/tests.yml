@@ -35,6 +35,17 @@ jobs:
             compiler: clang-19
             cc: clang-19
             cxx: clang++-19
+          # C++26 requires newer compilers (GCC 14+, Clang 19+)
+          - os: ubuntu-24.04
+            cpp_standard: 26
+            compiler: gcc-14
+            cc: gcc-14
+            cxx: g++-14
+          - os: ubuntu-24.04
+            cpp_standard: 26
+            compiler: clang-19
+            cc: clang-19
+            cxx: clang++-19
         exclude:
           # Clang 14 is too old for GCC 14's libstdc++ on Ubuntu 24.04 with C++20/23
           - os: ubuntu-24.04
@@ -54,6 +65,8 @@ jobs:
         sudo apt-get install -y cmake ninja-build
         if [ "${{ matrix.compiler }}" = "gcc" ]; then
           sudo apt-get install -y g++-11 g++-12 g++-13
+        elif [ "${{ matrix.compiler }}" = "gcc-14" ]; then
+          sudo apt-get install -y g++-14
         elif [ "${{ matrix.compiler }}" = "clang-19" ]; then
           sudo apt-get install -y clang-19
         else
@@ -88,7 +101,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cpp_standard: [17, 20, 23]
+        cpp_standard: [17, 20, 23, 26]
         compiler: [msvc, mingw]
         image: [windows-latest, windows-2025]
     
@@ -155,8 +168,16 @@ jobs:
 
   # Test on Linux ARM64 (simple config, default compilers)
   linux-arm:
-    name: Linux ARM64 (ubuntu-24.04-arm, C++23, gcc)
+    name: Linux ARM64 (ubuntu-24.04-arm, C++${{ matrix.cpp_standard }}, ${{ matrix.compiler }})
     runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cpp_standard: 23
+            compiler: g++
+          - cpp_standard: 26
+            compiler: g++-14
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -164,13 +185,15 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build g++
+        sudo apt-get install -y cmake ninja-build ${{ matrix.compiler }}
 
     - name: Configure CMake
+      env:
+        CXX: ${{ matrix.compiler }}
       run: |
         cmake -B build -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_CXX_STANDARD=23 \
+          -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }} \
           -DTHREADSCHEDULE_BUILD_EXAMPLES=ON \
           -DTHREADSCHEDULE_BUILD_TESTS=ON
 
@@ -181,3 +204,76 @@ jobs:
       run: |
         cd build
         ctest --output-on-failure --parallel
+
+  # C++20 Module build verification
+  modules-linux:
+    name: Modules (Linux, C++${{ matrix.cpp_standard }}, ${{ matrix.compiler }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cpp_standard: 20
+            compiler: gcc-14
+            cc: gcc-14
+            cxx: g++-14
+          - cpp_standard: 20
+            compiler: clang-19
+            cc: clang-19
+            cxx: clang++-19
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build
+        if [ "${{ matrix.compiler }}" = "gcc-14" ]; then
+          sudo apt-get install -y g++-14
+        else
+          sudo apt-get install -y clang-19
+        fi
+
+    - name: Configure CMake (module target)
+      env:
+        CC: ${{ matrix.cc }}
+        CXX: ${{ matrix.cxx }}
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }} \
+          -DTHREADSCHEDULE_MODULE=ON
+
+    - name: Build module
+      run: cmake --build build --parallel
+
+    - name: Verify module artifact
+      run: |
+        echo "Module library built successfully:"
+        find build -name '*.a' -o -name '*.so' -o -name '*.gcm' -o -name '*.pcm' | head -20
+
+  modules-windows:
+    name: Modules (Windows, C++20, MSVC)
+    runs-on: windows-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Install Ninja
+      run: choco install ninja --no-progress --yes
+
+    - name: Configure CMake (module target)
+      run: |
+        cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=20 -DTHREADSCHEDULE_MODULE=ON
+
+    - name: Build module
+      run: cmake --build build --parallel
+
+    - name: Verify module artifact
+      run: |
+        echo "Module library built successfully:"
+        Get-ChildItem -Recurse build -Include *.lib,*.ifc,*.obj | Select-Object -First 20
