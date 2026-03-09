@@ -15,7 +15,7 @@
 
 /**
  * @file threadschedule.hpp
- * @brief Modern C++23 Thread Scheduling Library
+ * @brief Modern C++17/20/23/26 Thread Scheduling Library
  *
  * A comprehensive header-only library for advanced thread management
  * on Linux systems, providing C++ wrappers for pthreads, std::thread,
@@ -26,7 +26,7 @@
  * - Priority and scheduling policy management
  * - Nice value control
  * - CPU affinity management
- * - Modern C++23 features (ranges, concepts, format)
+ * - Modern C++20/23/26 features (ranges, concepts, format)
  * - Type-safe interfaces
  */
 
