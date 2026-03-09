@@ -10,7 +10,7 @@ endif()
 
 project(ThreadSchedule 
     VERSION ${THREADSCHEDULE_VERSION}
-    DESCRIPTION "Modern C++ thread management library"
+    DESCRIPTION "Modern C++17/20/23/26 thread management library"
     HOMEPAGE_URL "https://github.com/Katze719/ThreadSchedule"
     LANGUAGES CXX
 )
@@ -62,6 +62,7 @@ option(THREADSCHEDULE_BUILD_TESTS "Build tests" OFF)
 option(THREADSCHEDULE_BUILD_BENCHMARKS "Build benchmarks" OFF)
 option(THREADSCHEDULE_INSTALL "Generate install target" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
 option(THREADSCHEDULE_RUNTIME "Build shared runtime for global registry (non header-only)" OFF)
+option(THREADSCHEDULE_MODULE "Build C++20 module target (requires CMake >= 3.28 and C++20+)" OFF)
 option(THREADSCHEDULE_BUILD_DOCS "Build API documentation with Doxygen" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
 
 # CPM support (optional, download if building tests or benchmarks)
@@ -123,7 +124,11 @@ add_library(ThreadSchedule INTERFACE)
 add_library(ThreadSchedule::ThreadSchedule ALIAS ThreadSchedule)
 
 # Set target properties based on selected C++ standard
-if(CMAKE_CXX_STANDARD GREATER_EQUAL 23)
+if(CMAKE_CXX_STANDARD GREATER_EQUAL 26)
+    set_target_properties(ThreadSchedule PROPERTIES
+        INTERFACE_COMPILE_FEATURES cxx_std_26
+    )
+elseif(CMAKE_CXX_STANDARD GREATER_EQUAL 23)
     set_target_properties(ThreadSchedule PROPERTIES
         INTERFACE_COMPILE_FEATURES cxx_std_23
     )
@@ -228,6 +233,44 @@ if(THREADSCHEDULE_RUNTIME)
         OUTPUT_NAME_DEBUG "threadscheduled"
     )
     add_library(ThreadSchedule::Runtime ALIAS ThreadScheduleRuntime)
+endif()
+
+# Optional C++20 module target (requires CMake >= 3.28 and C++20 or later)
+if(THREADSCHEDULE_MODULE)
+    if(CMAKE_VERSION VERSION_LESS "3.28")
+        message(FATAL_ERROR "THREADSCHEDULE_MODULE requires CMake >= 3.28 for C++20 module support")
+    endif()
+    if(CMAKE_CXX_STANDARD LESS 20)
+        message(FATAL_ERROR "THREADSCHEDULE_MODULE requires at least C++20 (CMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD})")
+    endif()
+
+    add_library(ThreadScheduleModule)
+    add_library(ThreadSchedule::Module ALIAS ThreadScheduleModule)
+
+    target_sources(ThreadScheduleModule
+        PUBLIC
+            FILE_SET CXX_MODULES FILES
+                src/threadschedule.cppm
+    )
+
+    target_include_directories(ThreadScheduleModule
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+
+    target_link_libraries(ThreadScheduleModule PUBLIC Threads::Threads)
+    if(UNIX AND NOT APPLE AND NOT WIN32)
+        target_link_libraries(ThreadScheduleModule PUBLIC pthread rt)
+    endif()
+
+    if(CMAKE_CXX_STANDARD GREATER_EQUAL 26)
+        target_compile_features(ThreadScheduleModule PUBLIC cxx_std_26)
+    elseif(CMAKE_CXX_STANDARD GREATER_EQUAL 23)
+        target_compile_features(ThreadScheduleModule PUBLIC cxx_std_23)
+    else()
+        target_compile_features(ThreadScheduleModule PUBLIC cxx_std_20)
+    endif()
 endif()
 
 # Documentation (Doxygen + Awesome theme)
@@ -343,6 +386,16 @@ if(THREADSCHEDULE_INSTALL)
             LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        )
+    endif()
+
+    if(THREADSCHEDULE_MODULE)
+        install(TARGETS ThreadScheduleModule
+            EXPORT ThreadScheduleTargets
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            FILE_SET CXX_MODULES DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ThreadSchedule/modules
             INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         )
     endif()
