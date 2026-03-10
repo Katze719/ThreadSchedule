@@ -16,4 +16,9 @@ THREADSCHEDULE_API void set_external_registry(ThreadRegistry* reg)
     g_external = reg;
 }
 
+THREADSCHEDULE_API auto build_mode() -> BuildMode
+{
+    return BuildMode::RUNTIME;
+}
+
 } // namespace threadschedule

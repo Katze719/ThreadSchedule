@@ -7,10 +7,17 @@ on:
 
 jobs:
   build-and-test:
+    name: Runtime (${{ matrix.os }}, C++${{ matrix.cpp_standard }})
     strategy:
       fail-fast: false
       matrix:
         os: [ ubuntu-latest, ubuntu-24.04-arm, windows-latest ]
+        cpp_standard: [ 17 ]
+        include:
+          - os: ubuntu-latest
+            cpp_standard: 26
+          - os: ubuntu-24.04-arm
+            cpp_standard: 26
 
     runs-on: ${{ matrix.os }}
 
@@ -18,8 +25,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install GCC 14 (C++26)
+        if: matrix.cpp_standard == 26 && runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-14
+      
       - name: Configure CMake
-        run: cmake -S . -B build -DTHREADSCHEDULE_BUILD_TESTS=ON -DTHREADSCHEDULE_RUNTIME=ON -DCMAKE_BUILD_TYPE=Release
+        env:
+          CXX: ${{ matrix.cpp_standard == 26 && 'g++-14' || '' }}
+        run: cmake -S . -B build -DTHREADSCHEDULE_BUILD_TESTS=ON -DTHREADSCHEDULE_RUNTIME=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }}
 
       - name: Build
         run: cmake --build build --config Release --parallel
