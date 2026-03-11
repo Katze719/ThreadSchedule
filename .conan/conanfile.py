@@ -37,3 +37,9 @@ class ThreadScheduleConan(MEBaseConan):
         cmake.definitions["THREADSCHEDULE_INSTALL"] = "ON" 
         cmake.definitions["THREADSCHEDULE_BUILD_DOCS"] = "OFF"
         return cmake
+
+    def package_info(self):
+        super().package_info() 
+        
+        if self.options.shared_runtime:
+            self.cpp_info.defines.append("THREADSCHEDULE_RUNTIME")
