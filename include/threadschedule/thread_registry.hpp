@@ -28,13 +28,13 @@ namespace threadschedule
 
 // Optional export macro for building a runtime (shared/dll) variant
 #if defined(_WIN32) || defined(_WIN64)
-#if defined(THREADSCHEDULE_EXPORTS)
-#define THREADSCHEDULE_API __declspec(dllexport)
+    #if defined(THREADSCHEDULE_EXPORTS)
+        #define THREADSCHEDULE_API __declspec(dllexport)
+    #else
+        #define THREADSCHEDULE_API __declspec(dllimport)
+    #endif
 #else
-#define THREADSCHEDULE_API __declspec(dllimport)
-#endif
-#else
-#define THREADSCHEDULE_API
+    #define THREADSCHEDULE_API __attribute__((visibility("default")))
 #endif
 
 #ifdef _WIN32
