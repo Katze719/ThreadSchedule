@@ -120,6 +120,13 @@ using ::threadschedule::distribute_affinities_by_numa;
 using ::threadschedule::ChaosConfig;
 using ::threadschedule::ChaosController;
 
+// -- task.hpp / generator.hpp (C++20 coroutines) ---------------------------
+#if defined(__cpp_impl_coroutine) && __cpp_impl_coroutine >= 201902L
+using ::threadschedule::task;
+using ::threadschedule::sync_wait;
+using ::threadschedule::generator;
+#endif
+
 // -- registered_threads.hpp -------------------------------------------------
 using ::threadschedule::ThreadWrapperReg;
 #if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)

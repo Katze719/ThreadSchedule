@@ -63,42 +63,40 @@ class ThreadPriority
         return priority_ >= min_priority && priority_ <= max_priority;
     }
 
-    // Factory methods for common priorities
-    static constexpr auto lowest() -> ThreadPriority
+    [[nodiscard]] static constexpr auto lowest() noexcept -> ThreadPriority
     {
         return ThreadPriority(min_priority);
     }
-    static constexpr auto normal() -> ThreadPriority
+    [[nodiscard]] static constexpr auto normal() noexcept -> ThreadPriority
     {
         return ThreadPriority(0);
     }
-    static constexpr auto highest() -> ThreadPriority
+    [[nodiscard]] static constexpr auto highest() noexcept -> ThreadPriority
     {
         return ThreadPriority(max_priority);
     }
 
-    // Comparison operators
-    [[nodiscard]] auto operator==(ThreadPriority const& other) const -> bool
+    [[nodiscard]] constexpr auto operator==(ThreadPriority const& other) const noexcept -> bool
     {
         return priority_ == other.priority_;
     }
-    [[nodiscard]] auto operator!=(ThreadPriority const& other) const -> bool
+    [[nodiscard]] constexpr auto operator!=(ThreadPriority const& other) const noexcept -> bool
     {
         return priority_ != other.priority_;
     }
-    [[nodiscard]] auto operator<(ThreadPriority const& other) const -> bool
+    [[nodiscard]] constexpr auto operator<(ThreadPriority const& other) const noexcept -> bool
     {
         return priority_ < other.priority_;
     }
-    [[nodiscard]] auto operator<=(ThreadPriority const& other) const -> bool
+    [[nodiscard]] constexpr auto operator<=(ThreadPriority const& other) const noexcept -> bool
     {
         return priority_ <= other.priority_;
     }
-    [[nodiscard]] auto operator>(ThreadPriority const& other) const -> bool
+    [[nodiscard]] constexpr auto operator>(ThreadPriority const& other) const noexcept -> bool
     {
         return priority_ > other.priority_;
     }
-    [[nodiscard]] auto operator>=(ThreadPriority const& other) const -> bool
+    [[nodiscard]] constexpr auto operator>=(ThreadPriority const& other) const noexcept -> bool
     {
         return priority_ >= other.priority_;
     }

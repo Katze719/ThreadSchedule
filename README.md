@@ -34,6 +34,8 @@ or with optional **shared runtime** for multi-DSO applications.
 - **Profiles**: High-level presets for priority/policy/affinity
 - **NUMA-aware Topology Helpers**: Easy affinity builders across nodes
 - **Chaos Testing**: RAII controller to perturb affinity/priority for validation
+- **C++20 Coroutines**: `task<T>`, `generator<T>`, and `sync_wait` out of the
+  box -- no boilerplate promise types needed
 - **High-Performance Pools**: Work-stealing thread pool optimized for 10k+
   tasks/second
 - **Scheduled Tasks**: Run tasks at specific times, after delays, or
@@ -61,6 +63,8 @@ or with optional **shared runtime** for multi-DSO applications.
 - **[Topology & NUMA](docs/TOPOLOGY_NUMA.md)** - NUMA-aware affinity builders
 - **[Chaos Testing](docs/CHAOS_TESTING.md)** - RAII controller to perturb
   affinity/priority for validation
+- **[Coroutines](docs/COROUTINES.md)** - C++20 `task<T>`, `generator<T>`, and
+  `sync_wait`
 - **Feature Roadmap** - Current features and future plans (see below)
 
 ## Platform Support
@@ -347,6 +351,46 @@ if (!r) {
 
 auto value = pool.submit([]{ return 42; }); // standard future-based API remains unchanged
 ```
+
+### Coroutines (C++20)
+
+Lazy coroutine primitives -- no boilerplate promise types required.
+
+```cpp
+#include <threadschedule/threadschedule.hpp>
+using namespace threadschedule;
+
+// Lazy single-value coroutine
+task<int> compute(int x) {
+    co_return x * 2;
+}
+
+task<int> pipeline() {
+    int a = co_await compute(21);  // lazy -- starts here
+    co_return a;                   // 42
+}
+
+int main() {
+    // Blocking bridge for synchronous code
+    int result = sync_wait(pipeline());
+
+    // Lazy sequence coroutine
+    auto fib = []() -> generator<int> {
+        int a = 0, b = 1;
+        while (true) {
+            co_yield a;
+            auto tmp = a; a = b; b = tmp + b;
+        }
+    };
+
+    for (int v : fib()) {
+        if (v > 1000) break;
+        std::cout << v << "\n";
+    }
+}
+```
+
+**For more details:** See the [Coroutines Guide](docs/COROUTINES.md).
 
 ## API Overview
 
