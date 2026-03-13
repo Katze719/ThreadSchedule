@@ -28,12 +28,12 @@ class ScheduledTaskHandle
         cancelled_->store(true, std::memory_order_release);
     }
 
-    [[nodiscard]] auto is_cancelled() const -> bool
+    [[nodiscard]] auto is_cancelled() const noexcept -> bool
     {
         return cancelled_->load(std::memory_order_acquire);
     }
 
-    [[nodiscard]] auto id() const -> uint64_t
+    [[nodiscard]] auto id() const noexcept -> uint64_t
     {
         return id_;
     }

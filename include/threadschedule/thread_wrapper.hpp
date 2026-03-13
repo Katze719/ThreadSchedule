@@ -7,15 +7,15 @@
 #include <thread>
 
 #ifdef _WIN32
-#include <libloaderapi.h>
-#include <windows.h>
+#    include <libloaderapi.h>
+#    include <windows.h>
 #else
-#include <dirent.h>
-#include <fstream>
-#include <sys/prctl.h>
-#include <sys/resource.h>
-#include <sys/syscall.h>
-#include <unistd.h>
+#    include <dirent.h>
+#    include <fstream>
+#    include <sys/prctl.h>
+#    include <sys/resource.h>
+#    include <sys/syscall.h>
+#    include <unistd.h>
 #endif
 
 namespace threadschedule
@@ -530,7 +530,7 @@ class ThreadWrapperView : public BaseThreadWrapper<std::thread, detail::NonOwnin
 /**
  * @brief Enhanced std::jthread wrapper (C++20)
  */
-#if __cplusplus >= 202002L
+#if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
 class JThreadWrapper : public BaseThreadWrapper<std::jthread, detail::OwningTag>
 {
   public:
@@ -560,14 +560,14 @@ class JThreadWrapper : public BaseThreadWrapper<std::jthread, detail::OwningTag>
     }
 
     JThreadWrapper(JThreadWrapper const&) = delete;
-    JThreadWrapper& operator=(JThreadWrapper const&) = delete;
+    auto operator=(JThreadWrapper const&) -> JThreadWrapper& = delete;
 
-    JThreadWrapper(JThreadWrapper&& other) noexcept : BaseThreadWrapper()
+    JThreadWrapper(JThreadWrapper&& other) noexcept
     {
         this->underlying() = std::move(other.underlying());
     }
 
-    JThreadWrapper& operator=(JThreadWrapper&& other) noexcept
+    auto operator=(JThreadWrapper&& other) noexcept -> JThreadWrapper&
     {
         if (this != &other)
         {
@@ -581,23 +581,23 @@ class JThreadWrapper : public BaseThreadWrapper<std::jthread, detail::OwningTag>
     {
         this->underlying().request_stop();
     }
-    bool stop_requested()
+    [[nodiscard]] auto stop_requested() const noexcept -> bool
     {
         return this->underlying().get_stop_token().stop_requested();
     }
-    std::stop_token get_stop_token() const
+    [[nodiscard]] auto get_stop_token() const noexcept -> std::stop_token
     {
         return this->underlying().get_stop_token();
     }
-    std::stop_source get_stop_source()
+    [[nodiscard]] auto get_stop_source() noexcept -> std::stop_source
     {
         return this->underlying().get_stop_source();
     }
 
     // Factory methods
     template <typename F, typename... Args>
-    static JThreadWrapper create_with_config(std::string const& name, SchedulingPolicy policy, ThreadPriority priority,
-                                             F&& f, Args&&... args)
+    static auto create_with_config(std::string const& name, SchedulingPolicy policy, ThreadPriority priority, F&& f,
+                                   Args&&... args) -> JThreadWrapper
     {
 
         JThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
@@ -623,15 +623,15 @@ class JThreadWrapperView : public BaseThreadWrapper<std::jthread, detail::NonOwn
     {
         this->underlying().request_stop();
     }
-    bool stop_requested()
+    [[nodiscard]] auto stop_requested() const noexcept -> bool
     {
         return this->underlying().get_stop_token().stop_requested();
     }
-    std::stop_token get_stop_token() const
+    [[nodiscard]] auto get_stop_token() const noexcept -> std::stop_token
     {
         return this->underlying().get_stop_token();
     }
-    std::stop_source get_stop_source()
+    [[nodiscard]] auto get_stop_source() noexcept -> std::stop_source
     {
         return this->underlying().get_stop_source();
     }
@@ -650,7 +650,7 @@ class JThreadWrapperView : public BaseThreadWrapper<std::jthread, detail::NonOwn
 // Fallback for compilers without C++20 support
 using JThreadWrapper = ThreadWrapper;
 using JThreadWrapperView = ThreadWrapperView;
-#endif
+#endif // C++20
 
 class ThreadByNameView
 {
