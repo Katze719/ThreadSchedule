@@ -20,6 +20,28 @@
 namespace threadschedule
 {
 
+template <>
+struct is_thread_like<ThreadWrapper> : std::true_type
+{
+};
+
+template <>
+struct is_thread_like<ThreadWrapperView> : std::true_type
+{
+};
+
+#if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+template <>
+struct is_thread_like<JThreadWrapper> : std::true_type
+{
+};
+
+template <>
+struct is_thread_like<JThreadWrapperView> : std::true_type
+{
+};
+#endif
+
 /**
  * @brief Declarative profile describing desired scheduling.
  */
