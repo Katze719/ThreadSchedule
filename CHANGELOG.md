@@ -1,5 +1,44 @@
 ## Unreleased
 
+- Fix: `AutoRegisterCurrentThread` move constructor and move assignment now
+  correctly transfer `externalReg_`, preventing unregister from the wrong
+  registry after a move.
+- Fix: Consistent MSVC C++20 detection (`_MSVC_LANG`) in `thread_wrapper.hpp`
+  and `concepts.hpp`, matching the guard already used in
+  `registered_threads.hpp`. Fixes compile errors on MSVC without
+  `/Zc:__cplusplus`.
+- Fix: `apply_profile` template can now be instantiated with `ThreadWrapper`,
+  `JThreadWrapper`, `ThreadWrapperView`, `JThreadWrapperView`, and
+  `PThreadWrapper` via new `is_thread_like` specialisations. Previously the
+  template was constrained to `std::thread`/`std::jthread` which lack the
+  required scheduling API.
+- Added: `FastThreadPool::set_affinity()` and `FastThreadPool::wait_for_tasks()`
+  for API parity with `ThreadPool` and `HighPerformancePool`.
+- Added: Missing forwarding methods in `WithErrors` wrappers —
+  `HighPerformancePoolWithErrors::set_affinity()`,
+  `FastThreadPoolWithErrors::set_affinity()` and
+  `FastThreadPoolWithErrors::wait_for_tasks()`.
+- Improved: `JThreadWrapper` / `JThreadWrapperView` jthread-specific methods now
+  use trailing return types, `[[nodiscard]]`, `const`, and `noexcept`
+  consistently with the rest of the library.
+- Improved: `ThreadPriority` factory methods are now `[[nodiscard]]` and
+  `noexcept`; comparison operators are now `constexpr noexcept`.
+- Improved: Added `[[nodiscard]]` to query methods across `WorkStealingDeque`,
+  all pool classes, and `ScheduledTaskHandle`.
+- Removed: Unused `thread_local std::random_device` in
+  `HighPerformancePool::worker_function`.
+
+## v1.3.0
+
+- Added: Build-mode introspection (`BuildMode` enum, `build_mode()`,
+  `build_mode_string()`) to distinguish header-only from runtime builds at
+  compile time and runtime.
+- Added: C++20 module support (`src/threadschedule.cppm`) re-exporting the
+  full public API.
+- Added: C++26 standard support in CMake and Conan configuration.
+- Updated: CI workflows for module compilation and extended standard coverage.
+- Updated: README with module usage instructions and C++26 notes.
+
 ## v1.2.3
 
 - Build/Style: Update `.clang-format` (`IndentPPDirectives: AfterHash`) for clearer
