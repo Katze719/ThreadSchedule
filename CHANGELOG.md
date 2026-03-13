@@ -27,6 +27,18 @@
   all pool classes, and `ScheduledTaskHandle`.
 - Removed: Unused `thread_local std::random_device` in
   `HighPerformancePool::worker_function`.
+- Added: C++20 coroutine primitive `task<T>` (`task.hpp`) — a lazy
+  single-value coroutine that starts execution only when `co_await`ed.
+  Includes full `task<void>` specialisation and exception propagation.
+- Added: `sync_wait(task<T>)` / `sync_wait(task<void>)` — blocking bridge
+  that runs a task on the calling thread and returns its result.
+- Added: C++20 coroutine primitive `generator<T>` (`generator.hpp`) — a lazy
+  multi-value coroutine producing elements via `co_yield`. Supports
+  range-based for loops (`begin()` / `end()` with `std::default_sentinel_t`).
+  Automatically aliases `std::generator<T>` when C++23 `__cpp_lib_generator`
+  is available.
+- Added: Coroutine exports in the C++20 module interface
+  (`threadschedule.cppm`).
 
 ## v1.3.0
 
