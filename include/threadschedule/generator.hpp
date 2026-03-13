@@ -67,17 +67,15 @@ class generator
             return {};
         }
 
-        auto yield_value(T& value) noexcept -> std::suspend_always
+        auto yield_value(T const& value) -> std::suspend_always
         {
-            stored_.reset();
-            current_ = std::addressof(value);
+            value_.emplace(value);
             return {};
         }
 
         auto yield_value(T&& value) noexcept(std::is_nothrow_move_constructible_v<T>) -> std::suspend_always
         {
-            stored_.emplace(std::move(value));
-            current_ = std::addressof(*stored_);
+            value_.emplace(std::move(value));
             return {};
         }
 
@@ -96,10 +94,9 @@ class generator
                 std::rethrow_exception(exception_);
         }
 
-        T* current_{};
+        std::optional<T> value_{};
 
       private:
-        std::optional<T> stored_{};
         std::exception_ptr exception_{};
     };
 
@@ -134,14 +131,14 @@ class generator
             ++(*this);
         }
 
-        [[nodiscard]] auto operator*() const noexcept -> reference
+        [[nodiscard]] auto operator*() const -> T&
         {
-            return *handle_.promise().current_;
+            return *handle_.promise().value_;
         }
 
-        [[nodiscard]] auto operator->() const noexcept -> pointer
+        [[nodiscard]] auto operator->() const -> T*
         {
-            return handle_.promise().current_;
+            return std::addressof(*handle_.promise().value_);
         }
 
         [[nodiscard]] friend auto operator==(iterator const& it, std::default_sentinel_t) noexcept -> bool
