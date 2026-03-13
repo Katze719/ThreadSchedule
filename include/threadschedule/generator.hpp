@@ -19,6 +19,7 @@
 #include <coroutine>
 #include <exception>
 #include <iterator>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
@@ -68,13 +69,15 @@ class generator
 
         auto yield_value(T& value) noexcept -> std::suspend_always
         {
+            stored_.reset();
             current_ = std::addressof(value);
             return {};
         }
 
-        auto yield_value(T&& value) noexcept -> std::suspend_always
+        auto yield_value(T&& value) noexcept(std::is_nothrow_move_constructible_v<T>) -> std::suspend_always
         {
-            current_ = std::addressof(value);
+            stored_.emplace(std::move(value));
+            current_ = std::addressof(*stored_);
             return {};
         }
 
@@ -96,6 +99,7 @@ class generator
         T* current_{};
 
       private:
+        std::optional<T> stored_{};
         std::exception_ptr exception_{};
     };
 
