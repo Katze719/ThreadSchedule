@@ -1,5 +1,7 @@
 ## Unreleased
 
+## v1.4.0
+
 - Fix: `AutoRegisterCurrentThread` move constructor and move assignment now
   correctly transfer `externalReg_`, preventing unregister from the wrong
   registry after a move.
@@ -27,16 +29,15 @@
   all pool classes, and `ScheduledTaskHandle`.
 - Removed: Unused `thread_local std::random_device` in
   `HighPerformancePool::worker_function`.
-- Added: C++20 coroutine primitive `task<T>` (`task.hpp`) — a lazy
-  single-value coroutine that starts execution only when `co_await`ed.
-  Includes full `task<void>` specialisation and exception propagation.
-- Added: `sync_wait(task<T>)` / `sync_wait(task<void>)` — blocking bridge
-  that runs a task on the calling thread and returns its result.
+- Added: C++20 coroutine primitive `task<T>` (`task.hpp`) — a lazy single-value
+  coroutine that starts execution only when `co_await`ed. Includes full
+  `task<void>` specialisation and exception propagation.
+- Added: `sync_wait(task<T>)` / `sync_wait(task<void>)` — blocking bridge that
+  runs a task on the calling thread and returns its result.
 - Added: C++20 coroutine primitive `generator<T>` (`generator.hpp`) — a lazy
-  multi-value coroutine producing elements via `co_yield`. Supports
-  range-based for loops (`begin()` / `end()` with `std::default_sentinel_t`).
-  Automatically aliases `std::generator<T>` when C++23 `__cpp_lib_generator`
-  is available.
+  multi-value coroutine producing elements via `co_yield`. Supports range-based
+  for loops (`begin()` / `end()` with `std::default_sentinel_t`). Automatically
+  aliases `std::generator<T>` when C++23 `__cpp_lib_generator` is available.
 - Added: Coroutine exports in the C++20 module interface
   (`threadschedule.cppm`).
 
@@ -45,16 +46,16 @@
 - Added: Build-mode introspection (`BuildMode` enum, `build_mode()`,
   `build_mode_string()`) to distinguish header-only from runtime builds at
   compile time and runtime.
-- Added: C++20 module support (`src/threadschedule.cppm`) re-exporting the
-  full public API.
+- Added: C++20 module support (`src/threadschedule.cppm`) re-exporting the full
+  public API.
 - Added: C++26 standard support in CMake and Conan configuration.
 - Updated: CI workflows for module compilation and extended standard coverage.
 - Updated: README with module usage instructions and C++26 notes.
 
 ## v1.2.3
 
-- Build/Style: Update `.clang-format` (`IndentPPDirectives: AfterHash`) for clearer
-  preprocessor indentation.
+- Build/Style: Update `.clang-format` (`IndentPPDirectives: AfterHash`) for
+  clearer preprocessor indentation.
 - Core: Improve `expected.hpp` header detection — check `<version>` or
   `<experimental/version>` presence before including `<expected>`.
 - Refactor: Simplify and clarify conditional compilation in `expected.hpp` for
@@ -62,7 +63,9 @@
 
 ## v1.2.2
 
-- fix: Debug builds of `ThreadScheduleRuntime` now output `libthreadscheduled.so` instead of `libthreadschedule.so` to distinguish debug from release artifacts
+- fix: Debug builds of `ThreadScheduleRuntime` now output
+  `libthreadscheduled.so` instead of `libthreadschedule.so` to distinguish debug
+  from release artifacts
 
 ## v1.2.1
 
@@ -71,11 +74,17 @@
 
 ## v1.2.0
 
-- Added: Windows thread affinity retrieval via `GetThreadGroupAffinity` in `include/threadschedule/thread_wrapper.hpp`
-- Added: Integration test `integration_tests/runtime_abi_compat` to validate ABI compatibility (shared runtime) between current library and older tags
-- Added: Parameterization for ABI test old version selection via `RUNTIME_ABI_OLD_REF` or `RUNTIME_ABI_OLD_OFFSET`
-- Added: GitHub Actions workflow `abi-compat.yml` to run ABI tests on Linux and Windows for the last 3 tags; allowed failure only on major version bumps (or when explicitly enabled)
-- Docs: Updated `integration_tests/README.md` with usage for ABI compatibility scenario
+- Added: Windows thread affinity retrieval via `GetThreadGroupAffinity` in
+  `include/threadschedule/thread_wrapper.hpp`
+- Added: Integration test `integration_tests/runtime_abi_compat` to validate ABI
+  compatibility (shared runtime) between current library and older tags
+- Added: Parameterization for ABI test old version selection via
+  `RUNTIME_ABI_OLD_REF` or `RUNTIME_ABI_OLD_OFFSET`
+- Added: GitHub Actions workflow `abi-compat.yml` to run ABI tests on Linux and
+  Windows for the last 3 tags; allowed failure only on major version bumps (or
+  when explicitly enabled)
+- Docs: Updated `integration_tests/README.md` with usage for ABI compatibility
+  scenario
 
 ## v1.1.0
 
@@ -146,5 +155,3 @@
 ## v0.1.0
 
 - Initial benchmark suite and examples
-
-
