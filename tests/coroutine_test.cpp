@@ -195,7 +195,7 @@ TEST(GeneratorTest, StringValues)
 
     std::vector<std::string> values;
     auto g = gen();
-    for (auto& v : g)
+    for (const auto& v : g)
     {
         values.push_back(v);
     }
