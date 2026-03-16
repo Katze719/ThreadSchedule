@@ -3,7 +3,7 @@ variables:
 
 include:
   - project: 'me-public/tools/gitlab-ci' 
-    ref: master
+    ref: snapshot
     file: 
       - '/stage_definitions.yml'
       - '/deploy-conan-package.yml'
