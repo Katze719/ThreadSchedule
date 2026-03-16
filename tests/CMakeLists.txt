@@ -115,5 +115,30 @@ if(TARGET gtest)
         endif()
     endif()
 
+    # Coroutine tests (C++20)
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_FLAGS "${CMAKE_CXX_FLAGS}")
+    check_cxx_source_compiles("
+        #include <coroutine>
+        struct promise { auto get_return_object() { return std::coroutine_handle<promise>::from_promise(*this); }
+        auto initial_suspend() { return std::suspend_always{}; }
+        auto final_suspend() noexcept { return std::suspend_always{}; }
+        void return_void() {} void unhandled_exception() {} };
+        int main() {}
+    " THREADSCHEDULE_HAS_COROUTINES)
+
+    if(THREADSCHEDULE_HAS_COROUTINES)
+        add_executable(coroutine_test coroutine_test.cpp)
+        target_link_libraries(coroutine_test
+            ThreadSchedule::ThreadSchedule
+            gtest
+            gtest_main
+        )
+        gtest_discover_tests(coroutine_test
+            DISCOVERY_TIMEOUT 60
+            PROPERTIES TIMEOUT 120
+        )
+    endif()
+
     # Discovered tests already carry TIMEOUT=120 via PROPERTIES above
-endif() 
+endif()
