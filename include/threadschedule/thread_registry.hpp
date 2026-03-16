@@ -767,16 +767,27 @@ class AutoRegisterCurrentThread
     }
     AutoRegisterCurrentThread(AutoRegisterCurrentThread const&) = delete;
     auto operator=(AutoRegisterCurrentThread const&) -> AutoRegisterCurrentThread& = delete;
-    AutoRegisterCurrentThread(AutoRegisterCurrentThread&& other) noexcept : active_(other.active_)
+    AutoRegisterCurrentThread(AutoRegisterCurrentThread&& other) noexcept
+        : active_(other.active_), externalReg_(other.externalReg_)
     {
         other.active_ = false;
+        other.externalReg_ = nullptr;
     }
     auto operator=(AutoRegisterCurrentThread&& other) noexcept -> AutoRegisterCurrentThread&
     {
         if (this != &other)
         {
+            if (active_)
+            {
+                if (externalReg_ != nullptr)
+                    externalReg_->unregister_current_thread();
+                else
+                    registry().unregister_current_thread();
+            }
             active_ = other.active_;
+            externalReg_ = other.externalReg_;
             other.active_ = false;
+            other.externalReg_ = nullptr;
         }
         return *this;
     }

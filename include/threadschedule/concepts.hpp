@@ -98,7 +98,7 @@ struct is_thread_like<std::thread> : std::true_type
 };
 
 // Only include jthread if C++20 is available
-#if __cplusplus >= 202002L
+#if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
 template <>
 struct is_thread_like<std::jthread> : std::true_type
 {

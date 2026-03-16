@@ -1,5 +1,6 @@
 #pragma once
 
+#include "concepts.hpp"
 #include "expected.hpp"
 #include "scheduler_policy.hpp"
 #include <atomic>
@@ -460,6 +461,11 @@ class PThreadMutex
 
   private:
     pthread_mutex_t mutex_;
+};
+
+template <>
+struct is_thread_like<PThreadWrapper> : std::true_type
+{
 };
 
 #endif // !_WIN32

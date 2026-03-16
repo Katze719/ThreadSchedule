@@ -3,10 +3,12 @@
 #include "chaos.hpp"
 #include "concepts.hpp"
 #include "error_handler.hpp"
+#include "generator.hpp"
 #include "profiles.hpp"
 #include "pthread_wrapper.hpp"
 #include "scheduled_pool.hpp"
 #include "scheduler_policy.hpp"
+#include "task.hpp"
 #include "thread_pool.hpp"
 #include "thread_pool_with_errors.hpp"
 #include "thread_registry.hpp"
@@ -78,5 +80,12 @@ using ts::ThreadWrapperView;
 using ts::BuildMode;
 using ts::build_mode;
 using ts::build_mode_string;
+
+// Coroutine primitives (C++20)
+#if defined(__cpp_impl_coroutine) && __cpp_impl_coroutine >= 201902L
+using ts::task;
+using ts::sync_wait;
+using ts::generator;
+#endif
 
 } // namespace threadschedule

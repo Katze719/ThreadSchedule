@@ -134,41 +134,31 @@ class HighPerformancePoolWithErrors
         return pool_.configure_threads(name_prefix, policy, priority);
     }
 
-    /**
-     * @brief Distribute threads across CPUs
-     */
+    auto set_affinity(ThreadAffinity const& affinity) -> expected<void, std::error_code>
+    {
+        return pool_.set_affinity(affinity);
+    }
+
     auto distribute_across_cpus() -> expected<void, std::error_code>
     {
         return pool_.distribute_across_cpus();
     }
 
-    /**
-     * @brief Shutdown the pool
-     */
     void shutdown()
     {
         pool_.shutdown();
     }
 
-    /**
-     * @brief Wait for all tasks to complete
-     */
     void wait_for_tasks()
     {
         pool_.wait_for_tasks();
     }
 
-    /**
-     * @brief Get pool size
-     */
     [[nodiscard]] auto size() const noexcept -> size_t
     {
         return pool_.size();
     }
 
-    /**
-     * @brief Get pending task count
-     */
     [[nodiscard]] auto pending_tasks() const -> size_t
     {
         return pool_.pending_tasks();
@@ -277,9 +267,19 @@ class FastThreadPoolWithErrors
         return pool_.configure_threads(name_prefix, policy, priority);
     }
 
+    auto set_affinity(ThreadAffinity const& affinity) -> bool
+    {
+        return pool_.set_affinity(affinity);
+    }
+
     auto distribute_across_cpus() -> bool
     {
         return pool_.distribute_across_cpus();
+    }
+
+    void wait_for_tasks()
+    {
+        pool_.wait_for_tasks();
     }
 
     void shutdown()

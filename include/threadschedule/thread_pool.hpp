@@ -53,7 +53,7 @@ class WorkStealingDeque
     }
 
     // Thread-safe operations
-    auto push(T&& item) -> bool
+    [[nodiscard]] auto push(T&& item) -> bool
     {
         std::lock_guard<std::mutex> lock(mutex_);
         size_t const t = top_.load(std::memory_order_relaxed);
@@ -69,7 +69,7 @@ class WorkStealingDeque
         return true;
     }
 
-    auto push(T const& item) -> bool
+    [[nodiscard]] auto push(T const& item) -> bool
     {
         std::lock_guard<std::mutex> lock(mutex_);
         size_t const t = top_.load(std::memory_order_relaxed);
@@ -85,7 +85,7 @@ class WorkStealingDeque
         return true;
     }
 
-    auto pop(T& item) -> bool
+    [[nodiscard]] auto pop(T& item) -> bool
     {
         std::lock_guard<std::mutex> lock(mutex_);
         size_t const t = top_.load(std::memory_order_relaxed);
@@ -103,7 +103,7 @@ class WorkStealingDeque
     }
 
     // Thief operations (other threads stealing work)
-    auto steal(T& item) -> bool
+    [[nodiscard]] auto steal(T& item) -> bool
     {
         std::lock_guard<std::mutex> lock(mutex_);
         size_t const b = bottom_.load(std::memory_order_relaxed);
@@ -119,14 +119,14 @@ class WorkStealingDeque
         return true;
     }
 
-    auto size() const -> size_t
+    [[nodiscard]] auto size() const -> size_t
     {
         size_t const t = top_.load(std::memory_order_relaxed);
         size_t const b = bottom_.load(std::memory_order_relaxed);
         return t > b ? t - b : 0;
     }
 
-    auto empty() const -> bool
+    [[nodiscard]] auto empty() const -> bool
     {
         return size() == 0;
     }
@@ -326,12 +326,12 @@ class HighPerformancePool
         }
     }
 
-    auto size() const noexcept -> size_t
+    [[nodiscard]] auto size() const noexcept -> size_t
     {
         return num_threads_;
     }
 
-    auto pending_tasks() const -> size_t
+    [[nodiscard]] auto pending_tasks() const -> size_t
     {
         size_t total = 0;
         for (auto const& queue : worker_queues_)
@@ -505,7 +505,6 @@ class HighPerformancePool
     void worker_function(size_t worker_id)
     {
         // Thread-local random number generator for work stealing
-        thread_local std::random_device rd;
         thread_local std::mt19937 gen = []() {
             std::random_device device;
             return std::mt19937(device());
@@ -736,6 +735,21 @@ class FastThreadPool
         return success;
     }
 
+    auto set_affinity(ThreadAffinity const& affinity) -> bool
+    {
+        bool success = true;
+
+        for (auto& worker : workers_)
+        {
+            if (!worker.set_affinity(affinity))
+            {
+                success = false;
+            }
+        }
+
+        return success;
+    }
+
     auto distribute_across_cpus() -> bool
     {
         auto const cpu_count = std::thread::hardware_concurrency();
@@ -756,18 +770,25 @@ class FastThreadPool
         return success;
     }
 
-    auto size() const noexcept -> size_t
+    [[nodiscard]] auto size() const noexcept -> size_t
     {
         return num_threads_;
     }
 
-    auto pending_tasks() const -> size_t
+    [[nodiscard]] auto pending_tasks() const -> size_t
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         return tasks_.size();
     }
 
-    auto get_statistics() const -> Statistics
+    void wait_for_tasks()
+    {
+        std::unique_lock<std::mutex> lock(queue_mutex_);
+        task_finished_condition_.wait(
+            lock, [this] { return tasks_.empty() && active_tasks_.load(std::memory_order_acquire) == 0; });
+    }
+
+    [[nodiscard]] auto get_statistics() const -> Statistics
     {
         auto const now = std::chrono::steady_clock::now();
         auto const elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_);
@@ -808,6 +829,7 @@ class FastThreadPool
 
     mutable std::mutex queue_mutex_;
     std::condition_variable condition_;
+    std::condition_variable task_finished_condition_;
     std::atomic<bool> stop_;
     std::atomic<size_t> active_tasks_{0};
     std::atomic<size_t> completed_tasks_{0};
@@ -825,7 +847,6 @@ class FastThreadPool
             {
                 std::unique_lock<std::mutex> lock(queue_mutex_);
 
-                // Use timeout to avoid indefinite blocking
                 if (condition_.wait_for(lock, std::chrono::milliseconds(10),
                                         [this] { return stop_ || !tasks_.empty(); }))
                 {
@@ -839,6 +860,7 @@ class FastThreadPool
                         task = std::move(tasks_.front());
                         tasks_.pop();
                         found_task = true;
+                        active_tasks_.fetch_add(1, std::memory_order_relaxed);
                     }
                 }
                 else if (stop_)
@@ -849,8 +871,6 @@ class FastThreadPool
 
             if (found_task)
             {
-                active_tasks_.fetch_add(1, std::memory_order_relaxed);
-
                 auto const start_time = std::chrono::steady_clock::now();
                 try
                 {
@@ -858,7 +878,6 @@ class FastThreadPool
                 }
                 catch (...)
                 {
-                    // Log exception or handle as needed
                 }
                 auto const end_time = std::chrono::steady_clock::now();
 
@@ -867,6 +886,8 @@ class FastThreadPool
 
                 active_tasks_.fetch_sub(1, std::memory_order_relaxed);
                 completed_tasks_.fetch_add(1, std::memory_order_relaxed);
+
+                task_finished_condition_.notify_all();
             }
         }
     }
@@ -983,12 +1004,12 @@ class ThreadPool
         }
     }
 
-    auto size() const noexcept -> size_t
+    [[nodiscard]] auto size() const noexcept -> size_t
     {
         return num_threads_;
     }
 
-    auto pending_tasks() const -> size_t
+    [[nodiscard]] auto pending_tasks() const -> size_t
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         return tasks_.size();
@@ -1083,7 +1104,7 @@ class ThreadPool
         workers_.clear();
     }
 
-    auto get_statistics() const -> Statistics
+    [[nodiscard]] auto get_statistics() const -> Statistics
     {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         Statistics stats;
