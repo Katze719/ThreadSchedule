@@ -1,4 +1,16 @@
-## Unreleased
+## v1.4.1
+
+- Fix: `*WrapperReg` types (`ThreadWrapperReg`, `JThreadWrapperReg`,
+  `PThreadWrapperReg`) now have explicit move constructor and move assignment
+  operator, enabling default-construct-then-assign patterns (e.g.
+  `JThreadWrapperReg t; t = JThreadWrapperReg(...);`).
+- Fix: `*WrapperReg` wrapping lambdas now use `std::invoke`, so member function
+  pointers work as callables (e.g.
+  `JThreadWrapperReg("n", "c", &MyClass::run, this)`).
+- Fix: `JThreadWrapperReg` now correctly forwards `std::stop_token` to callables
+  that accept it, while also supporting callables without `stop_token` — the
+  previous `auto&&...` wrapper always claimed to accept a token, causing a
+  compile error when the user's callable did not.
 
 ## v1.4.0
 

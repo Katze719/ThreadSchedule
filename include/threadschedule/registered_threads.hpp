@@ -3,7 +3,9 @@
 #include "pthread_wrapper.hpp"
 #include "thread_registry.hpp"
 #include "thread_wrapper.hpp"
+#include <functional>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 namespace threadschedule
@@ -17,18 +19,22 @@ class ThreadWrapperReg : public ThreadWrapper
   public:
     ThreadWrapperReg() = default;
 
+    ThreadWrapperReg(ThreadWrapperReg&&) noexcept = default;
+    auto operator=(ThreadWrapperReg&&) noexcept -> ThreadWrapperReg& = default;
+
+    ThreadWrapperReg(ThreadWrapperReg const&) = delete;
+    auto operator=(ThreadWrapperReg const&) -> ThreadWrapperReg& = delete;
+
     template <typename F, typename... Args>
     explicit ThreadWrapperReg(std::string name, std::string componentTag, F&& f, Args&&... args)
         : ThreadWrapper(
               [n = std::move(name), c = std::move(componentTag), func = std::forward<F>(f)](auto&&... inner) {
                   AutoRegisterCurrentThread guard(n, c);
-                  func(std::forward<decltype(inner)>(inner)...);
+                  std::invoke(func, std::forward<decltype(inner)>(inner)...);
               },
               std::forward<Args>(args)...)
     {
     }
-
-    // No generic constructor without name/tag to avoid accidental misuse
 };
 
 #if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
@@ -37,18 +43,30 @@ class JThreadWrapperReg : public JThreadWrapper
   public:
     JThreadWrapperReg() = default;
 
+    JThreadWrapperReg(JThreadWrapperReg&&) noexcept = default;
+    auto operator=(JThreadWrapperReg&&) noexcept -> JThreadWrapperReg& = default;
+
+    JThreadWrapperReg(JThreadWrapperReg const&) = delete;
+    auto operator=(JThreadWrapperReg const&) -> JThreadWrapperReg& = delete;
+
     template <typename F, typename... Args>
     explicit JThreadWrapperReg(std::string name, std::string componentTag, F&& f, Args&&... args)
         : JThreadWrapper(
-              [n = std::move(name), c = std::move(componentTag), func = std::forward<F>(f)](auto&&... inner) {
+              [n = std::move(name), c = std::move(componentTag),
+               func = std::forward<F>(f)](std::stop_token st, auto&&... inner) {
                   AutoRegisterCurrentThread guard(n, c);
-                  func(std::forward<decltype(inner)>(inner)...);
+                  if constexpr (std::is_invocable_v<decltype(func), std::stop_token,
+                                                    decltype(inner)...>)
+                      std::invoke(func, std::move(st), std::forward<decltype(inner)>(inner)...);
+                  else if constexpr (std::is_invocable_v<decltype(func), decltype(inner)...,
+                                                         std::stop_token>)
+                      std::invoke(func, std::forward<decltype(inner)>(inner)..., std::move(st));
+                  else
+                      std::invoke(func, std::forward<decltype(inner)>(inner)...);
               },
               std::forward<Args>(args)...)
     {
     }
-
-    // No generic constructor without name/tag to avoid accidental misuse
 };
 #endif
 
@@ -58,18 +76,22 @@ class PThreadWrapperReg : public PThreadWrapper
   public:
     PThreadWrapperReg() = default;
 
+    PThreadWrapperReg(PThreadWrapperReg&&) noexcept = default;
+    auto operator=(PThreadWrapperReg&&) noexcept -> PThreadWrapperReg& = default;
+
+    PThreadWrapperReg(PThreadWrapperReg const&) = delete;
+    auto operator=(PThreadWrapperReg const&) -> PThreadWrapperReg& = delete;
+
     template <typename F, typename... Args>
     explicit PThreadWrapperReg(std::string name, std::string componentTag, F&& f, Args&&... args)
         : PThreadWrapper(
               [n = std::move(name), c = std::move(componentTag), func = std::forward<F>(f)](auto&&... inner) {
                   AutoRegisterCurrentThread guard(n, c);
-                  func(std::forward<decltype(inner)>(inner)...);
+                  std::invoke(func, std::forward<decltype(inner)>(inner)...);
               },
               std::forward<Args>(args)...)
     {
     }
-
-    // No generic constructor without name/tag to avoid accidental misuse
 };
 #endif
 

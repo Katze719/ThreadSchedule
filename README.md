@@ -73,43 +73,51 @@ ThreadSchedule is designed to work on any platform with a C++17 (or newer)
 compiler and standard threading support. The library is **continuously tested**
 on:
 
-| Platform            | Compiler        | C++17 | C++20 | C++23 | C++26 |
-| ------------------- | --------------- | :---: | :---: | :---: | :---: |
-| **Linux (x86_64)**  |                 |       |       |       |       |
-| Ubuntu 22.04        | GCC 11          |  ✅   |  ✅   |  ✅   |   -   |
-| Ubuntu 22.04        | Clang 14        |  ✅   |  ✅   |  ✅   |   -   |
-| Ubuntu 24.04        | GCC 11          |  ✅   |  ✅   |  ✅   |   -   |
-| Ubuntu 24.04        | GCC 14          |   -   |   -   |   -   |  ✅   |
-| Ubuntu 24.04        | Clang 14        |  ✅   |   -   |   -   |   -   |
-| Ubuntu 24.04        | Clang 19        |   -   |  ✅   |  ✅   |  ✅   |
-| **Linux (ARM64)**   |                 |       |       |       |       |
-| Ubuntu 24.04 ARM64  | GCC (system)    |   -   |   -   |  ✅   |   -   |
-| Ubuntu 24.04 ARM64  | GCC 14          |   -   |   -   |   -   |  ✅   |
-| **Windows**         |                 |       |       |       |       |
-| Windows Server 2022 | MSVC 2022       |  ✅   |  ✅   |  ✅   |   -   |
-| Windows Server 2022 | MinGW-w64 (GCC) |  ✅   |  ✅   |  ✅   |   -   |
-| Windows Server 2025 | MSVC 2022       |  ✅   |  ✅   |  ✅   |   -   |
-| Windows Server 2025 | MinGW-w64 (GCC) |  ✅   |  ✅   |  ✅   |   -   |
+| Platform            | Compiler          | C++17 | C++20 | C++23 | C++26 |
+| ------------------- | ----------------- | :---: | :---: | :---: | :---: |
+| **Linux (x86_64)**  |                   |       |       |       |       |
+| Ubuntu 22.04        | GCC 11            |  ✅   |  ✅   |  ✅   |   -   |
+| Ubuntu 22.04        | GCC 12            |   -   |  ✅   |   -   |   -   |
+| Ubuntu 22.04        | Clang 14          |  ✅   |  ✅   |  ✅   |   -   |
+| Ubuntu 22.04        | Clang 15          |   -   |  ✅   |  ✅   |   -   |
+| Ubuntu 24.04        | GCC 13            |  ✅   |  ✅   |  ✅   |   -   |
+| Ubuntu 24.04        | GCC 14            |  ✅   |  ✅   |  ✅   |  ✅   |
+| Ubuntu 24.04        | GCC 15            |   -   |  ✅   |  ✅   |  ✅   |
+| Ubuntu 24.04        | Clang 16          |  ✅   |  ✅   |   -   |   -   |
+| Ubuntu 24.04        | Clang 18          |  ✅   |  ✅   |   -   |   -   |
+| Ubuntu 24.04        | Clang 19          |   -   |  ✅   |  ✅   |  ✅   |
+| Ubuntu 24.04        | Clang 21          |   -   |  ✅   |  ✅   |  ✅   |
+| **Linux (ARM64)**   |                   |       |       |       |       |
+| Ubuntu 24.04 ARM64  | GCC 13 (system)   |  ✅   |  ✅   |  ✅   |   -   |
+| Ubuntu 24.04 ARM64  | GCC 14            |   -   |  ✅   |  ✅   |  ✅   |
+| **Windows**         |                   |       |       |       |       |
+| Windows Server 2022 | MSVC 2022         |  ✅   |  ✅   |  ✅   |   -   |
+| Windows Server 2022 | MinGW-w64 (GCC 15)|  ✅   |  ✅   |  ✅   |   -   |
+| Windows Server 2025 | MSVC 2022         |  ✅   |  ✅   |  ✅   |   -   |
+| Windows Server 2025 | MinGW-w64 (GCC 15)|  ✅   |  ✅   |  ✅   |   -   |
 
 **Additional platforms:** ThreadSchedule should work on other platforms (macOS,
 FreeBSD, other Linux distributions) with standard C++17+ compilers, but these
 are not regularly tested in CI.
 
+> **C++23**: GCC 12's libstdc++ lacks monadic `std::expected` operations
+> (`and_then`, `transform`, …). Clang 16/18 on Ubuntu 24.04 use GCC 14's
+> libstdc++ headers which expose `std::expected` incorrectly to those Clang
+> versions. These combinations are therefore only tested up to C++20.
+>
 > **C++26**: Requires GCC 14+ or Clang 19+. MSVC does not yet expose
 > `cxx_std_26` to CMake; C++26 on Windows is not tested.
 >
-> **Ubuntu 24.04 Clang**: Clang 14 is limited to C++17 on 24.04; for C++20/23,
-> Clang 19 is used.
+> **GCC 15**: Installed via `ppa:ubuntu-toolchain-r/test` on Ubuntu 24.04.
+>
+> **Clang 21**: Installed via the official LLVM apt repository
+> (`apt.llvm.org`) on Ubuntu 24.04.
 >
 > **Windows ARM64**: Not currently covered by GitHub-hosted runners, requires
 > self-hosted runner for testing.
 >
-> **MinGW**: MinGW-w64 provides full Windows API support including thread naming
-> (Windows 10+).
-
-> ⚠️ **Known Issue (Ubuntu 24.04)**: Older Clang versions with newer GCC
-> libstdc++ may have compatibility issues. Use Clang 19 for best C++23/26
-> support on Ubuntu 24.04.
+> **MinGW**: MinGW-w64 (MSYS2) ships GCC 15 and provides full Windows API
+> support including thread naming (Windows 10+).
 
 ## Quick Start
 

@@ -8,71 +8,71 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Test on Linux with multiple C++ standards
+  # ── Linux x86_64 ──────────────────────────────────────────────────
   linux:
     name: Linux (${{ matrix.os }}, C++${{ matrix.cpp_standard }}, ${{ matrix.compiler }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04]
-        cpp_standard: [17, 20, 23]
-        compiler: [gcc, clang]
         include:
-          - compiler: gcc
-            cc: gcc-11
-            cxx: g++-11
-          - compiler: clang
-            cc: clang-14
-            cxx: clang++-14
-          - os: ubuntu-24.04
-            cpp_standard: 20
-            compiler: clang-19
-            cc: clang-19
-            cxx: clang++-19
-          - os: ubuntu-24.04
-            cpp_standard: 23
-            compiler: clang-19
-            cc: clang-19
-            cxx: clang++-19
-          # C++26 requires newer compilers (GCC 14+, Clang 19+)
-          - os: ubuntu-24.04
-            cpp_standard: 26
-            compiler: gcc-14
-            cc: gcc-14
-            cxx: g++-14
-          - os: ubuntu-24.04
-            cpp_standard: 26
-            compiler: clang-19
-            cc: clang-19
-            cxx: clang++-19
-        exclude:
-          # Clang 14 is too old for GCC 14's libstdc++ on Ubuntu 24.04 with C++20/23
-          - os: ubuntu-24.04
-            compiler: clang
-            cpp_standard: 20
-          - os: ubuntu-24.04
-            compiler: clang
-            cpp_standard: 23
-    
+          # ── Ubuntu 22.04 (pre-installed: GCC 10/11/12, Clang 13/14/15) ──
+          - { os: ubuntu-22.04, compiler: GCC 11,   cc: gcc-11,   cxx: g++-11,     cpp_standard: 17 }
+          - { os: ubuntu-22.04, compiler: GCC 11,   cc: gcc-11,   cxx: g++-11,     cpp_standard: 20 }
+          - { os: ubuntu-22.04, compiler: GCC 11,   cc: gcc-11,   cxx: g++-11,     cpp_standard: 23 }
+          - { os: ubuntu-22.04, compiler: GCC 12,   cc: gcc-12,   cxx: g++-12,     cpp_standard: 20 }
+          - { os: ubuntu-22.04, compiler: Clang 14, cc: clang-14, cxx: clang++-14, cpp_standard: 17 }
+          - { os: ubuntu-22.04, compiler: Clang 14, cc: clang-14, cxx: clang++-14, cpp_standard: 20 }
+          - { os: ubuntu-22.04, compiler: Clang 14, cc: clang-14, cxx: clang++-14, cpp_standard: 23 }
+          - { os: ubuntu-22.04, compiler: Clang 15, cc: clang-15, cxx: clang++-15, cpp_standard: 20 }
+          - { os: ubuntu-22.04, compiler: Clang 15, cc: clang-15, cxx: clang++-15, cpp_standard: 23 }
+          # ── Ubuntu 24.04 (pre-installed: GCC 12/13/14, Clang 16-19) ─────
+          - { os: ubuntu-24.04, compiler: GCC 13,   cc: gcc-13,   cxx: g++-13,     cpp_standard: 17 }
+          - { os: ubuntu-24.04, compiler: GCC 13,   cc: gcc-13,   cxx: g++-13,     cpp_standard: 20 }
+          - { os: ubuntu-24.04, compiler: GCC 13,   cc: gcc-13,   cxx: g++-13,     cpp_standard: 23 }
+          - { os: ubuntu-24.04, compiler: GCC 14,   cc: gcc-14,   cxx: g++-14,     cpp_standard: 17 }
+          - { os: ubuntu-24.04, compiler: GCC 14,   cc: gcc-14,   cxx: g++-14,     cpp_standard: 20 }
+          - { os: ubuntu-24.04, compiler: GCC 14,   cc: gcc-14,   cxx: g++-14,     cpp_standard: 23 }
+          - { os: ubuntu-24.04, compiler: GCC 14,   cc: gcc-14,   cxx: g++-14,     cpp_standard: 26 }
+          - { os: ubuntu-24.04, compiler: GCC 15,   cc: gcc-15,   cxx: g++-15,     cpp_standard: 20 }
+          - { os: ubuntu-24.04, compiler: GCC 15,   cc: gcc-15,   cxx: g++-15,     cpp_standard: 23 }
+          - { os: ubuntu-24.04, compiler: GCC 15,   cc: gcc-15,   cxx: g++-15,     cpp_standard: 26 }
+          - { os: ubuntu-24.04, compiler: Clang 16, cc: clang-16, cxx: clang++-16, cpp_standard: 17 }
+          - { os: ubuntu-24.04, compiler: Clang 16, cc: clang-16, cxx: clang++-16, cpp_standard: 20 }
+          - { os: ubuntu-24.04, compiler: Clang 18, cc: clang-18, cxx: clang++-18, cpp_standard: 17 }
+          - { os: ubuntu-24.04, compiler: Clang 18, cc: clang-18, cxx: clang++-18, cpp_standard: 20 }
+          - { os: ubuntu-24.04, compiler: Clang 19, cc: clang-19, cxx: clang++-19, cpp_standard: 20 }
+          - { os: ubuntu-24.04, compiler: Clang 19, cc: clang-19, cxx: clang++-19, cpp_standard: 23 }
+          - { os: ubuntu-24.04, compiler: Clang 19, cc: clang-19, cxx: clang++-19, cpp_standard: 26 }
+          - { os: ubuntu-24.04, compiler: Clang 21, cc: clang-21, cxx: clang++-21, cpp_standard: 20 }
+          - { os: ubuntu-24.04, compiler: Clang 21, cc: clang-21, cxx: clang++-21, cpp_standard: 23 }
+          - { os: ubuntu-24.04, compiler: Clang 21, cc: clang-21, cxx: clang++-21, cpp_standard: 26 }
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
+    - name: Add toolchain PPA (GCC 15)
+      if: matrix.cc == 'gcc-15'
+      run: |
+        sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+        sudo apt-get update
+
+    - name: Add LLVM repo (Clang 21)
+      if: matrix.cc == 'clang-21'
+      run: |
+        wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+        echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+        sudo apt-get update
+
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build
-        if [ "${{ matrix.compiler }}" = "gcc" ]; then
-          sudo apt-get install -y g++-11 g++-12 g++-13
-        elif [ "${{ matrix.compiler }}" = "gcc-14" ]; then
-          sudo apt-get install -y g++-14
-        elif [ "${{ matrix.compiler }}" = "clang-19" ]; then
-          sudo apt-get install -y clang-19
-        else
-          sudo apt-get install -y clang-14 clang-15
-        fi
-    
+        case "${{ matrix.cxx }}" in
+          g++*)     sudo apt-get install -y cmake ninja-build ${{ matrix.cxx }} ;;
+          clang++*) sudo apt-get install -y cmake ninja-build ${{ matrix.cc }} ;;
+        esac
+
     - name: Configure CMake
       env:
         CC: ${{ matrix.cc }}
@@ -83,18 +83,16 @@ jobs:
           -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }} \
           -DTHREADSCHEDULE_BUILD_EXAMPLES=ON \
           -DTHREADSCHEDULE_BUILD_TESTS=ON
-    
+
     - name: Build
       run: cmake --build build --parallel
-    
+
     - name: Run tests
       run: |
         cd build
         ctest --output-on-failure --parallel
 
-  # Removed macOS job per request
-
-  # Test on Windows
+  # ── Windows ────────────────────────────────────────────────────────
   windows:
     name: Windows (C++${{ matrix.cpp_standard }}, ${{ matrix.compiler }}, ${{ matrix.image }})
     runs-on: ${{ matrix.image }}
@@ -104,15 +102,15 @@ jobs:
         cpp_standard: [17, 20, 23]
         compiler: [msvc, mingw]
         image: [windows-latest, windows-2025]
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Setup MSVC (Developer Command Prompt)
       if: matrix.compiler == 'msvc'
       uses: ilammy/msvc-dev-cmd@v1
-    
+
     - name: Setup MinGW
       if: matrix.compiler == 'mingw'
       uses: msys2/setup-msys2@v2
@@ -123,16 +121,16 @@ jobs:
           mingw-w64-x86_64-gcc
           mingw-w64-x86_64-cmake
           mingw-w64-x86_64-ninja
-    
+
     - name: Install Ninja (MSVC)
       if: matrix.compiler == 'msvc'
       run: choco install ninja --no-progress --yes
-    
+
     - name: Configure CMake (MSVC)
       if: matrix.compiler == 'msvc'
       run: |
         cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }} -DTHREADSCHEDULE_BUILD_EXAMPLES=ON -DTHREADSCHEDULE_BUILD_TESTS=ON -Dgtest_force_shared_crt=ON
-    
+
     - name: Configure CMake (MinGW)
       if: matrix.compiler == 'mingw'
       shell: msys2 {0}
@@ -142,22 +140,22 @@ jobs:
           -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }} \
           -DTHREADSCHEDULE_BUILD_EXAMPLES=ON \
           -DTHREADSCHEDULE_BUILD_TESTS=ON
-    
+
     - name: Build (MSVC)
       if: matrix.compiler == 'msvc'
       run: cmake --build build --parallel
-    
+
     - name: Build (MinGW)
       if: matrix.compiler == 'mingw'
       shell: msys2 {0}
       run: cmake --build build --parallel
-    
+
     - name: Run tests (MSVC)
       if: matrix.compiler == 'msvc'
       run: |
         cd build
         ctest --output-on-failure --parallel
-    
+
     - name: Run tests (MinGW)
       if: matrix.compiler == 'mingw'
       shell: msys2 {0}
@@ -165,19 +163,21 @@ jobs:
         cd build
         ctest --output-on-failure --parallel
 
-
-  # Test on Linux ARM64 (simple config, default compilers)
+  # ── Linux ARM64 ────────────────────────────────────────────────────
   linux-arm:
-    name: Linux ARM64 (ubuntu-24.04-arm, C++${{ matrix.cpp_standard }}, ${{ matrix.compiler }})
+    name: Linux ARM64 (C++${{ matrix.cpp_standard }}, ${{ matrix.compiler }})
     runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
       matrix:
         include:
-          - cpp_standard: 23
-            compiler: g++
-          - cpp_standard: 26
-            compiler: g++-14
+          - { compiler: GCC 13, cxx: g++,    cpp_standard: 17 }
+          - { compiler: GCC 13, cxx: g++,    cpp_standard: 20 }
+          - { compiler: GCC 13, cxx: g++,    cpp_standard: 23 }
+          - { compiler: GCC 14, cxx: g++-14, cpp_standard: 20 }
+          - { compiler: GCC 14, cxx: g++-14, cpp_standard: 23 }
+          - { compiler: GCC 14, cxx: g++-14, cpp_standard: 26 }
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -185,11 +185,11 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build ${{ matrix.compiler }}
+        sudo apt-get install -y cmake ninja-build ${{ matrix.cxx }}
 
     - name: Configure CMake
       env:
-        CXX: ${{ matrix.compiler }}
+        CXX: ${{ matrix.cxx }}
       run: |
         cmake -B build -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
@@ -205,7 +205,7 @@ jobs:
         cd build
         ctest --output-on-failure --parallel
 
-  # C++20 Module build verification
+  # ── C++20 Module build verification ────────────────────────────────
   modules-linux:
     name: Modules (Linux, C++${{ matrix.cpp_standard }}, ${{ matrix.compiler }})
     runs-on: ubuntu-24.04

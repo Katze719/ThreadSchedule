@@ -5,7 +5,7 @@
 #include <threadschedule/registered_threads.hpp>
 #include <threadschedule/thread_registry.hpp>
 #ifndef _WIN32
-#include <sched.h>
+#    include <sched.h>
 #endif
 
 using namespace threadschedule;
@@ -112,6 +112,123 @@ TEST(ThreadRegistryTest, CallbackOnRegisterFires)
     // Reset hook
     registry().set_on_register({});
 }
+
+TEST(ThreadRegistryTest, ThreadWrapperRegMoveAssign)
+{
+    std::atomic<bool> ran{false};
+    ThreadWrapperReg t;
+    EXPECT_FALSE(t.joinable());
+
+    t = ThreadWrapperReg("move-tw", "move", [&] {
+        ran = true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    });
+
+    EXPECT_TRUE(t.joinable());
+    t.join();
+    EXPECT_TRUE(ran.load());
+}
+
+#if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+TEST(ThreadRegistryTest, JThreadWrapperRegMoveAssign)
+{
+    std::atomic<bool> ran{false};
+    JThreadWrapperReg t;
+    EXPECT_FALSE(t.joinable());
+
+    t = JThreadWrapperReg("move-jt", "move", [&](std::stop_token const&) {
+        ran = true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    });
+
+    EXPECT_TRUE(t.joinable());
+    t.join();
+    EXPECT_TRUE(ran.load());
+}
+
+TEST(ThreadRegistryTest, JThreadWrapperRegMoveAssignNoStopToken)
+{
+    std::atomic<bool> ran{false};
+    JThreadWrapperReg t;
+
+    t = JThreadWrapperReg("move-jt-ns", "move", [&] {
+        ran = true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    });
+
+    EXPECT_TRUE(t.joinable());
+    t.join();
+    EXPECT_TRUE(ran.load());
+}
+
+TEST(ThreadRegistryTest, JThreadWrapperRegMemberFunction)
+{
+    struct Worker
+    {
+        std::atomic<bool> ran{false};
+
+        void run()
+        {
+            ran = true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+
+        void run_with_stop(std::stop_token st)
+        {
+            while (!st.stop_requested())
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            ran = true;
+        }
+    };
+
+    Worker w1;
+    JThreadWrapperReg t;
+    t = JThreadWrapperReg("member-fn", "mf", &Worker::run, &w1);
+    t.join();
+    EXPECT_TRUE(w1.ran.load());
+
+    Worker w2;
+    JThreadWrapperReg t2("member-fn-st", "mf", &Worker::run_with_stop, &w2);
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    t2.request_stop();
+    t2.join();
+    EXPECT_TRUE(w2.ran.load());
+}
+
+TEST(ThreadRegistryTest, JThreadWrapperRegMoveConstruct)
+{
+    std::atomic<bool> ran{false};
+    JThreadWrapperReg a("mc-jt", "move", [&](std::stop_token const&) {
+        ran = true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    });
+
+    JThreadWrapperReg b = std::move(a);
+    EXPECT_FALSE(a.joinable());
+    EXPECT_TRUE(b.joinable());
+    b.join();
+    EXPECT_TRUE(ran.load());
+}
+
+TEST(ThreadRegistryTest, JThreadWrapperRegReassign)
+{
+    std::atomic<int> counter{0};
+
+    JThreadWrapperReg t("r1", "reassign", [&](std::stop_token const&) {
+        counter.fetch_add(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    });
+    t.join();
+
+    t = JThreadWrapperReg("r2", "reassign", [&](std::stop_token const&) {
+        counter.fetch_add(10);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    });
+    t.join();
+
+    EXPECT_EQ(counter.load(), 11);
+}
+#endif
 
 TEST(ThreadRegistryTest, CallbackOnUnregisterFires)
 {
