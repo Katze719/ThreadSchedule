@@ -137,11 +137,11 @@ inline auto read_topology() -> CpuTopology
 inline auto affinity_for_node(int node_index, int thread_index, int threads_per_node = 1) -> ThreadAffinity
 {
     CpuTopology topo = read_topology();
+    ThreadAffinity aff;
     if (topo.numa_nodes <= 0)
-        return {};
+        return aff;
     int const n = (node_index % topo.numa_nodes + topo.numa_nodes) % topo.numa_nodes;
     auto const& cpus = topo.node_to_cpus[n];
-    ThreadAffinity aff;
     if (cpus.empty())
         return aff;
 
