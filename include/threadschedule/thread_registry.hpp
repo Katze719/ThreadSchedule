@@ -43,6 +43,41 @@ using Tid = unsigned long; // DWORD thread id
 using Tid = pid_t; // Linux TID via gettid()
 #endif
 
+/**
+ * @brief Snapshot of metadata for a single registered thread.
+ *
+ * This is a POD-like value type that captures thread identity, lifecycle state,
+ * and an optional handle to the underlying ThreadControlBlock.  Instances are
+ * returned by ThreadRegistry queries and are safe to store, copy, and inspect
+ * from any thread.
+ *
+ * @par Thread safety
+ * Instances are plain value types and carry no internal synchronisation.
+ * Concurrent reads are safe; concurrent read/write on the *same* instance is
+ * not.  The @c control shared_ptr is ref-counted and the pointee
+ * (@ref ThreadControlBlock) is itself thread-safe.
+ *
+ * @par Copyability / movability
+ * Fully copyable and movable (regular value semantics).
+ *
+ * @par Lifetime
+ * A RegisteredThreadInfo is a *snapshot* -- it may outlive the thread it
+ * describes.  The @c alive flag reflects the state at the time the snapshot
+ * was taken; it is **not** updated retroactively when the thread unregisters.
+ *
+ * @par Fields
+ * - @c tid   -- OS-level thread identifier (@c pid_t on Linux via
+ *               @c gettid(), @c DWORD on Windows).
+ * - @c stdId -- The corresponding @c std::thread::id.
+ * - @c name  -- Human-readable name given at registration time.
+ * - @c componentTag -- Optional logical grouping tag (e.g. "io", "compute").
+ * - @c alive -- @c true while the thread is registered; set to @c false when
+ *               the thread calls @c unregister_current_thread().
+ * - @c control -- Shared pointer to the thread's @ref ThreadControlBlock.  May be
+ *                 @c nullptr if the thread was registered without a control
+ *                 block (i.e. via the name-only overload of
+ *                 @c register_current_thread()).
+ */
 struct RegisteredThreadInfo
 {
     Tid tid{};
@@ -53,6 +88,44 @@ struct RegisteredThreadInfo
     std::shared_ptr<class ThreadControlBlock> control;
 };
 
+/**
+ * @brief Per-thread control handle for OS-level scheduling operations.
+ *
+ * A ThreadControlBlock captures the native thread handle (pthread_t on Linux,
+ * a duplicated @c HANDLE on Windows) at construction time and exposes
+ * cross-platform methods to modify the thread's affinity, priority,
+ * scheduling policy, and OS-visible name.
+ *
+ * @par Creation
+ * Always use the static factory create_for_current_thread().  It **must** be
+ * called from the thread it will represent, because it snapshots
+ * @c pthread_self() / @c GetCurrentThread().
+ *
+ * @par Ownership
+ * ThreadControlBlock is intended to be held via @c std::shared_ptr so that
+ * the registry, the owning thread, and any observers can all share the same
+ * instance.  The static factory already returns a @c shared_ptr.
+ *
+ * @par Thread safety
+ * - The object is **not** copyable and **not** movable (identity type).
+ * - All @c set_* methods are safe to call from **any** thread -- they operate
+ *   on the stored native handle, not on thread-local state.
+ * - Concurrent calls to different @c set_* methods on the same instance are
+ *   safe (each call is a single OS syscall on the stored handle).
+ *
+ * @par Platform notes
+ * - **Linux**: stores @c pthread_t obtained via @c pthread_self().  No
+ *   resource is owned; the handle is valid for the lifetime of the thread.
+ * - **Windows**: duplicates the pseudo-handle returned by
+ *   @c GetCurrentThread() into a real @c HANDLE with
+ *   @c THREAD_SET_INFORMATION | @c THREAD_QUERY_INFORMATION rights.  The
+ *   duplicated handle is closed in the destructor.
+ *
+ * @par Caveats
+ * - Do **not** construct directly; always use create_for_current_thread().
+ * - On Linux, @c set_name() enforces the 15-character POSIX limit and
+ *   returns @c std::errc::invalid_argument if exceeded.
+ */
 class ThreadControlBlock
 {
   public:
@@ -218,6 +291,48 @@ class ThreadControlBlock
 #endif
 };
 
+/**
+ * @brief Central registry of threads indexed by OS-level thread ID (Tid).
+ *
+ * ThreadRegistry maintains a map of currently registered threads together
+ * with their metadata and optional @ref ThreadControlBlock handles.  It provides
+ * a functional-style query API (via @ref QueryView) and convenience methods that
+ * delegate scheduling operations to each thread's control block.
+ *
+ * @par Thread safety
+ * All public methods are thread-safe.  Internal state is protected by a
+ * @c std::shared_mutex: mutating operations (register, unregister, set
+ * callbacks) acquire a unique lock, while read-only operations (get, query,
+ * set_affinity, etc.) acquire a shared lock.
+ *
+ * @par Copyability / movability
+ * - **Not copyable** (copy constructor and assignment are deleted).
+ * - **Not movable** (implicitly deleted because copy operations are deleted
+ *   and the class holds a @c std::shared_mutex).
+ *
+ * @par Registration semantics
+ * - register_current_thread() must be called **from** the thread being
+ *   registered.  Duplicate registration of the same TID is silently ignored
+ *   (the first registration wins).
+ * - unregister_current_thread() removes the calling thread's entry and marks
+ *   its @c alive flag as @c false in the snapshot passed to the callback.
+ *
+ * @par Callbacks
+ * The optional @c onRegister / @c onUnregister callbacks are invoked **with
+ * the lock released** to avoid deadlock if the callback itself interacts with
+ * the registry.  The callback receives a copy of the @ref RegisteredThreadInfo.
+ *
+ * @par Querying
+ * query() returns a @ref QueryView holding a **snapshot** of the registry at the
+ * moment of the call.  Subsequent changes to the registry (new
+ * registrations, unregistrations) are not reflected in an existing @ref QueryView.
+ *
+ * @par Scheduling helpers
+ * set_affinity(), set_priority(), set_scheduling_policy(), and set_name()
+ * look up the @ref ThreadControlBlock for the given TID under a shared lock and
+ * delegate to the control block.  Returns @c std::errc::no_such_process if
+ * the TID is not registered or has no control block.
+ */
 class ThreadRegistry
 {
   public:
@@ -317,7 +432,42 @@ class ThreadRegistry
         return it->second;
     }
 
-    // Chainable query API
+    /**
+     * @brief Lazy, functional-style query/filter view over a snapshot of
+     *        registered threads.
+     *
+     * A QueryView is produced by ThreadRegistry::query() (or by chaining
+     * operations on an existing QueryView).  It holds an internal
+     * @c std::vector<RegisteredThreadInfo> that is a **snapshot** -- mutations
+     * to the originating ThreadRegistry after the QueryView was created are
+     * not visible.
+     *
+     * @par Value semantics
+     * QueryView is a regular value type (copyable and movable).  All
+     * transformation methods (filter, take, skip) return a **new** QueryView,
+     * leaving the original unchanged.
+     *
+     * @par Thread safety
+     * A single QueryView instance is **not** safe to use concurrently from
+     * multiple threads.  However, it is safe to create multiple QueryViews
+     * concurrently from the same @ref ThreadRegistry, since creation acquires a
+     * shared lock on the registry.
+     *
+     * @par API
+     * Provides a functional-style interface:
+     * - **filter(pred)** -- returns a new QueryView containing only entries
+     *   that satisfy @p pred.
+     * - **map(fn)** -- transforms each entry and returns a
+     *   @c std::vector<R>.
+     * - **for_each(fn)** -- applies @p fn to every entry.
+     * - **find_if(pred)** -- returns the first matching entry, or
+     *   @c std::nullopt.
+     * - **any / all / none(pred)** -- boolean aggregation predicates.
+     * - **take(n) / skip(n)** -- positional slicing, returning new
+     *   QueryViews.
+     * - **count() / empty()** -- size queries.
+     * - **entries()** -- direct access to the underlying vector.
+     */
     class QueryView
     {
       public:
@@ -581,18 +731,48 @@ class ThreadRegistry
     std::function<void(RegisteredThreadInfo const&)> onUnregister_;
 };
 
-// Registry access methods
+/**
+ * @name Global registry access
+ *
+ * These free functions provide access to a process-wide @ref ThreadRegistry
+ * singleton and allow injecting a custom instance.
+ *
+ * @par Header-only mode (default)
+ * Both registry() and set_external_registry() are @c inline functions that
+ * use function-local statics (Meyer's singleton pattern).  registry()
+ * returns the externally set registry if one was provided via
+ * set_external_registry(), otherwise a function-local static instance.
+ *
+ * @par Runtime / shared-library mode (@c THREADSCHEDULE_RUNTIME defined)
+ * The functions are declared here but **defined** in
+ * @c runtime_registry.cpp.  This ensures a single registry instance across
+ * shared-library boundaries even when the header is included from multiple
+ * translation units in different DSOs.
+ *
+ * @{
+ */
+
 #if defined(THREADSCHEDULE_RUNTIME)
-// Declarations only; implemented in the runtime translation unit
 THREADSCHEDULE_API auto registry() -> ThreadRegistry&;
 THREADSCHEDULE_API void set_external_registry(ThreadRegistry* reg);
 #else
+/** @cond INTERNAL */
 inline auto registry_storage() -> ThreadRegistry*&
 {
     static ThreadRegistry* external = nullptr;
     return external;
 }
+/** @endcond */
 
+/**
+ * @brief Returns a reference to the process-wide @ref ThreadRegistry.
+ *
+ * If set_external_registry() was called with a non-null pointer, that
+ * registry is returned.  Otherwise a function-local static instance is
+ * used (Meyer's singleton; thread-safe initialisation guaranteed by C++11).
+ *
+ * @return Reference to the active @ref ThreadRegistry.
+ */
 inline auto registry() -> ThreadRegistry&
 {
     ThreadRegistry*& ext = registry_storage();
@@ -602,36 +782,105 @@ inline auto registry() -> ThreadRegistry&
     return local;
 }
 
+/**
+ * @brief Injects a custom @ref ThreadRegistry as the global singleton.
+ *
+ * After this call, registry() returns @p reg instead of the default
+ * function-local static instance.  Pass @c nullptr to revert to the
+ * built-in singleton.
+ *
+ * @param reg Pointer to the registry to use globally.  The caller must
+ *            ensure @p reg remains valid for the lifetime of all threads
+ *            that call registry().
+ *
+ * @warning Must be called **before** any threads are registered if the
+ *          intent is to capture all threads in a single registry.
+ *          Calling it after registrations have already occurred leaves
+ *          those earlier entries in the old (default) registry.
+ */
 inline void set_external_registry(ThreadRegistry* reg)
 {
     registry_storage() = reg;
 }
+/** @} */
 #endif
 
-// Build-mode detection (compile-time constant + runtime query)
+/**
+ * @brief Indicates whether the library was compiled in header-only or
+ *        runtime (shared library) mode.
+ *
+ * The value is determined at compile time by the presence of the
+ * @c THREADSCHEDULE_RUNTIME preprocessor macro.
+ *
+ * @see build_mode(), build_mode_string(), is_runtime_build
+ */
 enum class BuildMode : std::uint8_t
 {
-    HEADER_ONLY,
-    RUNTIME
+    HEADER_ONLY, ///< All symbols are inline / header-only.
+    RUNTIME      ///< Core symbols are compiled into a shared library.
 };
 
 #if defined(THREADSCHEDULE_RUNTIME)
-inline constexpr bool is_runtime_build = true;
+inline constexpr bool is_runtime_build = true; ///< @c true when compiled with @c THREADSCHEDULE_RUNTIME.
+
+/**
+ * @brief Returns the build mode detected at compile time (runtime variant).
+ * @return BuildMode::RUNTIME.
+ */
 THREADSCHEDULE_API auto build_mode() -> BuildMode;
 #else
-inline constexpr bool is_runtime_build = false;
+inline constexpr bool is_runtime_build = false; ///< @c true when compiled with @c THREADSCHEDULE_RUNTIME.
+
+/**
+ * @brief Returns the build mode detected at compile time (header-only variant).
+ * @return BuildMode::HEADER_ONLY.
+ */
 inline auto build_mode() -> BuildMode
 {
     return BuildMode::HEADER_ONLY;
 }
 #endif
 
+/**
+ * @brief Returns a human-readable C string describing the active build mode.
+ * @return @c "runtime" or @c "header-only".
+ */
 inline auto build_mode_string() -> char const*
 {
     return is_runtime_build ? "runtime" : "header-only";
 }
 
-// Composite registry to aggregate multiple registries when explicit merging is desired
+/**
+ * @brief Aggregates multiple ThreadRegistry instances into a single queryable
+ *        view.
+ *
+ * CompositeThreadRegistry is useful when threads are spread across several
+ * independent @ref ThreadRegistry instances (e.g. one per shared library) and you
+ * want a unified query interface over all of them.
+ *
+ * @par Thread safety
+ * All public methods are thread-safe.  The internal list of attached
+ * registries is protected by a @c std::mutex.
+ *
+ * @par Copyability / movability
+ * Not copyable and not movable (holds a @c std::mutex).
+ *
+ * @par Ownership
+ * attach() stores **raw pointers** to the supplied registries.  The caller
+ * is responsible for ensuring that every attached ThreadRegistry outlives this
+ * CompositeThreadRegistry.  Violating this results in undefined behaviour.
+ *
+ * @par Deduplication
+ * No deduplication is performed.  If the same TID appears in multiple
+ * attached registries, it will appear multiple times in the merged
+ * QueryView.
+ *
+ * @par Querying
+ * query() iterates over every attached registry, calls its own query(), and
+ * concatenates the results into a single @ref ThreadRegistry::QueryView snapshot.
+ * The same functional-style helpers (filter, map, for_each, etc.) are
+ * available directly on CompositeThreadRegistry for convenience.
+ */
 class CompositeThreadRegistry
 {
   public:
@@ -734,7 +983,46 @@ class CompositeThreadRegistry
     std::vector<ThreadRegistry*> registries_;
 };
 
-// RAII helper to auto-register the current thread
+/**
+ * @brief RAII guard that registers the current thread on construction and
+ *        unregisters it on destruction.
+ *
+ * AutoRegisterCurrentThread creates a @ref ThreadControlBlock for the calling
+ * thread, sets its OS-visible name via ThreadControlBlock::set_name(), and
+ * registers it in either the global registry() or a caller-supplied
+ * @ref ThreadRegistry.
+ *
+ * @par Copyability / movability
+ * - **Not copyable** (deleted).
+ * - **Movable** -- move construction / assignment transfers registration
+ *   ownership to the new instance and disarms the source.
+ *
+ * @par Thread safety
+ * Construction and destruction interact with the target ThreadRegistry, which
+ * is itself thread-safe.  The guard object itself must not be shared across
+ * threads without external synchronisation.
+ *
+ * @par Lifetime / ownership
+ * - If constructed with a specific @c ThreadRegistry&, that registry **must**
+ *   outlive this guard.
+ * - If constructed without an explicit registry, the global registry()
+ *   singleton is used, which has static storage duration.
+ *
+ * @par Typical usage
+ * @code
+ * void worker_func() {
+ *     threadschedule::AutoRegisterCurrentThread guard("worker", "pool");
+ *     // ... thread body ...
+ * }   // automatically unregistered here
+ * @endcode
+ *
+ * @par Caveats
+ * - Must be constructed **from** the thread it represents (delegates to
+ *   ThreadControlBlock::create_for_current_thread()).
+ * - On Linux, the name must be at most 15 characters (POSIX thread name
+ *   limit); longer names cause ThreadControlBlock::set_name() to fail, but
+ *   the thread is still registered.
+ */
 class AutoRegisterCurrentThread
 {
   public:
@@ -800,9 +1088,31 @@ class AutoRegisterCurrentThread
 } // namespace threadschedule
 
 #ifndef _WIN32
-// Helper: attach a TID to a cgroup directory (cgroup v2 tries cgroup.threads, then tasks, then cgroup.procs)
 namespace threadschedule
 {
+/**
+ * @brief Attaches a thread to a Linux cgroup by writing its TID to the
+ *        appropriate control file.
+ *
+ * Tries the following files inside @p cgroupDir, in order:
+ * 1. @c cgroup.threads (cgroup v2)
+ * 2. @c tasks (cgroup v1 / hybrid)
+ * 3. @c cgroup.procs (cgroup v2 process-level; works for single-threaded
+ *    workloads)
+ *
+ * The first file that can be opened and written to successfully is used.
+ *
+ * @param cgroupDir Absolute path to the target cgroup directory
+ *                  (e.g. @c "/sys/fs/cgroup/my_group").
+ * @param tid       OS-level thread ID to attach.
+ * @return Success, or @c std::errc::operation_not_permitted if none of the
+ *         candidate files could be written.
+ *
+ * @note Linux-only.  This function is not available on Windows builds.
+ * @note The calling process needs appropriate permissions (typically
+ *       @c CAP_SYS_ADMIN or ownership of the cgroup directory) to write
+ *       to cgroup control files.
+ */
 inline auto cgroup_attach_tid(std::string const& cgroupDir, Tid tid) -> expected<void, std::error_code>
 {
     std::vector<std::string> candidates = {"cgroup.threads", "tasks", "cgroup.procs"};
