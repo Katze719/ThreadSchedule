@@ -1,5 +1,29 @@
 #pragma once
 
+/**
+ * @file expected.hpp
+ * @brief Polyfill for @c std::expected (C++23) for pre-C++23 compilers.
+ *
+ * When the standard library already provides @c std::expected (detected via
+ * the @c __cpp_lib_expected feature-test macro or a C++23-or-later language
+ * mode), every type in this header is a simple alias to its @c std::
+ * counterpart.  Otherwise a from-scratch implementation is supplied.
+ *
+ * @par Exception handling
+ * The polyfill respects @c -fno-exceptions builds.  When exceptions are
+ * disabled, @c value() calls @c std::terminate() instead of throwing
+ * @c bad_expected_access.  Prefer @c value_or(), @c operator*(), or an
+ * explicit @c has_value() check when building without exceptions.
+ *
+ * @par Monadic operations
+ * Both the primary template and the @c void specialization support the four
+ * monadic combinators from P0323R12:
+ * - @c and_then  -- chain an operation that returns an @c expected
+ * - @c or_else   -- recover from an error, returning an @c expected
+ * - @c transform -- map the contained value
+ * - @c transform_error -- map the contained error
+ */
+
 #include <exception>
 #include <functional>
 #include <system_error>
@@ -52,6 +76,13 @@ using expected = std::expected<T, E>;
 
 #else
 
+/**
+ * @brief Tag type used to construct an expected in the error state.
+ *
+ * Pass the global constant @c unexpect as the first argument to the
+ * @c expected constructor to indicate that the following arguments should
+ * be forwarded to the error type's constructor.
+ */
 struct unexpect_t
 {
     explicit unexpect_t() = default;
@@ -61,6 +92,15 @@ inline constexpr unexpect_t unexpect{};
 template <typename E>
 class bad_expected_access;
 
+/**
+ * @brief Exception thrown by @c expected::value() when the object is in the error state.
+ *
+ * The base specialization for @c void carries no error payload and simply
+ * reports "bad expected access".  The derived template
+ * @c bad_expected_access<E> additionally stores a copy of the error value.
+ *
+ * @tparam E Error type.  The @c void specialization serves as the common base.
+ */
 /// @cond INTERNAL
 template <>
 class bad_expected_access<void> : public std::exception
@@ -73,6 +113,10 @@ class bad_expected_access<void> : public std::exception
     }
 };
 
+/**
+ * @brief Typed specialization of bad_expected_access that carries the error value.
+ * @tparam E The error type stored in the originating @c expected.
+ */
 template <typename E>
 class bad_expected_access : public bad_expected_access<void>
 /// @endcond
@@ -102,6 +146,17 @@ class bad_expected_access : public bad_expected_access<void>
     E error_;
 };
 
+/**
+ * @brief Wrapper that holds an error value for constructing an expected in the error state.
+ *
+ * Use @c unexpected to explicitly construct or assign an error into an
+ * @c expected object:
+ * @code
+ *   threadschedule::expected<int> result = threadschedule::unexpected(make_error_code(std::errc::invalid_argument));
+ * @endcode
+ *
+ * @tparam E The error type.
+ */
 template <typename E>
 class unexpected
 {
@@ -129,6 +184,32 @@ class unexpected
     E error_;
 };
 
+/**
+ * @brief A result type that holds either a value of type @p T or an error of type @p E.
+ *
+ * This is a polyfill for @c std::expected<T,E> (C++23).  It provides
+ * value-semantic storage: copyable when both @p T and @p E are copyable,
+ * movable when both are movable.
+ *
+ * @tparam T The value type.  Must be destructible.  The default constructor is
+ *           available only when @p T is default-constructible.
+ * @tparam E The error type.  Defaults to @c std::error_code.
+ *
+ * @par Thread safety
+ * This is a plain value type with no internal synchronization.  Concurrent
+ * access from multiple threads requires external locking.
+ *
+ * @par Implementation notes
+ * Storage is implemented as a union with placement new / manual destructor
+ * calls to avoid requiring default-constructibility of either @p T or @p E.
+ *
+ * @par Monadic operations
+ * The following combinators are provided (matching the C++23 specification):
+ * - @c and_then(f)        -- if has_value(), invoke @p f with the value and return the result
+ * - @c or_else(f)         -- if in error state, invoke @p f with the error and return the result
+ * - @c transform(f)       -- if has_value(), apply @p f to the value and wrap the result
+ * - @c transform_error(f) -- if in error state, apply @p f to the error and wrap the result
+ */
 template <typename T, typename E = std::error_code>
 class expected
 {
@@ -638,6 +719,18 @@ class expected
     } storage_;
 };
 
+/**
+ * @brief Specialization of expected for operations that produce no value.
+ *
+ * @c expected<void, E> can be in either a "success" state (has_value() is
+ * @c true, no payload) or an "error" state carrying an @p E.  This is
+ * useful for functions that can fail but have nothing to return on success.
+ *
+ * @tparam E The error type.  Defaults to @c std::error_code in the primary
+ *           template; here it is explicitly specified by the user.
+ *
+ * @see expected<T, E>
+ */
 template <typename E>
 class expected<void, E>
 {

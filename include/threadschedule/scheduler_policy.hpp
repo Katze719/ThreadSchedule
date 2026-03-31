@@ -20,7 +20,36 @@ namespace threadschedule
 // expected/result are provided by expected.hpp
 
 /**
- * @brief Enumeration of available scheduling policies
+ * @brief Enumeration of available thread scheduling policies.
+ *
+ * Represents the OS-level scheduling policy applied to a thread. On Linux, the
+ * enumerator values map directly to the POSIX `SCHED_*` constants defined in
+ * `<sched.h>`. On Windows, they are stored as portable integer values and
+ * translated to Windows-specific priority classes / scheduling behaviour at the
+ * point of application.
+ *
+ * ### Linux behaviour
+ * | Policy     | Description                                                                 | Privileges required          |
+ * |------------|-----------------------------------------------------------------------------|------------------------------|
+ * | OTHER      | Default CFS (Completely Fair Scheduler) time-sharing.                       | None                         |
+ * | FIFO       | Real-time FIFO - runs until it yields or a higher-priority thread arrives.  | `CAP_SYS_NICE` or root       |
+ * | RR         | Real-time round-robin - like FIFO but with a per-thread time quantum.       | `CAP_SYS_NICE` or root       |
+ * | BATCH      | Like OTHER but the scheduler assumes the thread is CPU-bound (longer slices).| None                        |
+ * | IDLE       | Extremely low priority; runs only when no other runnable thread exists.      | None                        |
+ * | DEADLINE   | EDF (Earliest Deadline First) real-time scheduling (Linux >= 3.14).          | `CAP_SYS_NICE` or root       |
+ *
+ * ### Windows behaviour
+ * Windows does not expose POSIX scheduling policies. The library maps each
+ * enumerator to an appropriate combination of process priority class and thread
+ * priority level when applying the policy. FIFO and RR are both treated as
+ * elevated real-time priorities; BATCH and IDLE are mapped to below-normal and
+ * idle priority levels respectively.
+ *
+ * @note DEADLINE is only available on Linux when `SCHED_DEADLINE` is defined by
+ *       the kernel headers. It is not available on Windows.
+ *
+ * @warning Setting FIFO, RR, or DEADLINE without adequate privileges will fail
+ *          with a permission error (`EPERM` on Linux).
  */
 enum class SchedulingPolicy : std::uint_fast8_t
 {
@@ -45,7 +74,34 @@ enum class SchedulingPolicy : std::uint_fast8_t
 };
 
 /**
- * @brief Thread priority wrapper with validation
+ * @brief Value-semantic wrapper for a thread scheduling priority.
+ *
+ * Encapsulates a single integer priority in the range **[-20, 19]** - the same
+ * range used by POSIX nice values on Linux. The value is silently clamped to
+ * this range on construction (via `std::clamp`), so out-of-range inputs never
+ * produce an invalid object.
+ *
+ * ### Semantics
+ * Lower numeric values denote **higher** scheduling priority (following the
+ * Unix nice convention): -20 is the most favourable and 19 is the least.
+ *
+ * ### Platform notes
+ * - **Linux:** The value is used directly as the nice level for `SCHED_OTHER`
+ *   / `SCHED_BATCH` / `SCHED_IDLE`, or clamped to the real-time priority
+ *   range for `SCHED_FIFO` / `SCHED_RR` by SchedulerParams::create_for_policy().
+ * - **Windows:** The value is mapped to a Windows thread priority constant
+ *   (e.g. `THREAD_PRIORITY_HIGHEST`, `THREAD_PRIORITY_LOWEST`) when applied.
+ *
+ * ### Type traits
+ * - Trivially copyable and trivially movable.
+ * - `constexpr`-constructible - can be used in compile-time contexts.
+ * - All relational operators (`==`, `!=`, `<`, `<=`, `>`, `>=`) are provided
+ *   and compare the underlying integer value.
+ * - Not thread-safe: concurrent mutation of the same instance requires
+ *   external synchronisation. Distinct instances may be used freely from
+ *   different threads.
+ *
+ * @see SchedulerParams::create_for_policy
  */
 class ThreadPriority
 {
@@ -115,7 +171,37 @@ class ThreadPriority
 };
 
 /**
- * @brief CPU affinity management
+ * @brief Manages a set of CPU indices to which a thread may be bound.
+ *
+ * ThreadAffinity is a value-semantic type that represents a CPU affinity mask.
+ * It abstracts away the platform-specific details of `cpu_set_t` (Linux) and
+ * processor-group bitmasks (Windows).
+ *
+ * ### Linux
+ * Backed by a `cpu_set_t`. Supports CPU indices in the range
+ * `[0, CPU_SETSIZE)` (typically 0-1023). The `native_handle()` accessor
+ * provides a `const cpu_set_t&` for direct use with `pthread_setaffinity_np`
+ * or `sched_setaffinity`.
+ *
+ * ### Windows
+ * Backed by a 64-bit bitmask plus a processor group index (`WORD`). Windows
+ * organises logical processors into groups of up to 64. This class supports
+ * **a single group at a time**: the group is determined by the first CPU added
+ * via `add_cpu()`. Subsequent calls to `add_cpu()` for CPUs that belong to a
+ * different group are **silently ignored**. Use `get_group()` and `get_mask()`
+ * to retrieve the platform-native values for `SetThreadGroupAffinity`.
+ *
+ * ### Thread safety
+ * None. ThreadAffinity is a plain value type with no internal synchronisation.
+ * Concurrent reads are safe; concurrent mutation (or a read concurrent with a
+ * write) requires external locking.
+ *
+ * ### Copyability / movability
+ * Implicitly copyable and movable (compiler-generated special members).
+ *
+ * @warning On Windows, CPUs from different processor groups cannot be combined
+ *          in a single ThreadAffinity instance. If you need cross-group
+ *          affinity you must apply separate ThreadAffinity objects per group.
  */
 class ThreadAffinity
 {
@@ -278,7 +364,38 @@ class ThreadAffinity
 };
 
 /**
- * @brief Scheduler parameter utilities
+ * @brief Static utility class for constructing OS-native scheduling parameters.
+ *
+ * SchedulerParams translates the portable SchedulingPolicy and
+ * ThreadPriority types into the platform-specific structures required by
+ * the OS scheduling APIs (`sched_param` on Linux, a compatible POD on Windows).
+ *
+ * ### `create_for_policy`
+ * Builds a native scheduling-parameter structure for a given policy/priority
+ * pair. The priority is **clamped** to the valid range for the requested policy
+ * (queried at runtime on Linux via `sched_get_priority_min` /
+ * `sched_get_priority_max`), so callers never need to pre-validate the range
+ * themselves. Returns an @ref expected - on failure (e.g. an unrecognised
+ * policy value) an `std::error_code` is returned instead.
+ *
+ * ### `get_priority_range`
+ * Returns the width of the valid priority range (max - min) for a policy.
+ * Useful for normalising priorities across policies.
+ *
+ * ### Platform differences
+ * - **Linux:** Delegates directly to POSIX `sched_get_priority_min` /
+ *   `sched_get_priority_max` and populates a `sched_param`.
+ * - **Windows:** Returns a fixed range of 30 (mapping to the -15 ... +15
+ *   Windows thread priority levels) and stores the raw priority in a
+ *   lightweight `sched_param_win` POD.
+ *
+ * ### Thread safety
+ * All members are static and stateless; concurrent calls from any number of
+ * threads are safe.
+ *
+ * @note This class is not intended to be instantiated.
+ *
+ * @see SchedulingPolicy, ThreadPriority
  */
 class SchedulerParams
 {

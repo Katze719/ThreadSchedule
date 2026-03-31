@@ -17,7 +17,34 @@ namespace threadschedule
 {
 
 /**
- * @brief High-performance work-stealing deque for individual worker threads
+ * @brief Work-stealing deque for per-thread task queues in a thread pool.
+ *
+ * Implements a double-ended queue where the owning worker thread pushes and
+ * pops tasks from the top, while other ("thief") threads steal tasks from the
+ * bottom. This asymmetry reduces contention under typical workloads because
+ * the owner operates on one end and thieves on the other.
+ *
+ * @par Thread safety
+ * All public operations are serialized by an internal mutex, so the deque is
+ * safe to use concurrently from any number of threads. The atomic counters
+ * (top_ / bottom_) exist for a fast, lock-free size() / empty() snapshot but
+ * do @e not make push/pop/steal lock-free; the mutex is always acquired.
+ *
+ * @par Capacity
+ * The deque has a fixed capacity set at construction (default
+ * @c DEFAULT_CAPACITY = 1024). push() returns @c false when the deque is
+ * full; it never reallocates. Choose a capacity large enough for your expected
+ * burst size or use an overflow queue externally (as @ref HighPerformancePool does).
+ *
+ * @par Memory layout
+ * Each stored item is wrapped in an @c AlignedItem that is aligned to
+ * @c CACHE_LINE_SIZE (64 bytes) to prevent false sharing between adjacent
+ * elements when multiple threads access neighboring slots.
+ *
+ * @par Copyability / movability
+ * Not copyable and not movable (contains a std::mutex).
+ *
+ * @tparam T The task type. Must be move-constructible.
  */
 template <typename T>
 class WorkStealingDeque
@@ -133,7 +160,12 @@ class WorkStealingDeque
 };
 
 /**
- * @brief High-performance thread pool optimized for high-frequency task submission
+ * @brief High-performance thread pool optimized for high-frequency task submission.
+ *
+ * Uses a work-stealing architecture: each worker thread owns a private
+ * @ref WorkStealingDeque, and idle workers attempt to steal tasks from other
+ * workers' queues. A shared overflow queue absorbs bursts when all per-thread
+ * queues are full.
  *
  * Optimizations for 1k+ tasks with 10k+ tasks/second throughput:
  * - Work-stealing architecture with proper synchronization
@@ -143,8 +175,69 @@ class WorkStealingDeque
  * - Cache-friendly data structures with proper alignment
  * - Performance monitoring and statistics
  *
- * Note: Has overhead for small task counts (< 100 tasks) due to work-stealing complexity.
- * Best for high-throughput scenarios like image processing, batch operations, etc.
+ * @par How task execution works
+ * When you call submit(), the callable is wrapped in a std::packaged_task and
+ * placed into one of the per-worker queues (round-robin selection). A
+ * condition_variable then wakes one sleeping worker. The worker picks up the
+ * task from its own queue. If its own queue is empty, the worker tries to
+ * steal tasks from up to 4 other workers' queues (random selection). If no
+ * per-worker queue has work, the worker checks the shared overflow queue. If
+ * nothing is found at all, the worker sleeps for up to 100 microseconds
+ * before retrying.
+ *
+ * @par Execution guarantees
+ * - Every successfully submitted task (submit() returned without throwing)
+ *   is guaranteed to eventually execute, as long as the pool is not destroyed
+ *   while shutdown() is draining.
+ * - submit() throws std::runtime_error if the pool is already shutting down.
+ *   In that case the task is NOT enqueued and will NOT execute.
+ * - Tasks are executed in approximately FIFO order per queue, but the
+ *   work-stealing mechanism means that the global execution order across all
+ *   threads is non-deterministic. There is no ordering guarantee between two
+ *   tasks submitted from different threads, or even from the same thread if
+ *   they land in different worker queues.
+ * - The returned std::future becomes ready once the task has completed. You
+ *   can call future.get() to block until the result is available, or
+ *   future.wait() to just wait without retrieving the result.
+ * - If a task throws an exception, the exception is stored in the future.
+ *   Calling future.get() will rethrow it. The worker thread itself continues
+ *   to run and process further tasks.
+ * - shutdown() sets the stop flag and wakes all workers. Workers finish
+ *   their current task and then drain all remaining queued tasks before
+ *   exiting. The destructor calls shutdown() implicitly.
+ *
+ * @par Thread safety
+ * submit() and submit_batch() may be called from any thread concurrently.
+ * shutdown() is internally guarded and is safe to call more than once.
+ *
+ * @par Exception handling
+ * Exceptions thrown by tasks are caught inside the worker loop. They do not
+ * propagate to the caller directly, but are stored in the std::future
+ * returned by submit(). Call future.get() to observe or rethrow the
+ * exception. The worker thread is not affected and continues processing.
+ *
+ * @par Statistics accuracy
+ * Counters such as completed_tasks_, stolen_tasks_, and total_task_time_
+ * are updated with std::memory_order_relaxed, so the values returned by
+ * get_statistics() are approximate and may lag behind the true counts by
+ * a small margin.
+ *
+ * @par Blocking
+ * wait_for_tasks() blocks the calling thread until every queued and currently
+ * active task has finished.
+ *
+ * @par Lifetime
+ * The destructor calls shutdown() and joins all worker threads. It is safe
+ * to let the pool go out of scope while tasks are still running; they will be
+ * drained first. Note that this means the destructor can block for a long
+ * time if tasks are slow.
+ *
+ * @par Copyability / movability
+ * Not copyable, not movable.
+ *
+ * @note Has overhead for small task counts (< 100 tasks) due to
+ *       work-stealing complexity. Best for high-throughput scenarios like
+ *       image processing, batch operations, etc.
  */
 class HighPerformancePool
 {
@@ -591,13 +684,65 @@ class HighPerformancePool
 };
 
 /**
- * @brief Simple high-performance thread pool using single queue with optimized locking
+ * @brief Single-queue thread pool with optimized locking for medium workloads.
  *
- * Alternative implementation for cases where work-stealing overhead is not justified.
- * Uses a single queue with optimized batch processing and minimal locking.
+ * Alternative to @ref HighPerformancePool for cases where work-stealing overhead is
+ * not justified. All tasks share one std::queue protected by a single mutex,
+ * which keeps per-task overhead low while still scaling to multiple workers.
  *
  * Best for: Medium workloads (100-10k tasks), consistent task patterns where
- * work-stealing complexity isn't needed but better performance than basic ThreadPool is desired.
+ * work-stealing complexity is not needed but better performance than the basic
+ * @ref ThreadPool is desired.
+ *
+ * @par How task execution works
+ * When you call submit(), the callable is wrapped in a std::packaged_task,
+ * pushed into the single shared task queue under a mutex lock, and one
+ * sleeping worker is woken via condition_variable::notify_one(). The woken
+ * worker pops the front element from the queue and executes it. If the queue
+ * is empty when a worker wakes up, it goes back to sleep with a 10 ms
+ * timeout before checking again.
+ *
+ * @par Execution guarantees
+ * - Every successfully submitted task (submit() returned without throwing)
+ *   is guaranteed to eventually execute, as long as the pool is not
+ *   destroyed while shutdown() is draining remaining work.
+ * - submit() throws std::runtime_error if the pool is already shutting
+ *   down. In that case the task is NOT enqueued and will NOT execute.
+ * - Tasks are stored in a FIFO queue, so they are picked up roughly in
+ *   submission order. However, since multiple workers pop concurrently,
+ *   the actual completion order is non-deterministic.
+ * - The returned std::future becomes ready once the task finishes. If the
+ *   task threw an exception, future.get() rethrows it. The worker thread
+ *   itself is not affected and continues processing further tasks.
+ * - On shutdown(), workers finish their current task, then drain all
+ *   remaining queued tasks before exiting. Tasks submitted before
+ *   shutdown() are guaranteed to execute.
+ *
+ * @par Thread safety
+ * submit() and submit_batch() may be called from any thread concurrently.
+ * shutdown() is internally guarded and safe to call more than once.
+ *
+ * @par Polling / wake-up
+ * Workers use condition_variable::wait_for with a 10 ms timeout, so an idle
+ * worker may take up to 10 ms to notice the stop flag after shutdown() is
+ * called.
+ *
+ * @par Exception handling
+ * Exceptions thrown by tasks are caught inside the worker loop. They are
+ * stored in the std::future returned by submit(). The worker thread
+ * continues processing.
+ *
+ * @par Configuration return type
+ * configure_threads() and set_affinity() return bool (not
+ * expected<void, std::error_code> as in @ref HighPerformancePool). A return
+ * value of false means at least one worker could not be configured.
+ *
+ * @par Lifetime
+ * The destructor calls shutdown() and joins all worker threads. Can block
+ * if tasks are still running.
+ *
+ * @par Copyability / movability
+ * Not copyable, not movable.
  */
 class FastThreadPool
 {
@@ -894,7 +1039,7 @@ class FastThreadPool
 };
 
 /**
- * @brief Simple thread pool for general-purpose use
+ * @brief Simple, general-purpose thread pool.
  *
  * This is a straightforward thread pool implementation suitable for:
  * - Simple workloads with low task counts (< 1k tasks)
@@ -903,7 +1048,59 @@ class FastThreadPool
  * - Lower memory overhead and complexity
  * - Easier to understand and debug
  *
- * For high-throughput scenarios (> 1k tasks), consider FastThreadPool or HighPerformancePool.
+ * For high-throughput scenarios (> 1k tasks), consider @ref FastThreadPool or
+ * @ref HighPerformancePool.
+ *
+ * @par How task execution works
+ * When you call submit(), the callable is wrapped in a std::packaged_task
+ * and pushed into a single shared std::queue under a mutex lock. One
+ * sleeping worker is then woken via condition_variable::notify_one(). The
+ * woken worker pops the front task from the queue and executes it. Workers
+ * block indefinitely on the condition_variable when the queue is empty (no
+ * polling timeout), so they consume zero CPU while idle.
+ *
+ * @par Execution guarantees
+ * - Every successfully submitted task (submit() returned without throwing)
+ *   is guaranteed to eventually execute.
+ * - submit() throws std::runtime_error if the pool is already shutting
+ *   down. In that case the task is NOT enqueued.
+ * - Tasks are stored in a FIFO queue. Multiple workers pop concurrently, so
+ *   submission order is roughly preserved but completion order is
+ *   non-deterministic.
+ * - The returned std::future becomes ready once the task finishes. If the
+ *   task threw an exception, future.get() rethrows it.
+ * - On shutdown(), the stop flag is set and all workers are woken. Each
+ *   worker finishes its current task and then exits only if the queue is
+ *   empty. This means all tasks that were enqueued before shutdown() are
+ *   guaranteed to execute.
+ * - wait_for_tasks() blocks until the queue is empty AND no worker is
+ *   currently executing a task.
+ *
+ * @par Thread safety
+ * submit() may be called from any thread concurrently. All task-queue access
+ * is serialized through queue_mutex_.
+ *
+ * @par Wake-up behaviour
+ * Workers block on a std::condition_variable (no polling timeout), so they
+ * consume no CPU while idle but wake instantly when a task is enqueued.
+ *
+ * @par Internal counter note
+ * Unlike @ref FastThreadPool and @ref HighPerformancePool, active_tasks_ and
+ * completed_tasks_ are incremented/decremented while queue_mutex_ is held.
+ * This means they are always consistent with the queue size, but every task
+ * completion acquires the mutex an extra time.
+ *
+ * @par Exception handling
+ * Exceptions thrown by tasks are caught inside the worker loop. They are
+ * stored in the std::future returned by submit(). The worker thread
+ * continues processing.
+ *
+ * @par Lifetime
+ * The destructor calls shutdown() and joins all worker threads. Can block
+ * if tasks are still running.
+ *
+ * @par Copyability / movability
+ * Not copyable, not movable.
  */
 class ThreadPool
 {
@@ -1169,7 +1366,32 @@ class ThreadPool
 };
 
 /**
- * @brief Singleton thread pool for global use (simple version)
+ * @brief Singleton accessor for a process-wide @ref ThreadPool instance.
+ *
+ * Provides static convenience methods that forward to a single @ref ThreadPool
+ * whose lifetime is managed as a function-local static (Meyer's singleton).
+ *
+ * @par Thread safety
+ * The underlying @ref ThreadPool is created on the first call to instance() and is
+ * guaranteed to be thread-safe in C++11 and later (magic statics). All
+ * forwarded methods (submit, submit_range, parallel_for_each) are as
+ * thread-safe as the corresponding @ref ThreadPool methods.
+ *
+ * @par Pool size
+ * The pool is created with @c std::thread::hardware_concurrency() threads.
+ * This size is fixed for the lifetime of the process; there is no API to
+ * resize the singleton pool after creation.
+ *
+ * @par Static destruction order
+ * Because the pool is a function-local static, it is destroyed during static
+ * destruction in reverse order of construction. Submitting work to the global
+ * pool from destructors of other static objects is undefined behaviour if the
+ * pool has already been destroyed. Prefer explicit lifetime management in
+ * programs with complex static initialization dependencies.
+ *
+ * @par Copyability / movability
+ * Not instantiable (private constructor). All access is through static
+ * methods.
  */
 class GlobalThreadPool
 {
@@ -1203,7 +1425,33 @@ class GlobalThreadPool
 };
 
 /**
- * @brief Singleton high-performance thread pool for global use
+ * @brief Singleton accessor for a process-wide @ref HighPerformancePool instance.
+ *
+ * Provides static convenience methods that forward to a single
+ * @ref HighPerformancePool whose lifetime is managed as a function-local static
+ * (Meyer's singleton).
+ *
+ * @par Thread safety
+ * The underlying pool is created on the first call to instance() and is
+ * guaranteed to be thread-safe in C++11 and later (magic statics). All
+ * forwarded methods (submit, submit_batch, parallel_for_each) are as
+ * thread-safe as the corresponding @ref HighPerformancePool methods.
+ *
+ * @par Pool size
+ * The pool is created with @c std::thread::hardware_concurrency() threads.
+ * This size is fixed for the lifetime of the process; there is no API to
+ * resize the singleton pool after creation.
+ *
+ * @par Static destruction order
+ * Because the pool is a function-local static, it is destroyed during static
+ * destruction in reverse order of construction. Submitting work to the global
+ * pool from destructors of other static objects is undefined behaviour if the
+ * pool has already been destroyed. Prefer explicit lifetime management in
+ * programs with complex static initialization dependencies.
+ *
+ * @par Copyability / movability
+ * Not instantiable (private constructor). All access is through static
+ * methods.
  */
 class GlobalHighPerformancePool
 {
@@ -1237,7 +1485,32 @@ class GlobalHighPerformancePool
 };
 
 /**
- * @brief Convenience function for parallel execution with containers
+ * @brief Convenience wrapper that applies a callable to every element of a
+ *        container in parallel using the @ref GlobalThreadPool singleton.
+ *
+ * Equivalent to:
+ * @code
+ * GlobalThreadPool::parallel_for_each(container.begin(), container.end(), func);
+ * @endcode
+ *
+ * The call blocks until every element has been processed.
+ *
+ * @par Thread safety
+ * The function itself is thread-safe (it forwards to @ref GlobalThreadPool which
+ * guards its queue with a mutex). However, the caller must ensure that
+ * concurrent invocations of @p func on different elements do not race on
+ * shared state.
+ *
+ * @par Pool lifetime
+ * On the first call, GlobalThreadPool::instance() lazily creates the
+ * singleton pool sized to @c std::thread::hardware_concurrency(). See
+ * @ref GlobalThreadPool for static-destruction-order caveats.
+ *
+ * @tparam Container Any type exposing begin() / end() iterators.
+ * @tparam F         Callable compatible with @c void(Container::value_type&).
+ *
+ * @param container The container whose elements will be processed.
+ * @param func      The callable applied to each element.
  */
 template <typename Container, typename F>
 void parallel_for_each(Container& container, F&& func)
