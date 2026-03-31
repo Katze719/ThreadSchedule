@@ -88,6 +88,9 @@ class ScheduledTaskHandle
  *   schedule_periodic returned a handle) is guaranteed to eventually
  *   execute, unless it is cancelled or shutdown() is called before it
  *   becomes due.
+ * - Tasks are stored in a std::multimap keyed by time point. When
+ *   multiple tasks share the same due time, they are dispatched in
+ *   insertion order (guaranteed by std::multimap since C++11).
  * - Tasks that are already due and submitted to the underlying pool
  *   before shutdown() will still execute (the pool drains its queue).
  * - Tasks that are not yet due at the time of shutdown() will NOT
