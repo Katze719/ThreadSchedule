@@ -14,7 +14,16 @@ namespace threadschedule
 {
 
 /**
- * @brief Handle for scheduled tasks that can be used to cancel them
+ * @brief Copyable handle for a cancellable scheduled task.
+ *
+ * Copyable (the cancel flag is shared via
+ * @c std::shared_ptr<std::atomic<bool>>). Both cancel() and
+ * is_cancelled() are thread-safe (atomic store / load with
+ * release / acquire ordering).
+ *
+ * Cancellation is cooperative: the scheduler checks the flag before
+ * dispatching the task to the worker pool, but a task that is already
+ * executing will **not** be interrupted.
  */
 class ScheduledTaskHandle
 {
@@ -51,16 +60,70 @@ class ScheduledTaskHandle
 };
 
 /**
- * @brief Thread pool with support for scheduled and periodic tasks
+ * @brief Thread pool augmented with delayed and periodic task scheduling.
  *
- * Features:
- * - Schedule tasks to run at specific time points
- * - Schedule tasks to run after a delay
- * - Schedule periodic tasks with fixed intervals
- * - Cancel scheduled tasks before they execute
- * - Integrates with any thread pool type (ThreadPool by default)
+ * Non-copyable, non-movable. Combines a dedicated scheduler thread with
+ * an underlying PoolType (default: @ref ThreadPool) that does the actual work.
  *
- * @tparam PoolType Type of thread pool to use for task execution (default: ThreadPool)
+ * @par How task execution works
+ * The pool owns a single scheduler thread that runs an internal loop
+ * (scheduler_loop). Scheduled tasks are stored in a std::multimap sorted
+ * by their next_run time point. The scheduler thread sleeps (via
+ * condition_variable::wait / wait_until) until the earliest task is due.
+ * When a task becomes due, the scheduler thread:
+ *   1. Removes it from the multimap.
+ *   2. Checks if the task has been cancelled (via the atomic flag). If
+ *      cancelled, the task is discarded.
+ *   3. Submits the task to the underlying PoolType via pool_.submit().
+ *      From this point on, the task follows the execution rules of the
+ *      underlying pool (see @ref ThreadPool, @ref FastThreadPool, or
+ *      @ref HighPerformancePool documentation).
+ *   4. For periodic tasks, the scheduler immediately re-inserts the task
+ *      into the multimap with next_run += interval. This means the next
+ *      execution is timed from the scheduled time, not from when the
+ *      task actually finishes.
+ *
+ * @par Execution guarantees
+ * - Every successfully scheduled task (schedule_after/schedule_at/
+ *   schedule_periodic returned a handle) is guaranteed to eventually
+ *   execute, unless it is cancelled or shutdown() is called before it
+ *   becomes due.
+ * - Tasks that are already due and submitted to the underlying pool
+ *   before shutdown() will still execute (the pool drains its queue).
+ * - Tasks that are not yet due at the time of shutdown() will NOT
+ *   execute. The scheduler thread exits immediately on shutdown, so
+ *   future-scheduled tasks are lost.
+ * - Cancellation is cooperative: calling handle.cancel() sets an atomic
+ *   flag. The scheduler checks this flag before submitting the task to
+ *   the pool. Additionally, the pool-side wrapper checks the flag again
+ *   right before calling the task. However, a task that is already
+ *   running will NOT be interrupted by cancel().
+ * - Periodic tasks repeat at a fixed interval, not a fixed rate. If a
+ *   task takes longer than the interval, executions can pile up because
+ *   the next run is computed from the previous scheduled time, not
+ *   from when the task actually finishes.
+ * - There is no returned std::future for scheduled tasks. If you need
+ *   to observe the result, use the underlying pool directly via
+ *   thread_pool().submit().
+ *
+ * @par Thread safety
+ * All schedule_* methods are thread-safe (protected by an internal
+ * mutex). cancel() on a ScheduledTaskHandle is also thread-safe (atomic).
+ * shutdown() is internally guarded and safe to call more than once.
+ *
+ * @par Lifetime
+ * The destructor calls shutdown(), which joins the scheduler thread and
+ * then shuts down the underlying pool. Can block if the pool still has
+ * running tasks.
+ *
+ * @par Copyability / movability
+ * Not copyable, not movable.
+ *
+ * @tparam PoolType Thread pool used for task execution
+ *         (default: ThreadPool).
+ *
+ * @see ScheduledThreadPool, ScheduledHighPerformancePool,
+ *      ScheduledFastThreadPool (convenience aliases)
  */
 template <typename PoolType = ThreadPool>
 class ScheduledThreadPoolT
@@ -233,7 +296,7 @@ class ScheduledThreadPoolT
      * @brief Configure worker threads
      *
      * Note: Return type depends on the underlying pool type.
-     * ThreadPool returns bool, HighPerformancePool returns expected<void, std::error_code>.
+     * @ref ThreadPool returns bool, @ref HighPerformancePool returns expected<void, std::error_code>.
      * For consistent behavior, access the pool directly via thread_pool().
      */
     auto configure_threads(std::string const& name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
@@ -327,9 +390,11 @@ class ScheduledThreadPoolT
     }
 };
 
-// Convenience aliases
+/** @brief @ref ScheduledThreadPoolT using the default @ref ThreadPool backend. */
 using ScheduledThreadPool = ScheduledThreadPoolT<ThreadPool>;
+/** @brief @ref ScheduledThreadPoolT using @ref HighPerformancePool as backend. */
 using ScheduledHighPerformancePool = ScheduledThreadPoolT<HighPerformancePool>;
+/** @brief @ref ScheduledThreadPoolT using @ref FastThreadPool as backend. */
 using ScheduledFastThreadPool = ScheduledThreadPoolT<FastThreadPool>;
 
 } // namespace threadschedule
