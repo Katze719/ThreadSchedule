@@ -43,7 +43,15 @@ struct is_thread_like<JThreadWrapperView> : std::true_type
 #endif
 
 /**
- * @brief Declarative profile describing desired scheduling.
+ * @brief Declarative profile bundling scheduling intent for a thread.
+ *
+ * Value type (copyable). Combines a human-readable name, a scheduling
+ * policy, a priority level, and an optional CPU affinity mask into a
+ * single object that can be passed to the apply_profile() overloads.
+ *
+ * @see profiles::realtime, profiles::low_latency, profiles::throughput,
+ *      profiles::background
+ * @see apply_profile()
  */
 struct ThreadProfile
 {
@@ -96,7 +104,16 @@ inline auto background() -> ThreadProfile
 } // namespace profiles
 
 /**
- * @brief Apply a profile to a single thread wrapper or view.
+ * @brief Apply a profile to a thread wrapper or view.
+ *
+ * SFINAE-constrained: only participates in overload resolution when
+ * @c is_thread_like_v<ThreadLike> is true (ThreadWrapper,
+ * JThreadWrapper, PThreadWrapper, and their views).
+ *
+ * @tparam ThreadLike A type satisfying the is_thread_like trait.
+ * @param t   Thread wrapper or view to configure.
+ * @param p   Profile to apply.
+ * @return    Empty expected on success, or @c operation_not_permitted.
  */
 template <typename ThreadLike, std::enable_if_t<is_thread_like_v<ThreadLike>, int> = 0>
 inline auto apply_profile(ThreadLike& t, ThreadProfile const& p) -> expected<void, std::error_code>
@@ -115,7 +132,11 @@ inline auto apply_profile(ThreadLike& t, ThreadProfile const& p) -> expected<voi
 }
 
 /**
- * @brief Apply a profile to a thread control block.
+ * @brief Apply a profile to a ThreadControlBlock directly.
+ *
+ * @param t   Control block whose underlying thread will be reconfigured.
+ * @param p   Profile to apply.
+ * @return    Empty expected on success, or @c operation_not_permitted.
  */
 inline auto apply_profile(ThreadControlBlock& t, ThreadProfile const& p) -> expected<void, std::error_code>
 {
@@ -133,7 +154,16 @@ inline auto apply_profile(ThreadControlBlock& t, ThreadProfile const& p) -> expe
 }
 
 /**
- * @brief Apply a profile to a registered thread info.
+ * @brief Apply a profile to a registered thread via its info record.
+ *
+ * Dereferences @c t.control and delegates to the ThreadControlBlock
+ * overload.
+ *
+ * @warning Undefined behaviour if @c t.control is @c nullptr.
+ *
+ * @param t   Registered thread info whose control pointer is dereferenced.
+ * @param p   Profile to apply.
+ * @return    Empty expected on success, or @c operation_not_permitted.
  */
 inline auto apply_profile(RegisteredThreadInfo& t, ThreadProfile const& p) -> expected<void, std::error_code>
 {
@@ -141,7 +171,14 @@ inline auto apply_profile(RegisteredThreadInfo& t, ThreadProfile const& p) -> ex
 }
 
 /**
- * @brief Apply a profile to all workers of a simple ThreadPool.
+ * @brief Apply a profile to every worker in a ThreadPool.
+ *
+ * Uses @c "pool" as the thread name prefix passed to
+ * ThreadPool::configure_threads().
+ *
+ * @param pool  Thread pool to configure.
+ * @param p     Profile to apply.
+ * @return      Empty expected on success, or @c operation_not_permitted.
  */
 inline auto apply_profile(ThreadPool& pool, ThreadProfile const& p) -> expected<void, std::error_code>
 {
@@ -160,7 +197,14 @@ inline auto apply_profile(ThreadPool& pool, ThreadProfile const& p) -> expected<
 }
 
 /**
- * @brief Apply a profile to all workers of a HighPerformancePool.
+ * @brief Apply a profile to every worker in a HighPerformancePool.
+ *
+ * Uses @c "hp" as the thread name prefix passed to
+ * HighPerformancePool::configure_threads().
+ *
+ * @param pool  High-performance pool to configure.
+ * @param p     Profile to apply.
+ * @return      Empty expected on success, or @c operation_not_permitted.
  */
 inline auto apply_profile(HighPerformancePool& pool, ThreadProfile const& p) -> expected<void, std::error_code>
 {
@@ -178,7 +222,12 @@ inline auto apply_profile(HighPerformancePool& pool, ThreadProfile const& p) -> 
 }
 
 /**
- * @brief Apply a profile to a registry-controlled thread by TID.
+ * @brief Apply a profile to a registry-managed thread identified by TID.
+ *
+ * @param reg  Thread registry that owns the thread.
+ * @param tid  Thread identifier within the registry.
+ * @param p    Profile to apply.
+ * @return     Empty expected on success, or @c operation_not_permitted.
  */
 inline auto apply_profile(ThreadRegistry& reg, Tid tid, ThreadProfile const& p) -> expected<void, std::error_code>
 {
