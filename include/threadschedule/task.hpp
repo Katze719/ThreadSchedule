@@ -29,6 +29,17 @@ class task;
 namespace detail
 {
 
+/**
+ * @brief Awaiter that resumes the parent coroutine (continuation) when a task completes.
+ *
+ * @internal This is an implementation detail of the task coroutine machinery.
+ *
+ * When a task's coroutine body finishes, `final_awaiter` is returned from
+ * `final_suspend()`. It is never ready (always suspends), and on suspension
+ * it symmetric-transfers to the stored continuation. If no continuation has
+ * been set (e.g. the task was started via `sync_wait`), it transfers to
+ * `std::noop_coroutine()` to avoid undefined behaviour.
+ */
 struct final_awaiter
 {
     [[nodiscard]] auto await_ready() const noexcept -> bool
@@ -49,6 +60,25 @@ struct final_awaiter
     }
 };
 
+/**
+ * @brief Shared promise logic for task<T> and task<void>.
+ *
+ * @internal This is an implementation detail; users should interact with
+ * task<T> rather than its promise directly.
+ *
+ * @tparam T The value type produced by the task (may be `void`).
+ *
+ * Key behaviours:
+ * - **Lazy start:** `initial_suspend()` returns `std::suspend_always`, so
+ *   the coroutine does not begin until explicitly resumed (via `co_await`
+ *   or `sync_wait()`).
+ * - **Exception forwarding:** `unhandled_exception()` captures the active
+ *   exception into an `std::exception_ptr`; the awaiter re-throws it when
+ *   the caller retrieves the result.
+ * - **Continuation:** `continuation_` is set by the task's awaiter just
+ *   before resuming the task. `final_awaiter` uses it to return control
+ *   to the parent coroutine.
+ */
 template <typename T>
 class task_promise_base
 {
@@ -84,8 +114,39 @@ class task_promise_base
 
 } // namespace detail
 
-// ── task<T> (non-void) ─────────────────────────────────────────────
+// --- task<T> (non-void) ---
 
+/**
+ * @brief Lazy, single-value coroutine that produces a @p T on completion.
+ *
+ * @tparam T The type of the value produced by the coroutine body.
+ *
+ * A `task<T>` is the primary coroutine return type for asynchronous
+ * operations that yield exactly one result (or throw). It models a
+ * **lazy** coroutine: execution does not begin until the task is
+ * `co_await`ed by another coroutine or passed to `sync_wait()`.
+ *
+ * **Ownership semantics:**
+ * - Move-only; copying is deleted.
+ * - The destructor destroys the underlying coroutine frame, so the task
+ *   must outlive any in-progress `co_await` that references it.
+ *
+ * **Result retrieval:**
+ * `co_await`ing a `task<T>` returns `T`. If the coroutine body threw an
+ * exception, the exception is re-thrown at the `co_await` point (via
+ * `promise_type::result()`).
+ *
+ * Requires C++20 coroutine support (`__cpp_impl_coroutine >= 201902L`).
+ *
+ * @par Example
+ * @code
+ * task<int> compute() { co_return 42; }
+ *
+ * task<void> caller() {
+ *     int v = co_await compute(); // resumes compute, gets 42
+ * }
+ * @endcode
+ */
 template <typename T>
 class task
 {
@@ -189,8 +250,35 @@ class task
     std::coroutine_handle<promise_type> handle_{};
 };
 
-// ── task<void> ──────────────────────────────────────────────────────
+// --- task<void> ---
 
+/**
+ * @brief Lazy, single-value coroutine specialization for operations that
+ *        produce no result.
+ *
+ * This is the `void` specialization of task. It behaves identically to
+ * `task<T>` except that `co_await`ing it yields no value and the promise
+ * uses `return_void()` instead of `return_value()`.
+ *
+ * **Ownership semantics:**
+ * - Move-only; copying is deleted.
+ * - The destructor destroys the underlying coroutine frame, so the task
+ *   must outlive any in-progress `co_await` that references it.
+ *
+ * If the coroutine body throws, the exception is re-thrown at the
+ * `co_await` point.
+ *
+ * Requires C++20 coroutine support (`__cpp_impl_coroutine >= 201902L`).
+ *
+ * @par Example
+ * @code
+ * task<void> do_work() { co_return; }
+ *
+ * task<void> caller() {
+ *     co_await do_work(); // resumes do_work, returns void
+ * }
+ * @endcode
+ */
 template <>
 class task<void>
 {
@@ -289,11 +377,31 @@ class task<void>
     std::coroutine_handle<promise_type> handle_{};
 };
 
-// ── sync_wait ───────────────────────────────────────────────────────
+// --- sync_wait ---
 
 namespace detail
 {
 
+/**
+ * @brief Bridge coroutine used internally by `sync_wait()` to block until
+ *        a task completes.
+ *
+ * @internal This is an implementation detail; use `sync_wait()` instead.
+ *
+ * `sync_wait_task` wraps a `task<T>` inside a coroutine whose
+ * `final_suspend` signals completion via an `std::atomic<bool>` and
+ * `notify_one()`.
+ *
+ * Typical usage (inside `sync_wait`):
+ * -# Construct a `sync_wait_task` from a lambda that `co_await`s the
+ *    user's task.
+ * -# Call `start()` to resume the coroutine (runs on the calling thread).
+ * -# Call `wait()` to block until `final_suspend` fires `notify_one`.
+ * -# Call `rethrow()` to propagate any unhandled exception from the
+ *    coroutine body.
+ *
+ * The class is move-only and non-copyable.
+ */
 class sync_wait_task
 {
   public:
@@ -385,10 +493,26 @@ class sync_wait_task
 } // namespace detail
 
 /**
- * @brief Block the current thread until a task<T> completes and return its result.
+ * @brief Block the calling thread until a `task<T>` completes and return
+ *        its result.
  *
- * This is the primary bridge between coroutine and synchronous code.
- * The task is resumed on the calling thread.
+ * This is the primary bridge between coroutine code and synchronous code.
+ * The task is resumed **on the calling thread** -- no thread pool or
+ * executor is involved.
+ *
+ * If the task's coroutine body throws an exception, `sync_wait`
+ * re-throws it to the caller.
+ *
+ * @tparam T The value type produced by the task.
+ * @param  t The task to run. Consumed by move.
+ * @return   The value produced by the task's `co_return`.
+ * @throws   Any exception thrown inside the task body.
+ *
+ * @par Example
+ * @code
+ * task<int> compute() { co_return 42; }
+ * int main() { return sync_wait(compute()); }
+ * @endcode
  */
 template <typename T>
 auto sync_wait(task<T> t) -> T
@@ -419,7 +543,17 @@ auto sync_wait(task<T> t) -> T
 }
 
 /**
- * @brief Block the current thread until a task<void> completes.
+ * @brief Block the calling thread until a `task<void>` completes.
+ *
+ * Overload for void tasks. Behaves identically to the `task<T>` overload
+ * but returns nothing.
+ *
+ * The task is resumed **on the calling thread** -- no thread pool or
+ * executor is involved. If the task body throws, the exception is
+ * re-thrown to the caller.
+ *
+ * @param t The void task to run. Consumed by move.
+ * @throws  Any exception thrown inside the task body.
  */
 inline void sync_wait(task<void> t)
 {

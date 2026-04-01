@@ -8,9 +8,18 @@ namespace threadschedule
 {
 
 /**
- * @brief High-performance thread pool with built-in error handling
+ * @brief @ref HighPerformancePool combined with an @ref ErrorHandler.
  *
- * Extends HighPerformancePool with automatic exception catching and error callbacks.
+ * Non-copyable, non-movable. Thread-safe (delegates to the underlying
+ * @ref HighPerformancePool).
+ *
+ * submit() wraps every task so that exceptions are both reported to
+ * the @ref ErrorHandler (via registered callbacks) **and** re-thrown, making
+ * them accessible through the returned @ref FutureWithErrorHandler.
+ * submit_with_description() additionally attaches a user-supplied
+ * description string to the error report for easier diagnostics.
+ *
+ * @see FutureWithErrorHandler, ErrorHandler, TaskError
  */
 class HighPerformancePoolWithErrors
 {
@@ -170,7 +179,14 @@ class HighPerformancePoolWithErrors
 };
 
 /**
- * @brief Fast thread pool with built-in error handling
+ * @brief FastThreadPool combined with an ErrorHandler.
+ *
+ * Non-copyable, non-movable. Thread-safe (delegates to the underlying
+ * FastThreadPool). Same error-handling semantics as
+ * HighPerformancePoolWithErrors: exceptions are reported to the
+ * ErrorHandler **and** re-thrown through the future.
+ *
+ * @see HighPerformancePoolWithErrors for detailed behaviour.
  */
 class FastThreadPoolWithErrors
 {
@@ -303,7 +319,14 @@ class FastThreadPoolWithErrors
 };
 
 /**
- * @brief Simple thread pool with built-in error handling
+ * @brief ThreadPool combined with an ErrorHandler.
+ *
+ * Non-copyable, non-movable. Thread-safe (delegates to the underlying
+ * ThreadPool). Same error-handling semantics as
+ * HighPerformancePoolWithErrors: exceptions are reported to the
+ * ErrorHandler **and** re-thrown through the future.
+ *
+ * @see HighPerformancePoolWithErrors for detailed behaviour.
  */
 class ThreadPoolWithErrors
 {

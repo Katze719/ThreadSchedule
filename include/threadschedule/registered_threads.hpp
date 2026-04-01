@@ -11,9 +11,15 @@
 namespace threadschedule
 {
 
-//
-
-// Registered std::thread wrapper (opt-in)
+/**
+ * @brief @ref ThreadWrapper with automatic registration in the global @ref ThreadRegistry.
+ *
+ * Non-copyable, movable. On thread start the spawned thread
+ * auto-registers itself in the global registry() (via an
+ * @ref AutoRegisterCurrentThread RAII guard) and auto-unregisters when
+ * the thread function returns. The @p name and @p componentTag
+ * arguments are forwarded to the registry entry.
+ */
 class ThreadWrapperReg : public ThreadWrapper
 {
   public:
@@ -38,6 +44,15 @@ class ThreadWrapperReg : public ThreadWrapper
 };
 
 #if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+/**
+ * @brief @ref JThreadWrapper with automatic registration in the global @ref ThreadRegistry.
+ *
+ * Non-copyable, movable. C++20 only. Behaves like @ref ThreadWrapperReg
+ * but wraps a @c std::jthread and handles @c std::stop_token
+ * forwarding: the callable may accept a @c stop_token as its first
+ * argument, its last argument, or not at all -- all three signatures
+ * are detected at compile time and dispatched accordingly.
+ */
 class JThreadWrapperReg : public JThreadWrapper
 {
   public:
@@ -71,6 +86,13 @@ class JThreadWrapperReg : public JThreadWrapper
 #endif
 
 #ifndef _WIN32
+/**
+ * @brief @ref PThreadWrapper with automatic registration in the global @ref ThreadRegistry.
+ *
+ * Non-copyable, movable. Linux-only (guarded by @c _WIN32).
+ * Same auto-register / auto-unregister semantics as @ref ThreadWrapperReg,
+ * but for POSIX threads.
+ */
 class PThreadWrapperReg : public PThreadWrapper
 {
   public:

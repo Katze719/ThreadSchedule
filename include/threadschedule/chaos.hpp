@@ -23,18 +23,64 @@ namespace threadschedule
 {
 
 /**
- * @brief Runtime chaos settings.
+ * @brief Plain value type holding runtime chaos-testing parameters.
+ *
+ * All fields have sensible defaults so a default-constructed `ChaosConfig`
+ * is immediately usable.
+ *
+ * @see ChaosController
  */
 struct ChaosConfig
 {
+    /** Time between successive chaos perturbations (default 250 ms). */
     std::chrono::milliseconds interval{250};
-    int priority_jitter{0}; // +/- jitter applied around current priority
+
+    /**
+     * @brief +/- range applied around the current thread priority each
+     *        interval.
+     *
+     * A value of 0 disables priority perturbation.
+     */
+    int priority_jitter{0};
+
+    /** Whether to reassign CPU affinities each interval (default `true`). */
     bool shuffle_affinity{true};
 };
 
-// RAII controller that periodically perturbs affinity/priority of registered threads matching a predicate
 /**
- * @brief RAII controller that periodically applies chaos operations.
+ * @brief RAII controller that periodically perturbs scheduling attributes
+ *        of registered threads for chaos/fuzz testing.
+ *
+ * On construction, `ChaosController` spawns a background `std::thread`
+ * that wakes every `ChaosConfig::interval` and applies perturbations
+ * (affinity shuffling, priority jitter) to threads in the global
+ * `registry()` that match the user-supplied predicate.
+ *
+ * **Ownership semantics:**
+ * - Non-copyable, non-movable.
+ * - The destructor signals the worker to stop and **blocks** until it
+ *   joins. Do not destroy from a context where blocking is unacceptable.
+ *
+ * **Thread safety:**
+ * The controller operates on the global `registry()`, which is internally
+ * synchronized, so multiple controllers or concurrent registrations are
+ * safe.
+ *
+ * @warning Intended for testing and validation only -- not for production
+ *          use. Perturbations may cause spurious priority inversions and
+ *          cache-thrashing.
+ *
+ * @par Example
+ * @code
+ * ChaosConfig cfg{.interval = 100ms, .priority_jitter = 5};
+ * ChaosController chaos(cfg, [](auto const& info) {
+ *     return info.name.starts_with("worker");
+ * });
+ * // ... run tests while chaos is active ...
+ * // destructor joins the worker thread
+ * @endcode
+ *
+ * @see ChaosConfig, registry()
  */
 class ChaosController
 {

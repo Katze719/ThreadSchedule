@@ -26,18 +26,29 @@ namespace threadschedule
 
 /**
  * @brief Snapshot of basic CPU/NUMA topology.
+ *
+ * Value type (copyable). Populated by read_topology().
+ *
+ * - @c cpu_count: total logical CPUs (from @c std::thread::hardware_concurrency).
+ * - @c numa_nodes: number of NUMA nodes (always 1 on Windows; detected
+ *   via @c /sys/devices/system/node/ on Linux).
+ * - @c node_to_cpus: mapping from NUMA node index to the set of
+ *   logical CPU indices belonging to that node.
  */
 struct CpuTopology
 {
     int cpu_count{0};
     int numa_nodes{1};
-    // Mapping: node -> list of CPUs
     std::vector<std::vector<int>> node_to_cpus;
 };
 
 /**
  * @brief Discover basic topology. Linux: reads /sys for NUMA nodes.
  *        Windows: single node, sequential CPU indices.
+ *
+ * Called frequently by chaos/affinity helpers. The result is not
+ * cached internally -- consider caching the returned CpuTopology
+ * yourself if performance of repeated calls matters.
  */
 inline auto read_topology() -> CpuTopology
 {
@@ -129,10 +140,13 @@ inline auto read_topology() -> CpuTopology
 }
 
 /**
- * @brief Build a `ThreadAffinity` for the given NUMA node.
- * @param node_index NUMA node index (wraps if out of range)
- * @param thread_index Used to select CPU(s) within node
- * @param threads_per_node Optionally include multiple CPUs per thread
+ * @brief Build a ThreadAffinity for the given NUMA node.
+ *
+ * Calls read_topology() internally on every invocation (no caching).
+ *
+ * @param node_index       NUMA node index (wraps if out of range).
+ * @param thread_index     Used to select CPU(s) within the node.
+ * @param threads_per_node Number of CPUs to include per thread (default 1).
  */
 inline auto affinity_for_node(int node_index, int thread_index, int threads_per_node = 1) -> ThreadAffinity
 {
@@ -158,6 +172,12 @@ inline auto affinity_for_node(int node_index, int thread_index, int threads_per_
 
 /**
  * @brief Distribute thread affinities across NUMA nodes in round-robin order.
+ *
+ * Returns one ThreadAffinity per thread, cycling through NUMA nodes
+ * so that consecutive threads are spread across different nodes.
+ *
+ * @param num_threads Number of affinity masks to generate.
+ * @return Vector of @p num_threads ThreadAffinity objects.
  */
 inline auto distribute_affinities_by_numa(size_t num_threads) -> std::vector<ThreadAffinity>
 {
