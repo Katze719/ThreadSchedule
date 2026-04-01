@@ -23,7 +23,27 @@ namespace threadschedule
 
 #ifndef _WIN32
 /**
- * @brief RAII pthread wrapper with modern C++ interface
+ * @brief RAII wrapper around POSIX threads with a modern C++ interface.
+ *
+ * Linux-only -- not available on Windows (guarded by @c _WIN32).
+ *
+ * Non-copyable, movable. The destructor automatically joins the thread
+ * if it is still joinable, which **blocks** until the thread finishes.
+ *
+ * Internally stores the callable in a heap-allocated @c std::function
+ * so that it can be passed through the C @c pthread_create API.
+ *
+ * @note Thread names are limited to 15 characters on Linux
+ *       (enforced by @c pthread_setname_np).
+ * @note cancel() sends a POSIX cancellation request to the thread.
+ *       set_cancel_state() and set_cancel_type() are @c static and
+ *       affect the **calling** thread, not the PThreadWrapper's thread.
+ *
+ * @par Factory methods
+ * - create_with_config()      -- creates a thread and applies name/policy/priority.
+ * - create_with_attributes()  -- creates a thread from a raw @c pthread_attr_t.
+ *
+ * @see is_thread_like<PThreadWrapper> (specialised to @c true_type at end of file)
  */
 class PThreadWrapper
 {
@@ -272,7 +292,16 @@ class PThreadWrapper
 };
 
 /**
- * @brief RAII pthread attribute wrapper
+ * @brief RAII wrapper for @c pthread_attr_t with a builder-style API.
+ *
+ * Non-copyable, movable. The move constructor and move assignment
+ * operator call @c std::terminate if the re-initialisation of the
+ * moved-from attribute object fails (cannot throw from @c noexcept).
+ *
+ * The destructor always calls @c pthread_attr_destroy.
+ *
+ * Provides fluent setters for detach state, stack size, guard size,
+ * scheduling policy, priority, inherit-sched, and contention scope.
  */
 class PThreadAttributes
 {
@@ -404,7 +433,17 @@ class PThreadAttributes
 };
 
 /**
- * @brief RAII pthread mutex wrapper
+ * @brief RAII wrapper for @c pthread_mutex_t.
+ *
+ * Non-copyable, **non-movable**. Satisfies the @e BasicLockable
+ * named requirement (lock / unlock / try_lock), so it can be used
+ * with @c std::lock_guard and similar RAII lock holders.
+ *
+ * @note The constructor throws @c std::runtime_error if
+ *       @c pthread_mutex_init fails. Unusually for a mutex type,
+ *       lock() and unlock() also throw on error -- callers should be
+ *       aware of this when mixing with code that assumes non-throwing
+ *       mutex operations.
  */
 class PThreadMutex
 {

@@ -46,6 +46,50 @@ using generator = std::generator<T>;
 
 #else
 
+/**
+ * @brief Lazy, multi-value coroutine that produces a sequence of @p T
+ *        values on demand via `co_yield`.
+ *
+ * @tparam T The element type yielded by the coroutine body.
+ *
+ * `generator<T>` is the coroutine return type for functions that
+ * lazily produce a stream of values. It is compatible with range-based
+ * `for` loops thanks to its `begin()` / `end()` interface.
+ *
+ * **Ownership semantics:**
+ * - Move-only; copying is deleted.
+ * - The destructor destroys the underlying coroutine frame.
+ *
+ * **Laziness:**
+ * The coroutine body does not execute until `begin()` is called, which
+ * resumes the coroutine once to produce the first value. Each subsequent
+ * `operator++` on the iterator resumes the coroutine to produce the next
+ * value.
+ *
+ * **Iteration model:**
+ * - Input iterator only (single-pass).
+ * - `end()` returns `std::default_sentinel_t`; comparison with the
+ *   iterator checks whether the coroutine is done.
+ * - If the coroutine body throws, the exception is re-thrown on the
+ *   next iterator increment (or on `begin()` if the first resumption
+ *   throws).
+ *
+ * When C++23 `std::generator` is available (`__cpp_lib_generator >= 202207L`),
+ * this class is replaced by a type alias to `std::generator<T>`.
+ *
+ * Requires C++20 coroutine support (`__cpp_impl_coroutine >= 201902L`).
+ *
+ * @par Example
+ * @code
+ * generator<int> iota(int n) {
+ *     for (int i = 0; i < n; ++i)
+ *         co_yield i;
+ * }
+ *
+ * for (int v : iota(5))
+ *     std::cout << v << '\n';
+ * @endcode
+ */
 template <typename T>
 class generator
 {
@@ -100,6 +144,16 @@ class generator
         std::exception_ptr exception_{};
     };
 
+    /**
+     * @brief Input iterator that lazily drives a generator coroutine.
+     *
+     * Satisfies `std::input_iterator_tag`. Each call to `operator++`
+     * resumes the coroutine to produce the next value. Dereferencing
+     * returns a `T&` (reference to the value stored in the promise).
+     *
+     * Comparison with `std::default_sentinel_t` returns `true` when the
+     * coroutine has finished (i.e. `coroutine_handle::done()` is true).
+     */
     class iterator
     {
       public:

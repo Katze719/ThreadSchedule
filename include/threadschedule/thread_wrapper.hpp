@@ -23,9 +23,11 @@ namespace threadschedule
 
 namespace detail
 {
+/** @brief Tag type selecting owning (value) storage in ThreadStorage. */
 struct OwningTag
 {
 };
+/** @brief Tag type selecting non-owning (pointer) storage in ThreadStorage. */
 struct NonOwningTag
 {
 };
@@ -33,7 +35,21 @@ struct NonOwningTag
 template <typename ThreadType, typename OwnershipTag>
 class ThreadStorage;
 
-// Owning storage: no extra overhead
+/**
+ * @brief Owning thread storage - holds the thread object by value.
+ *
+ * @tparam ThreadType The thread type (e.g. std::thread, std::jthread).
+ *
+ * Stores the thread object directly as a member, introducing zero indirection
+ * overhead beyond the thread object itself. This specialization is used by
+ * wrappers that own and manage the lifetime of their thread.
+ *
+ * @par Copyability
+ * Not copyable (deleted by the underlying thread type). Movable if @p ThreadType is movable.
+ *
+ * @par Thread Safety
+ * Not thread-safe. Access must be externally synchronized.
+ */
 template <typename ThreadType>
 class ThreadStorage<ThreadType, OwningTag>
 {
@@ -52,7 +68,23 @@ class ThreadStorage<ThreadType, OwningTag>
     ThreadType thread_;
 };
 
-// Non-owning storage: reference to external thread
+/**
+ * @brief Non-owning thread storage - holds a raw pointer to an external thread.
+ *
+ * @tparam ThreadType The thread type (e.g. std::thread, std::jthread).
+ *
+ * Stores a non-owning raw pointer to a thread object managed elsewhere.
+ * Does @b not join or detach on destruction.
+ *
+ * @warning The caller is responsible for ensuring the referenced thread object
+ *          outlives this storage instance. Dangling pointer access is undefined behavior.
+ *
+ * @par Copyability
+ * Trivially copyable (pointer copy). Multiple instances may alias the same thread.
+ *
+ * @par Thread Safety
+ * Not thread-safe. Access must be externally synchronized.
+ */
 template <typename ThreadType>
 class ThreadStorage<ThreadType, NonOwningTag>
 {
@@ -76,7 +108,56 @@ class ThreadStorage<ThreadType, NonOwningTag>
 } // namespace detail
 
 /**
- * @brief Base thread wrapper with common functionality
+ * @brief Polymorphic base providing common thread management operations.
+ *
+ * @tparam ThreadType    The underlying thread type (std::thread or std::jthread).
+ * @tparam OwnershipTag  detail::OwningTag (default) or detail::NonOwningTag.
+ *
+ * Provides a uniform interface for join, detach, naming, priority, affinity, scheduling
+ * policy, and nice-value control on top of any standard thread type. Derived classes
+ * (ThreadWrapper, JThreadWrapper, and their View counterparts) customize ownership
+ * semantics while inheriting all of these operations.
+ *
+ * @par Virtual Destructor
+ * Has a virtual destructor so it can be used as a polymorphic base.
+ *
+ * @par join() / detach()
+ * Both are safe to call even if the thread is not joinable (they check first).
+ *
+ * @par set_name()
+ * - **Linux**: uses @c pthread_setname_np; names are limited to 15 characters
+ *   (returns @c errc::invalid_argument if exceeded).
+ * - **Windows**: dynamically loads @c SetThreadDescription from kernel32.dll.
+ *   Names may be longer. Returns @c errc::function_not_supported if the API is
+ *   unavailable (pre-Windows 10 1607).
+ *
+ * @par set_priority()
+ * Maps through SchedulerParams::create_for_policy(). On Linux, uses
+ * @c pthread_setschedparam and may require @c CAP_SYS_NICE or root privileges
+ * for real-time policies. On Windows, maps to @c SetThreadPriority constants.
+ *
+ * @par set_scheduling_policy()
+ * Linux-specific concept; on Windows this falls back to set_priority().
+ *
+ * @par set_affinity()
+ * - **Linux**: @c pthread_setaffinity_np with @c cpu_set_t.
+ * - **Windows**: prefers @c SetThreadGroupAffinity (multi-processor-group aware)
+ *   and falls back to @c SetThreadAffinityMask on single-group systems.
+ *
+ * @par set_nice_value() / get_nice_value()
+ * @b Process-level operation - affects **all** threads in the process.
+ * On Linux calls @c setpriority(PRIO_PROCESS, ...).
+ * On Windows maps to @c SetPriorityClass / @c GetPriorityClass.
+ *
+ * @par Return Values
+ * All @c set_* methods (except set_nice_value) return
+ * @c expected<void, std::error_code>. Always check the return value;
+ * failures are silent unless inspected.
+ *
+ * @par Thread Safety
+ * Individual method calls are safe if the underlying OS call is safe, but
+ * concurrent mutation of the same wrapper from multiple threads is not
+ * synchronized internally.
  */
 template <typename ThreadType, typename OwnershipTag = detail::OwningTag>
 class BaseThreadWrapper : protected detail::ThreadStorage<ThreadType, OwnershipTag>
@@ -432,7 +513,40 @@ class BaseThreadWrapper : protected detail::ThreadStorage<ThreadType, OwnershipT
 };
 
 /**
- * @brief Enhanced std::thread wrapper
+ * @brief Owning wrapper around std::thread with RAII join-on-destroy semantics.
+ *
+ * Extends @ref BaseThreadWrapper to provide an owning, movable, non-copyable wrapper
+ * over @c std::thread. Adds automatic lifetime management: the destructor joins
+ * the thread if it is still joinable, which means destruction can @b block until
+ * the thread finishes.
+ *
+ * @par Copyability / Movability
+ * - **Not copyable** (copy constructor and copy assignment are deleted).
+ * - **Movable**. Move construction transfers ownership. Move @b assignment first
+ *   joins the currently held thread (blocking!) before taking ownership of the
+ *   source thread.
+ *
+ * @par Destruction
+ * The destructor calls @c join() if the thread is joinable. This will @b block
+ * the destroying thread until the managed thread completes. If blocking
+ * destruction is undesirable, call @c detach() or @c release() before the
+ * wrapper goes out of scope.
+ *
+ * @par release()
+ * Transfers ownership of the underlying @c std::thread out of the wrapper,
+ * returning it by value. After release, the wrapper holds a default-constructed
+ * (non-joinable) thread and destruction becomes a no-op.
+ *
+ * @par create_with_config()
+ * Factory that creates a thread and attempts to set its name and scheduling
+ * policy. Failures from @c set_name() or @c set_scheduling_policy() are
+ * silently ignored - the thread will still be running but may not have the
+ * requested attributes. Check attributes after construction if they are
+ * critical.
+ *
+ * @par Thread Safety
+ * Not thread-safe. A single ThreadWrapper must not be mutated concurrently
+ * from multiple threads.
  */
 class ThreadWrapper : public BaseThreadWrapper<std::thread, detail::OwningTag>
 {
@@ -508,7 +622,25 @@ class ThreadWrapper : public BaseThreadWrapper<std::thread, detail::OwningTag>
     }
 };
 
-// Non-owning view over std::thread
+/**
+ * @brief Non-owning view over an externally managed std::thread.
+ *
+ * Provides the full @ref BaseThreadWrapper interface (naming, priority, affinity, etc.)
+ * without taking ownership of the thread. The destructor is trivial - it does
+ * @b not join or detach.
+ *
+ * @warning The referenced @c std::thread must outlive this view. If the thread
+ *          object is destroyed or moved while a view still references it, all
+ *          subsequent operations through the view invoke undefined behavior.
+ *
+ * @par Copyability / Movability
+ * Implicitly copyable and movable (pointer semantics). Multiple views may
+ * alias the same thread.
+ *
+ * @par Thread Safety
+ * Same caveats as BaseThreadWrapper. Concurrent use of a view and direct use
+ * of the underlying thread must be externally synchronized.
+ */
 class ThreadWrapperView : public BaseThreadWrapper<std::thread, detail::NonOwningTag>
 {
   public:
@@ -528,7 +660,41 @@ class ThreadWrapperView : public BaseThreadWrapper<std::thread, detail::NonOwnin
 };
 
 /**
- * @brief Enhanced std::jthread wrapper (C++20)
+ * @brief Owning wrapper around std::jthread with cooperative cancellation (C++20).
+ *
+ * Analogous to @ref ThreadWrapper but wraps @c std::jthread, inheriting its built-in
+ * cooperative stop semantics. On destruction the underlying @c std::jthread
+ * automatically requests a stop and joins, so the destructor may @b block
+ * until the thread acknowledges the stop request and finishes.
+ *
+ * Exposes @c request_stop(), @c stop_requested(), @c get_stop_token(), and
+ * @c get_stop_source() for cooperative cancellation.
+ *
+ * @par Copyability / Movability
+ * - **Not copyable** (copy constructor and copy assignment are deleted).
+ * - **Movable**. Move assignment transfers ownership directly (the source
+ *   @c jthread's destructor handles its own cleanup).
+ *
+ * @par Destruction
+ * Delegates to @c std::jthread's destructor which calls @c request_stop()
+ * then @c join(). This will block until the managed thread finishes.
+ *
+ * @par release()
+ * Transfers ownership of the underlying @c std::jthread out of the wrapper.
+ *
+ * @par create_with_config()
+ * Factory that creates a jthread and attempts to set its name and scheduling
+ * policy. Failures from set_name() or set_scheduling_policy() are silently
+ * ignored.
+ *
+ * @par Pre-C++20 Fallback
+ * When compiled below C++20, @c JThreadWrapper is a type alias for
+ * @ref ThreadWrapper (which lacks stop-token support).
+ *
+ * @par Thread Safety
+ * Not thread-safe. A single JThreadWrapper must not be mutated concurrently
+ * from multiple threads. The stop token/source obtained from the wrapper are
+ * independently thread-safe per the standard.
  */
 #if __cplusplus >= 202002L || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
 class JThreadWrapper : public BaseThreadWrapper<std::jthread, detail::OwningTag>
@@ -611,7 +777,30 @@ class JThreadWrapper : public BaseThreadWrapper<std::jthread, detail::OwningTag>
     }
 };
 
-// Non-owning view over std::jthread (C++20)
+/**
+ * @brief Non-owning view over an externally managed std::jthread (C++20).
+ *
+ * Provides the full @ref BaseThreadWrapper interface plus jthread-specific cooperative
+ * cancellation methods (request_stop, stop_requested, get_stop_token,
+ * get_stop_source) without taking ownership. The destructor is trivial - it
+ * does @b not request a stop, join, or detach.
+ *
+ * @warning The referenced @c std::jthread must outlive this view. Accessing a
+ *          view after the underlying jthread has been destroyed or moved is
+ *          undefined behavior.
+ *
+ * @par Copyability / Movability
+ * Implicitly copyable and movable (pointer semantics). Multiple views may
+ * alias the same jthread.
+ *
+ * @par Pre-C++20 Fallback
+ * When compiled below C++20, @c JThreadWrapperView is a type alias for
+ * @ref ThreadWrapperView.
+ *
+ * @par Thread Safety
+ * Same caveats as BaseThreadWrapper. The stop token/source obtained from the
+ * view are independently thread-safe per the standard.
+ */
 class JThreadWrapperView : public BaseThreadWrapper<std::jthread, detail::NonOwningTag>
 {
   public:
@@ -652,6 +841,39 @@ using JThreadWrapper = ThreadWrapper;
 using JThreadWrapperView = ThreadWrapperView;
 #endif // C++20
 
+/**
+ * @brief Looks up an OS thread by its name via /proc and provides scheduling control.
+ *
+ * On construction, scans @c /proc/self/task/ to find a thread whose
+ * @c comm matches the given name. If found, the Linux TID is cached and
+ * subsequent calls operate on that TID via @c sched_setscheduler /
+ * @c sched_setaffinity (TID-based syscalls, @b not pthread_setschedparam).
+ *
+ * @par Platform Support
+ * - **Linux only**. On Windows every method is a no-op or returns
+ *   @c errc::function_not_supported, and found() always returns @c false.
+ *
+ * @par Snapshot Semantics
+ * The /proc scan happens once at construction time. If the target thread
+ * exits or changes its name after construction, this view becomes stale.
+ * There is no live tracking.
+ *
+ * @par Thread Name Limit
+ * Linux thread names are limited to 15 characters. Names longer than 15
+ * characters will never match, and set_name() rejects them.
+ *
+ * @par Scheduling
+ * Uses @c sched_setscheduler(tid, ...) rather than @c pthread_setschedparam().
+ * Changing real-time policies may require @c CAP_SYS_NICE.
+ *
+ * @par Copyability / Movability
+ * Trivially copyable and movable (stores only a TID/handle).
+ *
+ * @par Thread Safety
+ * Methods are safe to call concurrently from different threads as long as
+ * the target thread still exists, but the class itself provides no
+ * internal synchronization.
+ */
 class ThreadByNameView
 {
   public:
@@ -804,7 +1026,22 @@ class ThreadByNameView
 #endif
 };
 
-// Static hardware information
+/**
+ * @brief Static utility class providing hardware and scheduling introspection.
+ *
+ * All methods are static; the class holds no state and should not be instantiated.
+ *
+ * @par Provided Queries
+ * - @c hardware_concurrency() - delegates to @c std::thread::hardware_concurrency().
+ * - @c get_thread_id() - returns the OS-level thread ID (Linux TID via
+ *   @c syscall(SYS_gettid), Windows thread ID via @c GetCurrentThreadId()).
+ * - @c get_current_policy() - returns the calling thread's scheduling policy.
+ *   On Windows this always returns @c SchedulingPolicy::OTHER.
+ * - @c get_current_priority() - returns the calling thread's scheduling priority.
+ *
+ * @par Thread Safety
+ * All methods are thread-safe (they query per-thread or immutable system state).
+ */
 class ThreadInfo
 {
   public:
