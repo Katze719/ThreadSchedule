@@ -359,7 +359,7 @@ class ScheduledThreadPoolT
                 auto task_copy = info.task;
                 auto cancelled_flag = info.cancelled;
 
-                pool_.submit([task_copy, cancelled_flag]() {
+                pool_.post([task_copy, cancelled_flag]() {
                     if (!cancelled_flag->load(std::memory_order_acquire))
                     {
                         task_copy();
@@ -387,5 +387,7 @@ using ScheduledThreadPool = ScheduledThreadPoolT<ThreadPool>;
 using ScheduledHighPerformancePool = ScheduledThreadPoolT<HighPerformancePool>;
 /** @brief @ref ScheduledThreadPoolT using @ref FastThreadPool as backend. */
 using ScheduledFastThreadPool = ScheduledThreadPoolT<FastThreadPool>;
+/** @brief @ref ScheduledThreadPoolT using @ref LightweightPool as backend (minimal overhead). */
+using ScheduledLightweightPool = ScheduledThreadPoolT<LightweightPool>;
 
 } // namespace threadschedule

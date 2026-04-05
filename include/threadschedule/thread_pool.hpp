@@ -14,6 +14,7 @@
 #include <optional>
 #include <queue>
 #include <random>
+#include <tuple>
 #include <vector>
 
 #if __cpp_lib_ranges >= 201911L
@@ -106,6 +107,157 @@ inline void parallel_for_each_chunked(Pool& pool, Iterator begin, Iterator end, 
     for (auto& f : futures)
         f.get();
 }
+
+// ---------------------------------------------------------------------------
+// bind_args -- optimal argument binding, C++20 pack-capture or C++17 tuple
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Bind a callable with its arguments into a nullary lambda.
+ *
+ * On C++20 and later this uses pack init-captures for zero intermediate
+ * storage overhead. On C++17 it falls back to @c std::make_tuple /
+ * @c std::apply which is still significantly faster than @c std::bind.
+ */
+template <typename F, typename... Args>
+auto bind_args(F&& f, Args&&... args)
+{
+#if __cpp_init_captures >= 201803L
+    return [fn = std::forward<F>(f), ...a = std::forward<Args>(args)]() mutable {
+        return fn(std::move(a)...);
+    };
+#else
+    return [fn = std::forward<F>(f),
+            tup = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+        return std::apply(std::move(fn), std::move(tup));
+    };
+#endif
+}
+
+// ---------------------------------------------------------------------------
+// SboCallable -- type-erased callable with inline small-buffer storage
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Type-erased, move-only callable with configurable inline storage.
+ *
+ * Avoids the heap allocation that @c std::function incurs for callables
+ * larger than its (typically 16-byte) internal buffer. Callables that fit
+ * within @c TaskSize - sizeof(void*) bytes are stored inline; larger ones
+ * fall back to a heap allocation.
+ *
+ * @tparam TaskSize Total object size in bytes (default 64, one x86 cache line).
+ *         The usable inline buffer is @c TaskSize - 8 bytes on 64-bit platforms.
+ */
+template <size_t TaskSize = 64>
+class SboCallable
+{
+    static_assert(TaskSize > sizeof(void*), "TaskSize must be larger than a pointer");
+
+    struct VTable
+    {
+        void (*invoke)(void* storage);
+        void (*destroy)(void* storage);
+        void (*move_to)(void* dst, void* src) noexcept;
+    };
+
+    static constexpr size_t kBufferSize = TaskSize - sizeof(VTable const*);
+
+    template <typename F>
+    static constexpr bool fits_inline_v =
+        sizeof(F) <= kBufferSize &&
+        alignof(F) <= alignof(std::max_align_t) &&
+        std::is_nothrow_move_constructible_v<F>;
+
+    template <typename F>
+    static VTable const* vtable_for() noexcept
+    {
+        if constexpr (fits_inline_v<F>)
+        {
+            static constexpr VTable vt{
+                [](void* s) { (*static_cast<F*>(s))(); },
+                [](void* s) { static_cast<F*>(s)->~F(); },
+                [](void* dst, void* src) noexcept {
+                    ::new (dst) F(std::move(*static_cast<F*>(src)));
+                    static_cast<F*>(src)->~F();
+                }};
+            return &vt;
+        }
+        else
+        {
+            static constexpr VTable vt{
+                [](void* s) { (*(*static_cast<F**>(s)))(); },
+                [](void* s) { delete *static_cast<F**>(s); },
+                [](void* dst, void* src) noexcept {
+                    *static_cast<F**>(dst) = *static_cast<F**>(src);
+                    *static_cast<F**>(src) = nullptr;
+                }};
+            return &vt;
+        }
+    }
+
+  public:
+    SboCallable() = default;
+
+    template <typename F, typename = std::enable_if_t<!std::is_same_v<std::decay_t<F>, SboCallable>>>
+    SboCallable(F&& f) // NOLINT(google-explicit-constructor)
+    {
+        using Decay = std::decay_t<F>;
+        vtable_ = vtable_for<Decay>();
+        if constexpr (fits_inline_v<Decay>)
+            ::new (buffer_) Decay(std::forward<F>(f));
+        else
+            *reinterpret_cast<Decay**>(buffer_) = new Decay(std::forward<F>(f));
+    }
+
+    SboCallable(SboCallable&& other) noexcept : vtable_(other.vtable_)
+    {
+        if (vtable_)
+        {
+            vtable_->move_to(buffer_, other.buffer_);
+            other.vtable_ = nullptr;
+        }
+    }
+
+    auto operator=(SboCallable&& other) noexcept -> SboCallable&
+    {
+        if (this != &other)
+        {
+            if (vtable_)
+                vtable_->destroy(buffer_);
+            vtable_ = other.vtable_;
+            if (vtable_)
+            {
+                vtable_->move_to(buffer_, other.buffer_);
+                other.vtable_ = nullptr;
+            }
+        }
+        return *this;
+    }
+
+    SboCallable(SboCallable const&) = delete;
+    auto operator=(SboCallable const&) -> SboCallable& = delete;
+
+    ~SboCallable()
+    {
+        if (vtable_)
+            vtable_->destroy(buffer_);
+    }
+
+    explicit operator bool() const noexcept { return vtable_ != nullptr; }
+
+    void operator()()
+    {
+        auto* vt = vtable_;
+        vtable_ = nullptr;
+        vt->invoke(buffer_);
+        vt->destroy(buffer_);
+    }
+
+  private:
+    VTable const* vtable_ = nullptr;
+    alignas(std::max_align_t) unsigned char buffer_[kBufferSize]{};
+};
 
 } // namespace detail
 
@@ -467,7 +619,7 @@ class HighPerformancePool
         using return_type = std::invoke_result_t<F, Args...>;
 
         auto task = std::make_shared<std::packaged_task<return_type()>>(
-            std::bind(std::forward<F>(f), std::forward<Args>(args)...));
+            detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
 
         std::future<return_type> result = task->get_future();
 
@@ -515,6 +667,57 @@ class HighPerformancePool
         return std::move(result.value());
     }
 
+    /**
+     * @brief Fire-and-forget submission (no future, no packaged_task overhead).
+     */
+    template <typename F, typename... Args>
+    void post(F&& f, Args&&... args)
+    {
+        auto r = try_post(std::forward<F>(f), std::forward<Args>(args)...);
+        if (!r.has_value())
+            throw std::runtime_error("HighPerformancePool is shutting down");
+    }
+
+    /**
+     * @brief Fire-and-forget submission. Returns error on shutdown.
+     */
+    template <typename F, typename... Args>
+    auto try_post(F&& f, Args&&... args) -> expected<void, std::error_code>
+    {
+        Task bound(detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
+
+        if (stop_.load(std::memory_order_acquire))
+            return unexpected(std::make_error_code(std::errc::operation_canceled));
+
+        size_t const preferred_queue = next_victim_.fetch_add(1, std::memory_order_relaxed) % num_threads_;
+
+        if (worker_queues_[preferred_queue]->push(std::move(bound)))
+        {
+            wakeup_condition_.notify_one();
+            return {};
+        }
+
+        for (size_t attempts = 0; attempts < (std::min)(num_threads_, size_t(3)); ++attempts)
+        {
+            size_t const idx = (preferred_queue + attempts + 1) % num_threads_;
+            if (worker_queues_[idx]->push(std::move(bound)))
+            {
+                wakeup_condition_.notify_one();
+                return {};
+            }
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(overflow_mutex_);
+            if (stop_.load(std::memory_order_relaxed))
+                return unexpected(std::make_error_code(std::errc::operation_canceled));
+            overflow_tasks_.emplace(std::move(bound));
+        }
+
+        wakeup_condition_.notify_all();
+        return {};
+    }
+
 #if __cpp_lib_jthread >= 201911L
     /**
      * @brief Submit a cancellable task. If stop is already requested the task
@@ -524,10 +727,11 @@ class HighPerformancePool
     auto submit(std::stop_token token, F&& f, Args&&... args)
         -> std::future<std::invoke_result_t<F, Args...>>
     {
-        return submit([token = std::move(token), fn = std::bind(std::forward<F>(f), std::forward<Args>(args)...)]() mutable {
+        return submit([token = std::move(token),
+                       bound = detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...)]() mutable {
             if (token.stop_requested())
-                return decltype(fn())();
-            return fn();
+                return std::invoke_result_t<F, Args...>();
+            return bound();
         });
     }
 
@@ -538,10 +742,11 @@ class HighPerformancePool
     auto try_submit(std::stop_token token, F&& f, Args&&... args)
         -> expected<std::future<std::invoke_result_t<F, Args...>>, std::error_code>
     {
-        return try_submit([token = std::move(token), fn = std::bind(std::forward<F>(f), std::forward<Args>(args)...)]() mutable {
+        return try_submit([token = std::move(token),
+                           bound = detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...)]() mutable {
             if (token.stop_requested())
-                return decltype(fn())();
-            return fn();
+                return std::invoke_result_t<F, Args...>();
+            return bound();
         });
     }
 #endif
@@ -993,7 +1198,7 @@ class ThreadPoolBase
         using return_type = std::invoke_result_t<F, Args...>;
 
         auto task = std::make_shared<std::packaged_task<return_type()>>(
-            std::bind(std::forward<F>(f), std::forward<Args>(args)...));
+            detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
 
         std::future<return_type> result = task->get_future();
 
@@ -1020,6 +1225,33 @@ class ThreadPoolBase
         return std::move(result.value());
     }
 
+    /**
+     * @brief Fire-and-forget submission (no future, no packaged_task overhead).
+     */
+    template <typename F, typename... Args>
+    void post(F&& f, Args&&... args)
+    {
+        auto r = try_post(std::forward<F>(f), std::forward<Args>(args)...);
+        if (!r.has_value())
+            throw std::runtime_error("Pool is shutting down");
+    }
+
+    /**
+     * @brief Fire-and-forget submission. Returns error on shutdown.
+     */
+    template <typename F, typename... Args>
+    auto try_post(F&& f, Args&&... args) -> expected<void, std::error_code>
+    {
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex_);
+            if (stop_)
+                return unexpected(std::make_error_code(std::errc::operation_canceled));
+            tasks_.emplace(detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
+        }
+        condition_.notify_one();
+        return {};
+    }
+
 #if __cpp_lib_jthread >= 201911L
     /**
      * @brief Submit a cancellable task. If stop is already requested the task
@@ -1029,10 +1261,11 @@ class ThreadPoolBase
     auto submit(std::stop_token token, F&& f, Args&&... args)
         -> std::future<std::invoke_result_t<F, Args...>>
     {
-        return submit([token = std::move(token), fn = std::bind(std::forward<F>(f), std::forward<Args>(args)...)]() mutable {
+        return submit([token = std::move(token),
+                       bound = detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...)]() mutable {
             if (token.stop_requested())
-                return decltype(fn())();
-            return fn();
+                return std::invoke_result_t<F, Args...>();
+            return bound();
         });
     }
 
@@ -1040,10 +1273,11 @@ class ThreadPoolBase
     auto try_submit(std::stop_token token, F&& f, Args&&... args)
         -> expected<std::future<std::invoke_result_t<F, Args...>>, std::error_code>
     {
-        return try_submit([token = std::move(token), fn = std::bind(std::forward<F>(f), std::forward<Args>(args)...)]() mutable {
+        return try_submit([token = std::move(token),
+                           bound = detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...)]() mutable {
             if (token.stop_requested())
-                return decltype(fn())();
-            return fn();
+                return std::invoke_result_t<F, Args...>();
+            return bound();
         });
     }
 #endif
@@ -1380,6 +1614,217 @@ using ThreadPool = ThreadPoolBase<IndefiniteWait>;
 using FastThreadPool = ThreadPoolBase<PollingWait<>>;
 
 // ---------------------------------------------------------------------------
+// LightweightPoolT
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Ultra-lightweight fire-and-forget thread pool.
+ *
+ * Uses a custom @ref detail::SboCallable instead of @c std::function to avoid
+ * heap allocations for callables up to @c TaskSize - 8 bytes. No futures, no
+ * packaged_task, no statistics, no tracing -- just raw throughput.
+ *
+ * Workers are @ref ThreadWrapper instances so that naming, affinity, and
+ * scheduling policy can still be configured after construction.
+ *
+ * @par API
+ * Only @c post() (fire-and-forget) is provided. For tasks that need a return
+ * value, use @ref ThreadPool or @ref HighPerformancePool with @c submit().
+ *
+ * @tparam TaskSize Total size in bytes of each inline task slot (default 64,
+ *         one x86 cache line). Usable buffer = @c TaskSize - 8 bytes.
+ */
+template <size_t TaskSize = 64>
+class LightweightPoolT
+{
+  public:
+    explicit LightweightPoolT(size_t num_threads = std::thread::hardware_concurrency())
+        : num_threads_(num_threads == 0 ? 1 : num_threads)
+    {
+        workers_.reserve(num_threads_);
+        for (size_t i = 0; i < num_threads_; ++i)
+            workers_.emplace_back(&LightweightPoolT::worker_loop, this);
+    }
+
+    LightweightPoolT(LightweightPoolT const&) = delete;
+    auto operator=(LightweightPoolT const&) -> LightweightPoolT& = delete;
+
+    ~LightweightPoolT() { shutdown(ShutdownPolicy::drain); }
+
+    /**
+     * @brief Fire-and-forget task submission. Throws on shutdown.
+     */
+    template <typename F, typename... Args>
+    void post(F&& f, Args&&... args)
+    {
+        auto r = try_post(std::forward<F>(f), std::forward<Args>(args)...);
+        if (!r.has_value())
+            throw std::runtime_error("LightweightPool is shutting down");
+    }
+
+    /**
+     * @brief Fire-and-forget task submission. Returns error on shutdown.
+     */
+    template <typename F, typename... Args>
+    auto try_post(F&& f, Args&&... args) -> expected<void, std::error_code>
+    {
+        detail::SboCallable<TaskSize> task(detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (stop_)
+                return unexpected(std::make_error_code(std::errc::operation_canceled));
+            tasks_.push(std::move(task));
+        }
+        condition_.notify_one();
+        return {};
+    }
+
+    /**
+     * @brief Batch fire-and-forget submission under a single lock.
+     */
+    template <typename Iterator>
+    void post_batch(Iterator begin, Iterator end)
+    {
+        auto r = try_post_batch(begin, end);
+        if (!r.has_value())
+            throw std::runtime_error("LightweightPool is shutting down");
+    }
+
+    /**
+     * @brief Batch fire-and-forget submission. Returns error on shutdown.
+     */
+    template <typename Iterator>
+    auto try_post_batch(Iterator begin, Iterator end) -> expected<void, std::error_code>
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (stop_)
+                return unexpected(std::make_error_code(std::errc::operation_canceled));
+            for (auto it = begin; it != end; ++it)
+                tasks_.push(detail::SboCallable<TaskSize>(*it));
+        }
+        condition_.notify_all();
+        return {};
+    }
+
+#if __cpp_lib_ranges >= 201911L
+    template <std::ranges::input_range R>
+    void post_batch(R&& range) { post_batch(std::ranges::begin(range), std::ranges::end(range)); }
+
+    template <std::ranges::input_range R>
+    auto try_post_batch(R&& range) { return try_post_batch(std::ranges::begin(range), std::ranges::end(range)); }
+#endif
+
+    /**
+     * @brief Shut the pool down.
+     */
+    void shutdown(ShutdownPolicy policy = ShutdownPolicy::drain)
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (stop_)
+                return;
+            stop_ = true;
+            if (policy == ShutdownPolicy::drop_pending)
+            {
+                std::queue<detail::SboCallable<TaskSize>> empty;
+                tasks_.swap(empty);
+            }
+        }
+        condition_.notify_all();
+        for (auto& w : workers_)
+        {
+            if (w.joinable())
+                w.join();
+        }
+        workers_.clear();
+    }
+
+    /**
+     * @brief Timed drain: finish as many tasks as possible within timeout.
+     * @return @c true if all tasks completed, @c false on timeout.
+     */
+    auto shutdown_for(std::chrono::milliseconds timeout) -> bool
+    {
+        auto const deadline = std::chrono::steady_clock::now() + timeout;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (stop_)
+                return true;
+        }
+        std::unique_lock<std::mutex> lock(mutex_);
+        bool const drained = drain_condition_.wait_until(lock, deadline, [this] {
+            return tasks_.empty() && active_tasks_.load(std::memory_order_acquire) == 0;
+        });
+        lock.unlock();
+        shutdown(ShutdownPolicy::drain);
+        return drained;
+    }
+
+    [[nodiscard]] auto size() const noexcept -> size_t { return num_threads_; }
+
+    auto configure_threads(std::string const& name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
+                           ThreadPriority priority = ThreadPriority::normal()) -> expected<void, std::error_code>
+    {
+        return detail::configure_worker_threads(workers_, name_prefix, policy, priority);
+    }
+
+    auto set_affinity(ThreadAffinity const& affinity) -> expected<void, std::error_code>
+    {
+        return detail::set_worker_affinity(workers_, affinity);
+    }
+
+    auto distribute_across_cpus() -> expected<void, std::error_code>
+    {
+        return detail::distribute_workers_across_cpus(workers_);
+    }
+
+  private:
+    size_t num_threads_;
+    std::vector<ThreadWrapper> workers_;
+    std::queue<detail::SboCallable<TaskSize>> tasks_;
+    std::mutex mutex_;
+    std::condition_variable condition_;
+    std::condition_variable drain_condition_;
+    std::atomic<bool> stop_{false};
+    std::atomic<size_t> active_tasks_{0};
+
+    void worker_loop()
+    {
+        while (true)
+        {
+            detail::SboCallable<TaskSize> task;
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                condition_.wait(lock, [this] { return stop_ || !tasks_.empty(); });
+                if (stop_ && tasks_.empty())
+                    return;
+                if (!tasks_.empty())
+                {
+                    task = std::move(tasks_.front());
+                    tasks_.pop();
+                    active_tasks_.fetch_add(1, std::memory_order_relaxed);
+                }
+                else
+                    continue;
+            }
+            try
+            {
+                task();
+            }
+            catch (...)
+            {
+            }
+            active_tasks_.fetch_sub(1, std::memory_order_relaxed);
+            drain_condition_.notify_all();
+        }
+    }
+};
+
+/** @brief Default lightweight pool with 64-byte task slots. */
+using LightweightPool = LightweightPoolT<>;
+
+// ---------------------------------------------------------------------------
 // GlobalPool
 // ---------------------------------------------------------------------------
 
@@ -1441,6 +1886,18 @@ class GlobalPool
     static auto try_submit(F&& f, Args&&... args)
     {
         return instance().try_submit(std::forward<F>(f), std::forward<Args>(args)...);
+    }
+
+    template <typename F, typename... Args>
+    static void post(F&& f, Args&&... args)
+    {
+        instance().post(std::forward<F>(f), std::forward<Args>(args)...);
+    }
+
+    template <typename F, typename... Args>
+    static auto try_post(F&& f, Args&&... args)
+    {
+        return instance().try_post(std::forward<F>(f), std::forward<Args>(args)...);
     }
 
     template <typename Iterator>

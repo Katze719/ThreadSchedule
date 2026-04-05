@@ -86,6 +86,21 @@
   executor for pool-aware tasks, `run_on(pool, coro_fn)` convenience returning
   `std::future`.
 
+- **`LightweightPoolT<TaskSize>`** -- ultra-lightweight fire-and-forget pool
+  using a custom `detail::SboCallable<TaskSize>` with configurable inline buffer
+  (default 64 bytes = 1 cache line, 56 bytes usable). Zero heap allocations for
+  typical lambdas. No futures, no `packaged_task`, no statistics, no tracing.
+  Workers are `ThreadWrapper` so `configure_threads`/`set_affinity` still work.
+  `using LightweightPool = LightweightPoolT<>` for the default.
+
+- **`post()` / `try_post()`** -- fire-and-forget submission on all pool types
+  (`HighPerformancePool`, `ThreadPoolBase`, `GlobalPool`). Same queue logic as
+  `submit()` but skips `packaged_task`/`shared_ptr`/`future` overhead.
+
+- **`ScheduledThreadPoolT` now uses `post()`** internally instead of `submit()`,
+  eliminating wasted `future` allocations for every scheduled task dispatch.
+  New alias: `ScheduledLightweightPool = ScheduledThreadPoolT<LightweightPool>`.
+
 ### New Types
 
 - `ThreadPoolBase<WaitPolicy>` - parameterized single-queue thread pool.
@@ -97,6 +112,9 @@
 - `executor_base` / `pool_executor<Pool>` - type-erased executor for coroutines.
 - `schedule_on<Pool>` - awaitable for hopping to a pool thread.
 - `futures.hpp` - future combinators (`when_all`, `when_any`, `when_all_settled`).
+- `LightweightPoolT<TaskSize>` / `LightweightPool` - fire-and-forget pool with SBO.
+- `detail::SboCallable<TaskSize>` - type-erased callable with inline storage.
+- `ScheduledLightweightPool` - scheduled pool backed by `LightweightPool`.
 
 ### Internal Improvements
 
