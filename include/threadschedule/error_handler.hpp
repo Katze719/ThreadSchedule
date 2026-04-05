@@ -4,6 +4,7 @@
 #include <exception>
 #include <functional>
 #include <future>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -127,11 +128,11 @@ using ErrorCallback = std::function<void(TaskError const&)>;
  * - If a callback itself throws, the exception is silently swallowed so that
  *   remaining callbacks still execute.
  *
- * @par Limitations
- * add_callback() returns an index that identifies the callback, but there is
- * no @c remove_callback() -- only clear_callbacks() removes all callbacks at
- * once.  The error count returned by error_count() is monotonically
- * increasing and is only reset by an explicit call to reset_error_count().
+ * @par Callback management
+ * add_callback() returns a stable ID that can be passed to remove_callback()
+ * to unregister a single callback.  clear_callbacks() removes all at once.
+ * The error count returned by error_count() is monotonically increasing and
+ * is only reset by an explicit call to reset_error_count().
  */
 class ErrorHandler
 {
@@ -140,15 +141,35 @@ class ErrorHandler
      * @brief Register an error callback.
      *
      * @param callback Callable to invoke when a task throws.
-     * @return Zero-based index (handle) of the newly added callback.
-     *         There is currently no API to remove an individual callback;
-     *         use clear_callbacks() to remove all.
+     * @return Stable ID for the callback, usable with remove_callback().
      */
     auto add_callback(ErrorCallback callback) -> size_t
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        callbacks_.push_back(std::move(callback));
-        return callbacks_.size() - 1;
+        size_t const id = next_callback_id_++;
+        callbacks_.emplace(id, std::move(callback));
+        return id;
+    }
+
+    /**
+     * @brief Remove a single callback by its ID.
+     *
+     * @param id The ID returned by add_callback().
+     * @return @c true if the callback was found and removed, @c false otherwise.
+     */
+    auto remove_callback(size_t id) -> bool
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return callbacks_.erase(id) > 0;
+    }
+
+    /**
+     * @brief Check whether a callback with the given ID is registered.
+     */
+    [[nodiscard]] auto has_callback(size_t id) const -> bool
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return callbacks_.count(id) > 0;
     }
 
     /**
@@ -167,8 +188,8 @@ class ErrorHandler
      * @brief Dispatch an error to all registered callbacks.
      *
      * Increments the internal error counter and then invokes every registered
-     * callback in order.  If any callback throws, the exception is caught and
-     * silently discarded so that subsequent callbacks still run.
+     * callback in insertion order.  If any callback throws, the exception is
+     * caught and silently discarded so that subsequent callbacks still run.
      *
      * @param error Diagnostic information about the failed task.
      */
@@ -177,7 +198,7 @@ class ErrorHandler
         std::lock_guard<std::mutex> lock(mutex_);
         error_count_++;
 
-        for (auto const& callback : callbacks_)
+        for (auto const& [id, callback] : callbacks_)
         {
             try
             {
@@ -185,7 +206,6 @@ class ErrorHandler
             }
             catch (...)
             {
-                // Error handlers should not throw, but we catch just in case
             }
         }
     }
@@ -215,7 +235,8 @@ class ErrorHandler
 
   private:
     mutable std::mutex mutex_;
-    std::vector<ErrorCallback> callbacks_;
+    std::map<size_t, ErrorCallback> callbacks_;
+    size_t next_callback_id_{0};
     size_t error_count_{0};
 };
 

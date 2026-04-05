@@ -51,9 +51,24 @@ class PoolWithErrors
         return submit_impl(description, std::forward<F>(f), std::forward<Args>(args)...);
     }
 
+    /**
+     * @brief Submit a task, returning an error instead of throwing on shutdown.
+     */
+    template <typename F, typename... Args>
+    auto try_submit(F&& f, Args&&... args)
+        -> expected<FutureWithErrorHandler<std::invoke_result_t<F, Args...>>, std::error_code>
+    {
+        return try_submit_impl({}, std::forward<F>(f), std::forward<Args>(args)...);
+    }
+
     auto add_error_callback(ErrorCallback callback) -> size_t
     {
         return error_handler_->add_callback(std::move(callback));
+    }
+
+    auto remove_error_callback(size_t id) -> bool
+    {
+        return error_handler_->remove_callback(id);
     }
 
     void clear_error_callbacks()
@@ -137,6 +152,29 @@ class PoolWithErrors
         };
         auto future = pool_.submit(std::move(wrapped_task));
         return FutureWithErrorHandler<std::invoke_result_t<F, Args...>>(std::move(future));
+    }
+
+    template <typename F, typename... Args>
+    auto try_submit_impl(std::string description, F&& f, Args&&... args)
+        -> expected<FutureWithErrorHandler<std::invoke_result_t<F, Args...>>, std::error_code>
+    {
+        auto handler = error_handler_;
+        auto wrapped_task = [f = std::forward<F>(f), args = std::make_tuple(std::forward<Args>(args)...), handler,
+                             desc = std::move(description)]() {
+            try
+            {
+                return std::apply(f, args);
+            }
+            catch (...)
+            {
+                handler->handle_error(TaskError::capture(desc));
+                throw;
+            }
+        };
+        auto result = pool_.try_submit(std::move(wrapped_task));
+        if (!result.has_value())
+            return unexpected(result.error());
+        return FutureWithErrorHandler<std::invoke_result_t<F, Args...>>(std::move(result.value()));
     }
 
     PoolType pool_;
