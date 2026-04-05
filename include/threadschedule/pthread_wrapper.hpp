@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -59,9 +60,11 @@ class PThreadWrapper
     explicit PThreadWrapper(F&& func, Args&&... args) : thread_(0), joined_(false)
     {
 
-        // Store the callable in a way pthread can handle
         auto callable =
-            std::make_unique<std::function<void()>>(std::bind(std::forward<F>(func), std::forward<Args>(args)...));
+            std::make_unique<std::function<void()>>([fn = std::forward<F>(func),
+                                                     tup = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+                std::apply(std::move(fn), std::move(tup));
+            });
 
         int const result = pthread_create(&thread_, nullptr, thread_function, callable.release());
 
@@ -221,7 +224,10 @@ class PThreadWrapper
 
         PThreadWrapper wrapper;
         auto callable =
-            std::make_unique<std::function<void()>>(std::bind(std::forward<F>(func), std::forward<Args>(args)...));
+            std::make_unique<std::function<void()>>([fn = std::forward<F>(func),
+                                                     tup = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+                std::apply(std::move(fn), std::move(tup));
+            });
 
         int const result = pthread_create(&wrapper.thread_, &attr, thread_function, callable.release());
 
