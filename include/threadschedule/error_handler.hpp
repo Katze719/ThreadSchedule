@@ -8,6 +8,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <type_traits>
 #include <vector>
 
 namespace threadschedule
@@ -327,14 +328,17 @@ class FutureWithErrorHandler
      * If the underlying future holds an exception, the error callback (if any)
      * is called **before** the exception is re-thrown to the caller.
      *
-     * @return The stored value of type @p T.
+     * @return The stored value of type @p T (void when @p T is @c void).
      * @throws Any exception stored in the underlying @c std::future.
      */
     auto get() -> T
     {
         try
         {
-            return future_.get();
+            if constexpr (std::is_void_v<T>)
+                future_.get();
+            else
+                return future_.get();
         }
         catch (...)
         {
@@ -396,78 +400,6 @@ class FutureWithErrorHandler
     std::future<T> future_;
     std::function<void(std::exception_ptr)> error_callback_;
     bool has_callback_{false};
-};
-
-/**
- * @brief Specialization of FutureWithErrorHandler for @c void futures.
- *
- * Behaves identically to the primary template except that get() returns
- * @c void instead of a value.
- *
- * @see FutureWithErrorHandler
- */
-template <>
-class FutureWithErrorHandler<void>
-{
-  public:
-    explicit FutureWithErrorHandler(std::future<void> future) : future_(std::move(future)), error_callback_(nullptr)
-    {
-    }
-
-    FutureWithErrorHandler(FutureWithErrorHandler const&) = delete;
-    auto operator=(FutureWithErrorHandler const&) -> FutureWithErrorHandler& = delete;
-    FutureWithErrorHandler(FutureWithErrorHandler&&) = default;
-    auto operator=(FutureWithErrorHandler&&) -> FutureWithErrorHandler& = default;
-
-    auto on_error(std::function<void(std::exception_ptr)> callback) -> FutureWithErrorHandler&
-    {
-        error_callback_ = std::move(callback);
-        has_callback_ = true;
-        return *this;
-    }
-
-    void get()
-    {
-        try
-        {
-            future_.get();
-        }
-        catch (...)
-        {
-            if (has_callback_ && error_callback_)
-            {
-                error_callback_(std::current_exception());
-            }
-            throw;
-        }
-    }
-
-    void wait() const
-    {
-        future_.wait();
-    }
-
-    template <typename Rep, typename Period>
-    auto wait_for(std::chrono::duration<Rep, Period> const& timeout_duration) const
-    {
-        return future_.wait_for(timeout_duration);
-    }
-
-    template <typename Clock, typename Duration>
-    auto wait_until(std::chrono::time_point<Clock, Duration> const& timeout_time) const
-    {
-        return future_.wait_until(timeout_time);
-    }
-
-    [[nodiscard]] auto valid() const -> bool
-    {
-        return future_.valid();
-    }
-
-  private:
-    std::future<void> future_;
-    std::function<void(std::exception_ptr)> error_callback_;
-    bool has_callback_{};
 };
 
 } // namespace threadschedule

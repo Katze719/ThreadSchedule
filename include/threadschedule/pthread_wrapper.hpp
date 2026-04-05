@@ -146,24 +146,14 @@ class PThreadWrapper
         return thread_;
     }
 
-    // Extended pthread functionality
     [[nodiscard]] auto set_name(std::string const& name) const -> expected<void, std::error_code>
     {
-        if (name.length() > 15)
-            return expected<void, std::error_code>(unexpect, std::make_error_code(std::errc::invalid_argument));
-        if (pthread_setname_np(thread_, name.c_str()) == 0)
-            return {};
-        return expected<void, std::error_code>(unexpect, std::error_code(errno, std::generic_category()));
+        return detail::apply_name(thread_, name);
     }
 
     [[nodiscard]] auto get_name() const -> std::optional<std::string>
     {
-        char name[16]; // Linux limit + 1
-        if (pthread_getname_np(thread_, name, sizeof(name)) == 0)
-        {
-            return std::string(name);
-        }
-        return std::nullopt;
+        return detail::read_name(thread_);
     }
 
     [[nodiscard]] auto set_priority(ThreadPriority priority) const -> expected<void, std::error_code>
@@ -184,12 +174,7 @@ class PThreadWrapper
 
     [[nodiscard]] auto get_affinity() const -> std::optional<ThreadAffinity>
     {
-        ThreadAffinity affinity;
-        if (pthread_getaffinity_np(thread_, sizeof(cpu_set_t), const_cast<cpu_set_t*>(&affinity.native_handle())) == 0)
-        {
-            return affinity;
-        }
-        return std::nullopt;
+        return detail::read_affinity(thread_);
     }
 
     // Cancellation support

@@ -3,6 +3,7 @@
 #include "expected.hpp"
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -553,6 +554,79 @@ inline auto apply_affinity(HANDLE handle, ThreadAffinity const& affinity) -> exp
     return unexpected(std::make_error_code(std::errc::operation_not_permitted));
 }
 
+inline auto apply_name(HANDLE handle, std::string const& name) -> expected<void, std::error_code>
+{
+    if (!handle)
+        return unexpected(std::make_error_code(std::errc::no_such_process));
+    using SetThreadDescriptionFn = HRESULT(WINAPI*)(HANDLE, PCWSTR);
+    HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
+    if (!hMod)
+        return unexpected(std::make_error_code(std::errc::function_not_supported));
+    auto set_desc = reinterpret_cast<SetThreadDescriptionFn>(
+        reinterpret_cast<void*>(GetProcAddress(hMod, "SetThreadDescription")));
+    if (!set_desc)
+        return unexpected(std::make_error_code(std::errc::function_not_supported));
+    std::wstring wide(name.begin(), name.end());
+    if (SUCCEEDED(set_desc(handle, wide.c_str())))
+        return {};
+    return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+}
+
+inline auto read_name(HANDLE handle) -> std::optional<std::string>
+{
+    if (!handle)
+        return std::nullopt;
+    using GetThreadDescriptionFn = HRESULT(WINAPI*)(HANDLE, PWSTR*);
+    HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
+    if (!hMod)
+        return std::nullopt;
+    auto get_desc = reinterpret_cast<GetThreadDescriptionFn>(
+        reinterpret_cast<void*>(GetProcAddress(hMod, "GetThreadDescription")));
+    if (!get_desc)
+        return std::nullopt;
+    PWSTR thread_name = nullptr;
+    if (SUCCEEDED(get_desc(handle, &thread_name)) && thread_name)
+    {
+        int size = WideCharToMultiByte(CP_UTF8, 0, thread_name, -1, nullptr, 0, nullptr, nullptr);
+        if (size > 0)
+        {
+            std::string result(size - 1, '\0');
+            WideCharToMultiByte(CP_UTF8, 0, thread_name, -1, &result[0], size, nullptr, nullptr);
+            LocalFree(thread_name);
+            return result;
+        }
+        LocalFree(thread_name);
+    }
+    return std::nullopt;
+}
+
+inline auto read_affinity(HANDLE handle) -> std::optional<ThreadAffinity>
+{
+    if (!handle)
+        return std::nullopt;
+    using GetThreadGroupAffinityFn = BOOL(WINAPI*)(HANDLE, PGROUP_AFFINITY);
+    HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
+    if (!hMod)
+        return std::nullopt;
+    auto get_group_affinity = reinterpret_cast<GetThreadGroupAffinityFn>(
+        reinterpret_cast<void*>(GetProcAddress(hMod, "GetThreadGroupAffinity")));
+    if (!get_group_affinity)
+        return std::nullopt;
+    GROUP_AFFINITY ga{};
+    if (get_group_affinity(handle, &ga) != 0)
+    {
+        ThreadAffinity affinity;
+        for (int i = 0; i < 64; ++i)
+        {
+            if ((ga.Mask & (static_cast<KAFFINITY>(1) << i)) != 0)
+                affinity.add_cpu(static_cast<int>(ga.Group) * 64 + i);
+        }
+        if (affinity.has_any())
+            return affinity;
+    }
+    return std::nullopt;
+}
+
 #else // POSIX
 
 // --- pthread_t overloads (BaseThreadWrapper, ThreadControlBlock, PThreadWrapper) ---
@@ -585,6 +659,40 @@ inline auto apply_affinity(pthread_t handle, ThreadAffinity const& affinity) -> 
     if (pthread_setaffinity_np(handle, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
         return {};
     return unexpected(std::error_code(errno, std::generic_category()));
+}
+
+inline auto apply_name(pthread_t handle, std::string const& name) -> expected<void, std::error_code>
+{
+    if (name.length() > 15)
+        return unexpected(std::make_error_code(std::errc::invalid_argument));
+    if (pthread_setname_np(handle, name.c_str()) == 0)
+        return {};
+    return unexpected(std::error_code(errno, std::generic_category()));
+}
+
+inline auto read_name(pthread_t handle) -> std::optional<std::string>
+{
+    char name[16];
+    if (pthread_getname_np(handle, name, sizeof(name)) == 0)
+        return std::string(name);
+    return std::nullopt;
+}
+
+inline auto read_affinity(pthread_t handle) -> std::optional<ThreadAffinity>
+{
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    if (pthread_getaffinity_np(handle, sizeof(cpu_set_t), &cpuset) == 0)
+    {
+        std::vector<int> cpus;
+        for (int i = 0; i < CPU_SETSIZE; ++i)
+        {
+            if (CPU_ISSET(i, &cpuset))
+                cpus.push_back(i);
+        }
+        return ThreadAffinity(cpus);
+    }
+    return std::nullopt;
 }
 
 // --- pid_t / TID overloads (ThreadByNameView) ---

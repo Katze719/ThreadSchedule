@@ -80,6 +80,30 @@ auto futures = pool.submit_range(tasks.begin(), tasks.end());
 auto futures = pool.submit_batch(tasks.begin(), tasks.end());
 ```
 
+### Internal improvements (v2.0.0 continued)
+
+- **Pool worker configuration deduplicated**: `configure_threads()`,
+  `set_affinity()`, `distribute_across_cpus()` in `HighPerformancePool` and
+  `ThreadPoolBase` now delegate to shared `detail::configure_worker_threads`,
+  `detail::set_worker_affinity`, `detail::distribute_workers_across_cpus`
+  templates.
+
+- **Thread naming/affinity reading centralized**: `set_name()`, `get_name()`,
+  `get_affinity()` across `BaseThreadWrapper`, `PThreadWrapper`, and
+  `ThreadControlBlock` now delegate to `detail::apply_name`,
+  `detail::read_name`, `detail::read_affinity` in `scheduler_policy.hpp`.
+
+- **`FutureWithErrorHandler<void>` specialization removed**: The primary
+  template now handles both `T` and `void` via `if constexpr`, eliminating
+  ~70 lines of duplicated code. No API change.
+
+- **`CompositeThreadRegistry` facade deduplicated**: The 12 query facade
+  methods (filter, map, for_each, find_if, any, all, none, take, skip, count,
+  empty, apply) are now inherited from `detail::QueryFacadeMixin<Derived>`
+  CRTP base. No API change.
+
+- Net reduction: ~116 lines across 6 files.
+
 ## v1.4.1
 
 - Fix: `*WrapperReg` types (`ThreadWrapperReg`, `JThreadWrapperReg`,

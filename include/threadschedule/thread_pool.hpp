@@ -16,6 +16,62 @@
 namespace threadschedule
 {
 
+namespace detail
+{
+
+template <typename WorkerRange>
+inline auto configure_worker_threads(WorkerRange& workers, std::string const& name_prefix, SchedulingPolicy policy,
+                                     ThreadPriority priority) -> expected<void, std::error_code>
+{
+    bool success = true;
+    for (size_t i = 0; i < workers.size(); ++i)
+    {
+        std::string const thread_name = name_prefix + "_" + std::to_string(i);
+        if (!workers[i].set_name(thread_name).has_value())
+            success = false;
+        if (!workers[i].set_scheduling_policy(policy, priority).has_value())
+            success = false;
+    }
+    if (success)
+        return {};
+    return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+}
+
+template <typename WorkerRange>
+inline auto set_worker_affinity(WorkerRange& workers, ThreadAffinity const& affinity) -> expected<void, std::error_code>
+{
+    bool success = true;
+    for (auto& worker : workers)
+    {
+        if (!worker.set_affinity(affinity).has_value())
+            success = false;
+    }
+    if (success)
+        return {};
+    return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+}
+
+template <typename WorkerRange>
+inline auto distribute_workers_across_cpus(WorkerRange& workers) -> expected<void, std::error_code>
+{
+    auto const cpu_count = std::thread::hardware_concurrency();
+    if (cpu_count == 0)
+        return unexpected(std::make_error_code(std::errc::invalid_argument));
+
+    bool success = true;
+    for (size_t i = 0; i < workers.size(); ++i)
+    {
+        ThreadAffinity affinity({static_cast<int>(i % cpu_count)});
+        if (!workers[i].set_affinity(affinity).has_value())
+            success = false;
+    }
+    if (success)
+        return {};
+    return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+}
+
+} // namespace detail
+
 /**
  * @brief Work-stealing deque for per-thread task queues in a thread pool.
  *
@@ -429,62 +485,17 @@ class HighPerformancePool
     auto configure_threads(std::string const& name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
                            ThreadPriority priority = ThreadPriority::normal()) -> expected<void, std::error_code>
     {
-        bool success = true;
-
-        for (size_t i = 0; i < workers_.size(); ++i)
-        {
-            std::string const thread_name = name_prefix + "_" + std::to_string(i);
-
-            if (!workers_[i].set_name(thread_name).has_value())
-            {
-                success = false;
-            }
-
-            if (!workers_[i].set_scheduling_policy(policy, priority).has_value())
-            {
-                success = false;
-            }
-        }
-        if (success)
-            return {};
-        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+        return detail::configure_worker_threads(workers_, name_prefix, policy, priority);
     }
 
     auto set_affinity(ThreadAffinity const& affinity) -> expected<void, std::error_code>
     {
-        bool success = true;
-
-        for (auto& worker : workers_)
-        {
-            if (!worker.set_affinity(affinity).has_value())
-            {
-                success = false;
-            }
-        }
-        if (success)
-            return {};
-        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+        return detail::set_worker_affinity(workers_, affinity);
     }
 
     auto distribute_across_cpus() -> expected<void, std::error_code>
     {
-        auto const cpu_count = std::thread::hardware_concurrency();
-        if (cpu_count == 0)
-            return unexpected(std::make_error_code(std::errc::invalid_argument));
-
-        bool success = true;
-
-        for (size_t i = 0; i < workers_.size(); ++i)
-        {
-            ThreadAffinity affinity({static_cast<int>(i % cpu_count)});
-            if (!workers_[i].set_affinity(affinity).has_value())
-            {
-                success = false;
-            }
-        }
-        if (success)
-            return {};
-        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+        return detail::distribute_workers_across_cpus(workers_);
     }
 
     void wait_for_tasks()
@@ -877,25 +888,7 @@ class ThreadPoolBase
     auto configure_threads(std::string const& name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
                            ThreadPriority priority = ThreadPriority::normal()) -> expected<void, std::error_code>
     {
-        bool success = true;
-
-        for (size_t i = 0; i < workers_.size(); ++i)
-        {
-            std::string const thread_name = name_prefix + "_" + std::to_string(i);
-
-            if (!workers_[i].set_name(thread_name).has_value())
-            {
-                success = false;
-            }
-
-            if (!workers_[i].set_scheduling_policy(policy, priority).has_value())
-            {
-                success = false;
-            }
-        }
-        if (success)
-            return {};
-        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+        return detail::configure_worker_threads(workers_, name_prefix, policy, priority);
     }
 
     /**
@@ -903,18 +896,7 @@ class ThreadPoolBase
      */
     auto set_affinity(ThreadAffinity const& affinity) -> expected<void, std::error_code>
     {
-        bool success = true;
-
-        for (auto& worker : workers_)
-        {
-            if (!worker.set_affinity(affinity).has_value())
-            {
-                success = false;
-            }
-        }
-        if (success)
-            return {};
-        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+        return detail::set_worker_affinity(workers_, affinity);
     }
 
     /**
@@ -922,23 +904,7 @@ class ThreadPoolBase
      */
     auto distribute_across_cpus() -> expected<void, std::error_code>
     {
-        auto const cpu_count = std::thread::hardware_concurrency();
-        if (cpu_count == 0)
-            return unexpected(std::make_error_code(std::errc::invalid_argument));
-
-        bool success = true;
-
-        for (size_t i = 0; i < workers_.size(); ++i)
-        {
-            ThreadAffinity affinity({static_cast<int>(i % cpu_count)});
-            if (!workers_[i].set_affinity(affinity).has_value())
-            {
-                success = false;
-            }
-        }
-        if (success)
-            return {};
-        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+        return detail::distribute_workers_across_cpus(workers_);
     }
 
     void wait_for_tasks()
