@@ -102,7 +102,31 @@ auto futures = pool.submit_batch(tasks.begin(), tasks.end());
   empty, apply) are now inherited from `detail::QueryFacadeMixin<Derived>`
   CRTP base. No API change.
 
-- Net reduction: ~116 lines across 6 files.
+- **`ThreadRegistry` inherits `detail::QueryFacadeMixin`**: The 12 facade
+  methods (filter, map, for_each, find_if, any, all, none, take, skip, count,
+  empty, apply) are now provided by the same CRTP mixin as
+  `CompositeThreadRegistry`, eliminating the duplicate implementations.
+
+- **POSIX scheduling helpers consolidated**: `apply_priority` and
+  `apply_scheduling_policy` for both `pthread_t` and `pid_t` now share a
+  common `detail::apply_sched_params` template, eliminating duplicated param
+  validation and error handling.
+
+- **`ThreadRegistry::register_current_thread` consolidated**: Both overloads
+  now delegate to a private `try_register(RegisteredThreadInfo)` method,
+  removing the duplicated lock/emplace/callback logic.
+
+- **`PoolWithErrors` submit methods consolidated**: `submit()` and
+  `submit_with_description()` now delegate to a private `submit_impl` with
+  optional description parameter.
+
+- **`TaskError::capture()` factory**: New static factory method centralizes
+  the repeated exception/thread_id/timestamp capture pattern. Used by
+  `ErrorHandledTask` and `PoolWithErrors`.
+
+- **`ThreadControlBlock` native handle accessor**: Private `native_handle()`
+  method replaces four identical `#ifdef _WIN32` dispatch blocks in the
+  set_affinity/set_priority/set_scheduling_policy/set_name methods.
 
 ## v1.4.1
 

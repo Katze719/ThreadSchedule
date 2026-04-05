@@ -629,29 +629,33 @@ inline auto read_affinity(HANDLE handle) -> std::optional<ThreadAffinity>
 
 #else // POSIX
 
-// --- pthread_t overloads (BaseThreadWrapper, ThreadControlBlock, PThreadWrapper) ---
+// --- shared implementation for pthread_t and pid_t scheduling ---
 
-inline auto apply_priority(pthread_t handle, ThreadPriority priority) -> expected<void, std::error_code>
-{
-    int const policy = SCHED_OTHER;
-    auto params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
-    if (!params_result.has_value())
-        return unexpected(params_result.error());
-    if (pthread_setschedparam(handle, policy, &params_result.value()) == 0)
-        return {};
-    return unexpected(std::error_code(errno, std::generic_category()));
-}
-
-inline auto apply_scheduling_policy(pthread_t handle, SchedulingPolicy policy, ThreadPriority priority)
+template <typename SetSchedFn>
+inline auto apply_sched_params(SchedulingPolicy policy, ThreadPriority priority, SetSchedFn&& set_sched)
     -> expected<void, std::error_code>
 {
     int const policy_int = static_cast<int>(policy);
     auto params_result = SchedulerParams::create_for_policy(policy, priority);
     if (!params_result.has_value())
         return unexpected(params_result.error());
-    if (pthread_setschedparam(handle, policy_int, &params_result.value()) == 0)
+    if (set_sched(policy_int, &params_result.value()) == 0)
         return {};
     return unexpected(std::error_code(errno, std::generic_category()));
+}
+
+// --- pthread_t overloads (BaseThreadWrapper, ThreadControlBlock, PThreadWrapper) ---
+
+inline auto apply_scheduling_policy(pthread_t handle, SchedulingPolicy policy, ThreadPriority priority)
+    -> expected<void, std::error_code>
+{
+    return apply_sched_params(policy, priority,
+                              [handle](int p, sched_param* sp) { return pthread_setschedparam(handle, p, sp); });
+}
+
+inline auto apply_priority(pthread_t handle, ThreadPriority priority) -> expected<void, std::error_code>
+{
+    return apply_scheduling_policy(handle, SchedulingPolicy::OTHER, priority);
 }
 
 inline auto apply_affinity(pthread_t handle, ThreadAffinity const& affinity) -> expected<void, std::error_code>
@@ -697,27 +701,16 @@ inline auto read_affinity(pthread_t handle) -> std::optional<ThreadAffinity>
 
 // --- pid_t / TID overloads (ThreadByNameView) ---
 
-inline auto apply_priority(pid_t tid, ThreadPriority priority) -> expected<void, std::error_code>
-{
-    int const policy = SCHED_OTHER;
-    auto params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
-    if (!params_result.has_value())
-        return unexpected(params_result.error());
-    if (sched_setscheduler(tid, policy, &params_result.value()) == 0)
-        return {};
-    return unexpected(std::error_code(errno, std::generic_category()));
-}
-
 inline auto apply_scheduling_policy(pid_t tid, SchedulingPolicy policy, ThreadPriority priority)
     -> expected<void, std::error_code>
 {
-    int const policy_int = static_cast<int>(policy);
-    auto params_result = SchedulerParams::create_for_policy(policy, priority);
-    if (!params_result.has_value())
-        return unexpected(params_result.error());
-    if (sched_setscheduler(tid, policy_int, &params_result.value()) == 0)
-        return {};
-    return unexpected(std::error_code(errno, std::generic_category()));
+    return apply_sched_params(policy, priority,
+                              [tid](int p, sched_param* sp) { return sched_setscheduler(tid, p, sp); });
+}
+
+inline auto apply_priority(pid_t tid, ThreadPriority priority) -> expected<void, std::error_code>
+{
+    return apply_scheduling_policy(tid, SchedulingPolicy::OTHER, priority);
 }
 
 inline auto apply_affinity(pid_t tid, ThreadAffinity const& affinity) -> expected<void, std::error_code>
