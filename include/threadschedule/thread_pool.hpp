@@ -6,6 +6,7 @@
 #include "thread_wrapper.hpp"
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <atomic>
 #include <condition_variable>
@@ -256,7 +257,7 @@ class SboCallable
 
   private:
     VTable const* vtable_ = nullptr;
-    alignas(std::max_align_t) unsigned char buffer_[kBufferSize]{};
+    alignas(std::max_align_t) unsigned char buffer_[kBufferSize];
 };
 
 } // namespace detail
