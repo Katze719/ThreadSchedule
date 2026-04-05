@@ -6,10 +6,10 @@
 #include "thread_wrapper.hpp"
 #include <algorithm>
 #include <array>
-#include <cstddef>
-#include <cstdint>
 #include <atomic>
 #include <condition_variable>
+#include <cstddef>
+#include <cstdint>
 #include <future>
 #include <mutex>
 #include <optional>
@@ -19,7 +19,7 @@
 #include <vector>
 
 #if __cpp_lib_ranges >= 201911L
-#include <ranges>
+#    include <ranges>
 #endif
 
 namespace threadschedule
@@ -124,12 +124,9 @@ template <typename F, typename... Args>
 auto bind_args(F&& f, Args&&... args)
 {
 #if __cpp_init_captures >= 201803L
-    return [fn = std::forward<F>(f), ...a = std::forward<Args>(args)]() mutable {
-        return fn(std::move(a)...);
-    };
+    return [fn = std::forward<F>(f), ... a = std::forward<Args>(args)]() mutable { return fn(std::move(a)...); };
 #else
-    return [fn = std::forward<F>(f),
-            tup = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+    return [fn = std::forward<F>(f), tup = std::make_tuple(std::forward<Args>(args)...)]() mutable {
         return std::apply(std::move(fn), std::move(tup));
     };
 #endif
@@ -166,33 +163,29 @@ class SboCallable
 
     template <typename F>
     static constexpr bool fits_inline_v =
-        sizeof(F) <= kBufferSize &&
-        alignof(F) <= alignof(std::max_align_t) &&
-        std::is_nothrow_move_constructible_v<F>;
+        sizeof(F) <= kBufferSize && alignof(F) <= alignof(std::max_align_t) && std::is_nothrow_move_constructible_v<F>;
 
     template <typename F>
     static VTable const* vtable_for() noexcept
     {
         if constexpr (fits_inline_v<F>)
         {
-            static constexpr VTable vt{
-                [](void* s) { (*static_cast<F*>(s))(); },
-                [](void* s) { static_cast<F*>(s)->~F(); },
-                [](void* dst, void* src) noexcept {
-                    ::new (dst) F(std::move(*static_cast<F*>(src)));
-                    static_cast<F*>(src)->~F();
-                }};
+            static constexpr VTable vt{[](void* s) { (*static_cast<F*>(s))(); },
+                                       [](void* s) { static_cast<F*>(s)->~F(); },
+                                       [](void* dst, void* src) noexcept {
+                                           ::new (dst) F(std::move(*static_cast<F*>(src)));
+                                           static_cast<F*>(src)->~F();
+                                       }};
             return &vt;
         }
         else
         {
-            static constexpr VTable vt{
-                [](void* s) { (*(*static_cast<F**>(s)))(); },
-                [](void* s) { delete *static_cast<F**>(s); },
-                [](void* dst, void* src) noexcept {
-                    *static_cast<F**>(dst) = *static_cast<F**>(src);
-                    *static_cast<F**>(src) = nullptr;
-                }};
+            static constexpr VTable vt{[](void* s) { (*(*static_cast<F**>(s)))(); },
+                                       [](void* s) { delete *static_cast<F**>(s); },
+                                       [](void* dst, void* src) noexcept {
+                                           *static_cast<F**>(dst) = *static_cast<F**>(src);
+                                           *static_cast<F**>(src) = nullptr;
+                                       }};
             return &vt;
         }
     }
@@ -245,7 +238,10 @@ class SboCallable
             vtable_->destroy(buffer_);
     }
 
-    explicit operator bool() const noexcept { return vtable_ != nullptr; }
+    explicit operator bool() const noexcept
+    {
+        return vtable_ != nullptr;
+    }
 
     void operator()()
     {
@@ -297,8 +293,8 @@ class SboCallable
 using TaskStartCallback = std::function<void(std::chrono::steady_clock::time_point, std::thread::id)>;
 
 /// Callback invoked when a pool worker finishes executing a task.
-using TaskEndCallback = std::function<void(std::chrono::steady_clock::time_point, std::thread::id,
-                                           std::chrono::microseconds elapsed)>;
+using TaskEndCallback =
+    std::function<void(std::chrono::steady_clock::time_point, std::thread::id, std::chrono::microseconds elapsed)>;
 
 template <typename T>
 class WorkStealingDeque
@@ -419,6 +415,15 @@ class WorkStealingDeque
 };
 
 /**
+ * @brief Controls how a pool handles pending tasks during shutdown.
+ */
+enum class ShutdownPolicy : uint8_t
+{
+    drain,       ///< Finish all queued tasks before stopping (default).
+    drop_pending ///< Finish running tasks, discard queued ones.
+};
+
+/**
  * @brief High-performance thread pool optimized for high-frequency task submission.
  *
  * Uses a work-stealing architecture: each worker thread owns a private
@@ -498,16 +503,6 @@ class WorkStealingDeque
  *       work-stealing complexity. Best for high-throughput scenarios like
  *       image processing, batch operations, etc.
  */
-
-/**
- * @brief Controls how a pool handles pending tasks during shutdown.
- */
-enum class ShutdownPolicy : uint8_t
-{
-    drain,        ///< Finish all queued tasks before stopping (default).
-    drop_pending  ///< Finish running tasks, discard queued ones.
-};
-
 class HighPerformancePool
 {
   public:
@@ -527,8 +522,8 @@ class HighPerformancePool
     explicit HighPerformancePool(size_t num_threads = std::thread::hardware_concurrency(),
                                  size_t deque_capacity = WorkStealingDeque<Task>::DEFAULT_CAPACITY,
                                  bool register_workers = false)
-        : num_threads_(num_threads == 0 ? 1 : num_threads), register_workers_(register_workers),
-          stop_(false), next_victim_(0), start_time_(std::chrono::steady_clock::now())
+        : num_threads_(num_threads == 0 ? 1 : num_threads), register_workers_(register_workers), stop_(false),
+          next_victim_(0), start_time_(std::chrono::steady_clock::now())
     {
         worker_queues_.resize(num_threads_);
         for (size_t i = 0; i < num_threads_; ++i)
@@ -614,8 +609,7 @@ class HighPerformancePool
      * @brief Submit a task, returning an error instead of throwing on shutdown.
      */
     template <typename F, typename... Args>
-    auto try_submit(F&& f, Args&&... args)
-        -> expected<std::future<std::invoke_result_t<F, Args...>>, std::error_code>
+    auto try_submit(F&& f, Args&&... args) -> expected<std::future<std::invoke_result_t<F, Args...>>, std::error_code>
     {
         using return_type = std::invoke_result_t<F, Args...>;
 
@@ -725,8 +719,7 @@ class HighPerformancePool
      *        is skipped and the future throws @c std::future_error (broken_promise).
      */
     template <typename F, typename... Args>
-    auto submit(std::stop_token token, F&& f, Args&&... args)
-        -> std::future<std::invoke_result_t<F, Args...>>
+    auto submit(std::stop_token token, F&& f, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>
     {
         return submit([token = std::move(token),
                        bound = detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...)]() mutable {
@@ -756,8 +749,7 @@ class HighPerformancePool
      * @brief Batch task submission, returning an error instead of throwing on shutdown.
      */
     template <typename Iterator>
-    auto try_submit_batch(Iterator begin, Iterator end)
-        -> expected<std::vector<std::future<void>>, std::error_code>
+    auto try_submit_batch(Iterator begin, Iterator end) -> expected<std::vector<std::future<void>>, std::error_code>
     {
         std::vector<std::future<void>> futures;
         size_t const batch_size = std::distance(begin, end);
@@ -818,10 +810,16 @@ class HighPerformancePool
 
 #if __cpp_lib_ranges >= 201911L
     template <std::ranges::input_range R>
-    auto submit_batch(R&& range) { return submit_batch(std::ranges::begin(range), std::ranges::end(range)); }
+    auto submit_batch(R&& range)
+    {
+        return submit_batch(std::ranges::begin(range), std::ranges::end(range));
+    }
 
     template <std::ranges::input_range R>
-    auto try_submit_batch(R&& range) { return try_submit_batch(std::ranges::begin(range), std::ranges::end(range)); }
+    auto try_submit_batch(R&& range)
+    {
+        return try_submit_batch(std::ranges::begin(range), std::ranges::end(range));
+    }
 
     template <std::ranges::input_range R, typename F>
     void parallel_for_each(R&& range, F&& func)
@@ -1167,10 +1165,8 @@ class ThreadPoolBase
         std::chrono::microseconds avg_task_time;
     };
 
-    explicit ThreadPoolBase(size_t num_threads = std::thread::hardware_concurrency(),
-                            bool register_workers = false)
-        : num_threads_(num_threads == 0 ? 1 : num_threads),
-          register_workers_(register_workers), stop_(false),
+    explicit ThreadPoolBase(size_t num_threads = std::thread::hardware_concurrency(), bool register_workers = false)
+        : num_threads_(num_threads == 0 ? 1 : num_threads), register_workers_(register_workers), stop_(false),
           start_time_(std::chrono::steady_clock::now())
     {
         workers_.reserve(num_threads_);
@@ -1193,8 +1189,7 @@ class ThreadPoolBase
      * @brief Submit a task, returning an error instead of throwing on shutdown.
      */
     template <typename F, typename... Args>
-    auto try_submit(F&& f, Args&&... args)
-        -> expected<std::future<std::invoke_result_t<F, Args...>>, std::error_code>
+    auto try_submit(F&& f, Args&&... args) -> expected<std::future<std::invoke_result_t<F, Args...>>, std::error_code>
     {
         using return_type = std::invoke_result_t<F, Args...>;
 
@@ -1259,8 +1254,7 @@ class ThreadPoolBase
      *        is skipped and returns a default-constructed result.
      */
     template <typename F, typename... Args>
-    auto submit(std::stop_token token, F&& f, Args&&... args)
-        -> std::future<std::invoke_result_t<F, Args...>>
+    auto submit(std::stop_token token, F&& f, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>
     {
         return submit([token = std::move(token),
                        bound = detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...)]() mutable {
@@ -1287,8 +1281,7 @@ class ThreadPoolBase
      * @brief Submit multiple tasks, returning an error instead of throwing on shutdown.
      */
     template <typename Iterator>
-    auto try_submit_batch(Iterator begin, Iterator end)
-        -> expected<std::vector<std::future<void>>, std::error_code>
+    auto try_submit_batch(Iterator begin, Iterator end) -> expected<std::vector<std::future<void>>, std::error_code>
     {
         std::vector<std::future<void>> futures;
         futures.reserve(std::distance(begin, end));
@@ -1333,10 +1326,16 @@ class ThreadPoolBase
 
 #if __cpp_lib_ranges >= 201911L
     template <std::ranges::input_range R>
-    auto submit_batch(R&& range) { return submit_batch(std::ranges::begin(range), std::ranges::end(range)); }
+    auto submit_batch(R&& range)
+    {
+        return submit_batch(std::ranges::begin(range), std::ranges::end(range));
+    }
 
     template <std::ranges::input_range R>
-    auto try_submit_batch(R&& range) { return try_submit_batch(std::ranges::begin(range), std::ranges::end(range)); }
+    auto try_submit_batch(R&& range)
+    {
+        return try_submit_batch(std::ranges::begin(range), std::ranges::end(range));
+    }
 
     template <std::ranges::input_range R, typename F>
     void parallel_for_each(R&& range, F&& func)
@@ -1436,9 +1435,8 @@ class ThreadPoolBase
         }
 
         std::unique_lock<std::mutex> lock(queue_mutex_);
-        bool const drained = task_finished_condition_.wait_until(lock, deadline, [this] {
-            return tasks_.empty() && active_tasks_.load(std::memory_order_acquire) == 0;
-        });
+        bool const drained = task_finished_condition_.wait_until(
+            lock, deadline, [this] { return tasks_.empty() && active_tasks_.load(std::memory_order_acquire) == 0; });
         lock.unlock();
 
         shutdown(ShutdownPolicy::drain);
@@ -1650,7 +1648,10 @@ class LightweightPoolT
     LightweightPoolT(LightweightPoolT const&) = delete;
     auto operator=(LightweightPoolT const&) -> LightweightPoolT& = delete;
 
-    ~LightweightPoolT() { shutdown(ShutdownPolicy::drain); }
+    ~LightweightPoolT()
+    {
+        shutdown(ShutdownPolicy::drain);
+    }
 
     /**
      * @brief Fire-and-forget task submission. Throws on shutdown.
@@ -1710,10 +1711,16 @@ class LightweightPoolT
 
 #if __cpp_lib_ranges >= 201911L
     template <std::ranges::input_range R>
-    void post_batch(R&& range) { post_batch(std::ranges::begin(range), std::ranges::end(range)); }
+    void post_batch(R&& range)
+    {
+        post_batch(std::ranges::begin(range), std::ranges::end(range));
+    }
 
     template <std::ranges::input_range R>
-    auto try_post_batch(R&& range) { return try_post_batch(std::ranges::begin(range), std::ranges::end(range)); }
+    auto try_post_batch(R&& range)
+    {
+        return try_post_batch(std::ranges::begin(range), std::ranges::end(range));
+    }
 #endif
 
     /**
@@ -1754,15 +1761,17 @@ class LightweightPoolT
                 return true;
         }
         std::unique_lock<std::mutex> lock(mutex_);
-        bool const drained = drain_condition_.wait_until(lock, deadline, [this] {
-            return tasks_.empty() && active_tasks_.load(std::memory_order_acquire) == 0;
-        });
+        bool const drained = drain_condition_.wait_until(
+            lock, deadline, [this] { return tasks_.empty() && active_tasks_.load(std::memory_order_acquire) == 0; });
         lock.unlock();
         shutdown(ShutdownPolicy::drain);
         return drained;
     }
 
-    [[nodiscard]] auto size() const noexcept -> size_t { return num_threads_; }
+    [[nodiscard]] auto size() const noexcept -> size_t
+    {
+        return num_threads_;
+    }
 
     auto configure_threads(std::string const& name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
                            ThreadPriority priority = ThreadPriority::normal()) -> expected<void, std::error_code>
@@ -1921,10 +1930,16 @@ class GlobalPool
 
 #if __cpp_lib_ranges >= 201911L
     template <std::ranges::input_range R>
-    static auto submit_batch(R&& range) { return instance().submit_batch(std::forward<R>(range)); }
+    static auto submit_batch(R&& range)
+    {
+        return instance().submit_batch(std::forward<R>(range));
+    }
 
     template <std::ranges::input_range R>
-    static auto try_submit_batch(R&& range) { return instance().try_submit_batch(std::forward<R>(range)); }
+    static auto try_submit_batch(R&& range)
+    {
+        return instance().try_submit_batch(std::forward<R>(range));
+    }
 
     template <std::ranges::input_range R, typename F>
     static void parallel_for_each(R&& range, F&& func)
