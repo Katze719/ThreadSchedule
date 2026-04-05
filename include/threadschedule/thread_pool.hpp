@@ -79,7 +79,6 @@ class WorkStealingDeque
     {
     }
 
-    // Thread-safe operations
     [[nodiscard]] auto push(T&& item) -> bool
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -88,7 +87,7 @@ class WorkStealingDeque
 
         if (t - b >= capacity_)
         {
-            return false; // Queue full
+            return false;
         }
 
         buffer_[t % capacity_] = AlignedItem(std::move(item));
@@ -104,7 +103,7 @@ class WorkStealingDeque
 
         if (t - b >= capacity_)
         {
-            return false; // Queue full
+            return false;
         }
 
         buffer_[t % capacity_] = AlignedItem(item);
@@ -120,7 +119,7 @@ class WorkStealingDeque
 
         if (t <= b)
         {
-            return false; // Empty
+            return false;
         }
 
         size_t const new_top = t - 1;
@@ -129,7 +128,6 @@ class WorkStealingDeque
         return true;
     }
 
-    // Thief operations (other threads stealing work)
     [[nodiscard]] auto steal(T& item) -> bool
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -138,7 +136,7 @@ class WorkStealingDeque
 
         if (b >= t)
         {
-            return false; // Empty
+            return false;
         }
 
         item = std::move(buffer_[b % capacity_].item);
@@ -259,7 +257,6 @@ class HighPerformancePool
         : num_threads_(num_threads == 0 ? 1 : num_threads), stop_(false), next_victim_(0),
           start_time_(std::chrono::steady_clock::now())
     {
-        // Initialize per-thread work queues
         worker_queues_.resize(num_threads_);
         for (size_t i = 0; i < num_threads_; ++i)
         {
@@ -268,7 +265,6 @@ class HighPerformancePool
 
         workers_.reserve(num_threads_);
 
-        // Create worker threads with thread-local storage
         for (size_t i = 0; i < num_threads_; ++i)
         {
             workers_.emplace_back(&HighPerformancePool::worker_function, this, i);
@@ -298,20 +294,17 @@ class HighPerformancePool
 
         if (stop_.load(std::memory_order_acquire))
         {
-            throw std::runtime_error("ThreadPool is shutting down");
+            throw std::runtime_error("HighPerformancePool is shutting down");
         }
 
-        // Try to submit to least loaded queue (round-robin with fallback)
         size_t const preferred_queue = next_victim_.fetch_add(1, std::memory_order_relaxed) % num_threads_;
 
-        // First try the preferred queue
         if (worker_queues_[preferred_queue]->push([task]() { (*task)(); }))
         {
             wakeup_condition_.notify_one();
             return result;
         }
 
-        // If preferred queue is full, try a few random ones
         for (size_t attempts = 0; attempts < (std::min)(num_threads_, size_t(3)); ++attempts)
         {
             size_t const idx = (preferred_queue + attempts + 1) % num_threads_;
@@ -322,12 +315,11 @@ class HighPerformancePool
             }
         }
 
-        // All local queues full, use overflow queue
         {
             std::lock_guard<std::mutex> lock(overflow_mutex_);
             if (stop_.load(std::memory_order_relaxed))
             {
-                throw std::runtime_error("ThreadPool is shutting down");
+                throw std::runtime_error("HighPerformancePool is shutting down");
             }
             overflow_tasks_.emplace([task]() { (*task)(); });
         }
@@ -348,10 +340,9 @@ class HighPerformancePool
 
         if (stop_.load(std::memory_order_acquire))
         {
-            throw std::runtime_error("ThreadPool is shutting down");
+            throw std::runtime_error("HighPerformancePool is shutting down");
         }
 
-        // Distribute batch across worker queues
         size_t queue_idx = next_victim_.fetch_add(batch_size, std::memory_order_relaxed) % num_threads_;
 
         for (auto it = begin; it != end; ++it)
@@ -359,7 +350,6 @@ class HighPerformancePool
             auto task = std::make_shared<std::packaged_task<void()>>(*it);
             futures.push_back(task->get_future());
 
-            // Try to place in worker queue, round-robin style
             bool queued = false;
             for (size_t attempts = 0; attempts < num_threads_; ++attempts)
             {
@@ -373,13 +363,11 @@ class HighPerformancePool
 
             if (!queued)
             {
-                // Overflow to global queue
                 std::lock_guard<std::mutex> lock(overflow_mutex_);
                 overflow_tasks_.emplace([task]() { (*task)(); });
             }
         }
 
-        // Wake up workers for the batch
         wakeup_condition_.notify_all();
         return futures;
     }
@@ -394,7 +382,6 @@ class HighPerformancePool
         if (total_items == 0)
             return;
 
-        // Calculate optimal chunk size for cache efficiency
         size_t const chunk_size = (std::max)(size_t(1), total_items / (num_threads_ * 4));
         std::vector<std::future<void>> futures;
 
@@ -412,7 +399,6 @@ class HighPerformancePool
             it = chunk_end;
         }
 
-        // Wait for all chunks to complete
         for (auto& future : futures)
         {
             future.wait();
@@ -514,7 +500,7 @@ class HighPerformancePool
             std::lock_guard<std::mutex> lock(overflow_mutex_);
             if (stop_.exchange(true, std::memory_order_acq_rel))
             {
-                return; // Already shutting down
+                return;
             }
         }
 
@@ -573,11 +559,9 @@ class HighPerformancePool
     std::vector<ThreadWrapper> workers_;
     std::vector<std::unique_ptr<WorkStealingDeque<Task>>> worker_queues_;
 
-    // Overflow queue for when worker queues are full
     std::queue<Task> overflow_tasks_;
     mutable std::mutex overflow_mutex_;
 
-    // Synchronization
     std::atomic<bool> stop_;
     std::condition_variable wakeup_condition_;
     std::mutex wakeup_mutex_;
@@ -585,19 +569,17 @@ class HighPerformancePool
     std::condition_variable completion_condition_;
     std::mutex completion_mutex_;
 
-    // Load balancing and statistics
     std::atomic<size_t> next_victim_;
     std::atomic<size_t> active_tasks_{0};
     std::atomic<size_t> completed_tasks_{0};
     std::atomic<size_t> stolen_tasks_{0};
-    std::atomic<uint64_t> total_task_time_{0}; // microseconds
+    std::atomic<uint64_t> total_task_time_{0};
 
     std::chrono::steady_clock::time_point start_time_;
 
     // NOLINTNEXTLINE(readability-function-cognitive-complexity)
     void worker_function(size_t worker_id)
     {
-        // Thread-local random number generator for work stealing
         thread_local std::mt19937 gen = []() {
             std::random_device device;
             return std::mt19937(device());
@@ -610,12 +592,10 @@ class HighPerformancePool
         {
             bool found_task = false;
 
-            // 1. Try to get task from own queue (fast path)
             if (worker_queues_[worker_id]->pop(task))
             {
                 found_task = true;
             }
-            // 2. Try to steal from other workers (limit attempts to reduce contention)
             else
             {
                 size_t const max_steal_attempts = (std::min)(num_threads_, size_t(4));
@@ -631,7 +611,6 @@ class HighPerformancePool
                 }
             }
 
-            // 3. Try overflow queue
             if (!found_task)
             {
                 std::lock_guard<std::mutex> lock(overflow_mutex_);
@@ -645,7 +624,6 @@ class HighPerformancePool
 
             if (found_task)
             {
-                // Execute task with timing
                 active_tasks_.fetch_add(1, std::memory_order_relaxed);
 
                 auto const start_time = std::chrono::steady_clock::now();
@@ -655,7 +633,6 @@ class HighPerformancePool
                 }
                 catch (...)
                 {
-                    // Log exception or handle as needed
                 }
                 auto const end_time = std::chrono::steady_clock::now();
 
@@ -669,13 +646,11 @@ class HighPerformancePool
             }
             else
             {
-                // No work found, check if we should stop
                 if (stop_.load(std::memory_order_acquire))
                 {
                     break;
                 }
 
-                // Wait for work with adaptive timeout
                 std::unique_lock<std::mutex> lock(wakeup_mutex_);
                 wakeup_condition_.wait_for(lock, std::chrono::microseconds(100));
             }
@@ -683,59 +658,87 @@ class HighPerformancePool
     }
 };
 
+// ---------------------------------------------------------------------------
+// Wait policies for ThreadPoolBase
+// ---------------------------------------------------------------------------
+
 /**
- * @brief Single-queue thread pool with optimized locking for medium workloads.
+ * @brief Wait policy that blocks indefinitely until work is available.
  *
- * Alternative to @ref HighPerformancePool for cases where work-stealing overhead is
- * not justified. All tasks share one std::queue protected by a single mutex,
- * which keeps per-task overhead low while still scaling to multiple workers.
+ * Workers consume zero CPU while idle but wake instantly when a task is
+ * enqueued. Used by the @c ThreadPool type alias.
+ */
+struct IndefiniteWait
+{
+    template <typename Lock, typename Pred>
+    static auto wait(std::condition_variable& cv, Lock& lock, Pred pred) -> bool
+    {
+        cv.wait(lock, pred);
+        return true;
+    }
+};
+
+/**
+ * @brief Wait policy that polls with a 10 ms timeout.
  *
- * Best for: Medium workloads (100-10k tasks), consistent task patterns where
- * work-stealing complexity is not needed but better performance than the basic
- * @ref ThreadPool is desired.
+ * Workers periodically re-check the queue even without notification, trading
+ * a small amount of CPU for lower wake-up latency under bursty workloads.
+ * Used by the @c FastThreadPool type alias.
+ */
+struct PollingWait
+{
+    template <typename Lock, typename Pred>
+    static auto wait(std::condition_variable& cv, Lock& lock, Pred pred) -> bool
+    {
+        return cv.wait_for(lock, std::chrono::milliseconds(10), pred);
+    }
+};
+
+// ---------------------------------------------------------------------------
+// ThreadPoolBase
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Single-queue thread pool parameterized by its idle-wait strategy.
+ *
+ * All tasks share one std::queue protected by a single mutex. The
+ * @p WaitPolicy template parameter controls how workers wait for new
+ * work:
+ * - @ref IndefiniteWait - blocks on condition_variable::wait() (zero CPU
+ *   while idle, instant wake). Instantiated as @c ThreadPool.
+ * - @ref PollingWait - polls with condition_variable::wait_for(10 ms).
+ *   Slightly higher idle CPU but lower worst-case latency under bursty
+ *   loads. Instantiated as @c FastThreadPool.
  *
  * @par How task execution works
  * When you call submit(), the callable is wrapped in a std::packaged_task,
- * pushed into the single shared task queue under a mutex lock, and one
- * sleeping worker is woken via condition_variable::notify_one(). The woken
- * worker pops the front element from the queue and executes it. If the queue
- * is empty when a worker wakes up, it goes back to sleep with a 10 ms
- * timeout before checking again.
+ * pushed into the shared task queue under a mutex lock, and one sleeping
+ * worker is woken via condition_variable::notify_one(). The woken worker
+ * pops the front element and executes it.
  *
  * @par Execution guarantees
  * - Every successfully submitted task (submit() returned without throwing)
- *   is guaranteed to eventually execute, as long as the pool is not
- *   destroyed while shutdown() is draining remaining work.
+ *   is guaranteed to eventually execute.
  * - submit() throws std::runtime_error if the pool is already shutting
- *   down. In that case the task is NOT enqueued and will NOT execute.
- * - Tasks are stored in a FIFO queue, so they are picked up roughly in
- *   submission order. However, since multiple workers pop concurrently,
- *   the actual completion order is non-deterministic.
+ *   down. In that case the task is NOT enqueued.
+ * - Tasks are stored in a FIFO queue. Multiple workers pop concurrently,
+ *   so submission order is roughly preserved but completion order is
+ *   non-deterministic.
  * - The returned std::future becomes ready once the task finishes. If the
- *   task threw an exception, future.get() rethrows it. The worker thread
- *   itself is not affected and continues processing further tasks.
+ *   task threw an exception, future.get() rethrows it.
  * - On shutdown(), workers finish their current task, then drain all
- *   remaining queued tasks before exiting. Tasks submitted before
- *   shutdown() are guaranteed to execute.
+ *   remaining queued tasks before exiting.
+ * - wait_for_tasks() blocks until the queue is empty AND no worker is
+ *   currently executing a task.
  *
  * @par Thread safety
  * submit() and submit_batch() may be called from any thread concurrently.
  * shutdown() is internally guarded and safe to call more than once.
  *
- * @par Polling / wake-up
- * Workers use condition_variable::wait_for with a 10 ms timeout, so an idle
- * worker may take up to 10 ms to notice the stop flag after shutdown() is
- * called.
- *
  * @par Exception handling
  * Exceptions thrown by tasks are caught inside the worker loop. They are
  * stored in the std::future returned by submit(). The worker thread
  * continues processing.
- *
- * @par Configuration return type
- * configure_threads() and set_affinity() return bool (not
- * expected<void, std::error_code> as in @ref HighPerformancePool). A return
- * value of false means at least one worker could not be configured.
  *
  * @par Lifetime
  * The destructor calls shutdown() and joins all worker threads. Can block
@@ -743,8 +746,12 @@ class HighPerformancePool
  *
  * @par Copyability / movability
  * Not copyable, not movable.
+ *
+ * @tparam WaitPolicy Strategy type with a static
+ *         @c wait(cv, lock, predicate) -> bool method.
  */
-class FastThreadPool
+template <typename WaitPolicy>
+class ThreadPoolBase
 {
   public:
     using Task = std::function<void()>;
@@ -759,28 +766,28 @@ class FastThreadPool
         std::chrono::microseconds avg_task_time;
     };
 
-    explicit FastThreadPool(size_t num_threads = std::thread::hardware_concurrency())
-        : num_threads_(num_threads == 0 ? 1 : num_threads), stop_(false), start_time_(std::chrono::steady_clock::now())
+    explicit ThreadPoolBase(size_t num_threads = std::thread::hardware_concurrency())
+        : num_threads_(num_threads == 0 ? 1 : num_threads), stop_(false),
+          start_time_(std::chrono::steady_clock::now())
     {
         workers_.reserve(num_threads_);
 
-        // Create worker threads
         for (size_t i = 0; i < num_threads_; ++i)
         {
-            workers_.emplace_back(&FastThreadPool::worker_function, this, i);
+            workers_.emplace_back(&ThreadPoolBase::worker_function, this, i);
         }
     }
 
-    FastThreadPool(FastThreadPool const&) = delete;
-    auto operator=(FastThreadPool const&) -> FastThreadPool& = delete;
+    ThreadPoolBase(ThreadPoolBase const&) = delete;
+    auto operator=(ThreadPoolBase const&) -> ThreadPoolBase& = delete;
 
-    ~FastThreadPool()
+    ~ThreadPoolBase()
     {
         shutdown();
     }
 
     /**
-     * @brief Optimized task submission with minimal locking
+     * @brief Submit a task to the thread pool
      */
     template <typename F, typename... Args>
     auto submit(F&& f, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>
@@ -796,7 +803,7 @@ class FastThreadPool
             std::lock_guard<std::mutex> lock(queue_mutex_);
             if (stop_)
             {
-                throw std::runtime_error("FastThreadPool is shutting down");
+                throw std::runtime_error("Pool is shutting down");
             }
             tasks_.emplace([task]() { (*task)(); });
         }
@@ -806,20 +813,19 @@ class FastThreadPool
     }
 
     /**
-     * @brief Efficient batch processing
+     * @brief Submit multiple tasks under a single lock acquisition
      */
     template <typename Iterator>
     auto submit_batch(Iterator begin, Iterator end) -> std::vector<std::future<void>>
     {
         std::vector<std::future<void>> futures;
-        size_t const batch_size = std::distance(begin, end);
-        futures.reserve(batch_size);
+        futures.reserve(std::distance(begin, end));
 
         {
             std::lock_guard<std::mutex> lock(queue_mutex_);
             if (stop_)
             {
-                throw std::runtime_error("FastThreadPool is shutting down");
+                throw std::runtime_error("Pool is shutting down");
             }
 
             for (auto it = begin; it != end; ++it)
@@ -830,9 +836,116 @@ class FastThreadPool
             }
         }
 
-        // Wake up all workers for batch processing
         condition_.notify_all();
         return futures;
+    }
+
+    /**
+     * @brief Apply a function to a range of values in parallel
+     */
+    template <typename Iterator, typename F>
+    void parallel_for_each(Iterator begin, Iterator end, F&& func)
+    {
+        std::vector<std::future<void>> futures;
+        futures.reserve(std::distance(begin, end));
+
+        for (auto it = begin; it != end; ++it)
+        {
+            futures.push_back(submit([func, it]() { func(*it); }));
+        }
+
+        for (auto& future : futures)
+        {
+            future.wait();
+        }
+    }
+
+    [[nodiscard]] auto size() const noexcept -> size_t
+    {
+        return num_threads_;
+    }
+
+    [[nodiscard]] auto pending_tasks() const -> size_t
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        return tasks_.size();
+    }
+
+    /**
+     * @brief Configure all worker threads (name, scheduling policy, priority)
+     */
+    auto configure_threads(std::string const& name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
+                           ThreadPriority priority = ThreadPriority::normal()) -> expected<void, std::error_code>
+    {
+        bool success = true;
+
+        for (size_t i = 0; i < workers_.size(); ++i)
+        {
+            std::string const thread_name = name_prefix + "_" + std::to_string(i);
+
+            if (!workers_[i].set_name(thread_name).has_value())
+            {
+                success = false;
+            }
+
+            if (!workers_[i].set_scheduling_policy(policy, priority).has_value())
+            {
+                success = false;
+            }
+        }
+        if (success)
+            return {};
+        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+    }
+
+    /**
+     * @brief Set CPU affinity for all worker threads
+     */
+    auto set_affinity(ThreadAffinity const& affinity) -> expected<void, std::error_code>
+    {
+        bool success = true;
+
+        for (auto& worker : workers_)
+        {
+            if (!worker.set_affinity(affinity).has_value())
+            {
+                success = false;
+            }
+        }
+        if (success)
+            return {};
+        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+    }
+
+    /**
+     * @brief Distribute workers across available CPUs (round-robin)
+     */
+    auto distribute_across_cpus() -> expected<void, std::error_code>
+    {
+        auto const cpu_count = std::thread::hardware_concurrency();
+        if (cpu_count == 0)
+            return unexpected(std::make_error_code(std::errc::invalid_argument));
+
+        bool success = true;
+
+        for (size_t i = 0; i < workers_.size(); ++i)
+        {
+            ThreadAffinity affinity({static_cast<int>(i % cpu_count)});
+            if (!workers_[i].set_affinity(affinity).has_value())
+            {
+                success = false;
+            }
+        }
+        if (success)
+            return {};
+        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+    }
+
+    void wait_for_tasks()
+    {
+        std::unique_lock<std::mutex> lock(queue_mutex_);
+        task_finished_condition_.wait(
+            lock, [this] { return tasks_.empty() && active_tasks_.load(std::memory_order_acquire) == 0; });
     }
 
     void shutdown()
@@ -857,82 +970,9 @@ class FastThreadPool
         workers_.clear();
     }
 
-    auto configure_threads(std::string const& name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
-                           ThreadPriority priority = ThreadPriority::normal()) -> bool
-    {
-        bool success = true;
-
-        for (size_t i = 0; i < workers_.size(); ++i)
-        {
-            std::string const thread_name = name_prefix + "_" + std::to_string(i);
-
-            if (!workers_[i].set_name(thread_name))
-            {
-                success = false;
-            }
-
-            if (!workers_[i].set_scheduling_policy(policy, priority))
-            {
-                success = false;
-            }
-        }
-
-        return success;
-    }
-
-    auto set_affinity(ThreadAffinity const& affinity) -> bool
-    {
-        bool success = true;
-
-        for (auto& worker : workers_)
-        {
-            if (!worker.set_affinity(affinity))
-            {
-                success = false;
-            }
-        }
-
-        return success;
-    }
-
-    auto distribute_across_cpus() -> bool
-    {
-        auto const cpu_count = std::thread::hardware_concurrency();
-        if (cpu_count == 0)
-            return false;
-
-        bool success = true;
-
-        for (size_t i = 0; i < workers_.size(); ++i)
-        {
-            ThreadAffinity affinity({static_cast<int>(i % cpu_count)});
-            if (!workers_[i].set_affinity(affinity))
-            {
-                success = false;
-            }
-        }
-
-        return success;
-    }
-
-    [[nodiscard]] auto size() const noexcept -> size_t
-    {
-        return num_threads_;
-    }
-
-    [[nodiscard]] auto pending_tasks() const -> size_t
-    {
-        std::lock_guard<std::mutex> lock(queue_mutex_);
-        return tasks_.size();
-    }
-
-    void wait_for_tasks()
-    {
-        std::unique_lock<std::mutex> lock(queue_mutex_);
-        task_finished_condition_.wait(
-            lock, [this] { return tasks_.empty() && active_tasks_.load(std::memory_order_acquire) == 0; });
-    }
-
+    /**
+     * @brief Get performance statistics
+     */
     [[nodiscard]] auto get_statistics() const -> Statistics
     {
         auto const now = std::chrono::steady_clock::now();
@@ -978,11 +1018,11 @@ class FastThreadPool
     std::atomic<bool> stop_;
     std::atomic<size_t> active_tasks_{0};
     std::atomic<size_t> completed_tasks_{0};
-    std::atomic<uint64_t> total_task_time_{0}; // microseconds
+    std::atomic<uint64_t> total_task_time_{0};
 
     std::chrono::steady_clock::time_point start_time_;
 
-    void worker_function(size_t /* worker_id */)
+    void worker_function(size_t /*worker_id*/)
     {
         while (true)
         {
@@ -992,8 +1032,7 @@ class FastThreadPool
             {
                 std::unique_lock<std::mutex> lock(queue_mutex_);
 
-                if (condition_.wait_for(lock, std::chrono::milliseconds(10),
-                                        [this] { return stop_ || !tasks_.empty(); }))
+                if (WaitPolicy::wait(condition_, lock, [this] { return stop_ || !tasks_.empty(); }))
                 {
                     if (stop_ && tasks_.empty())
                     {
@@ -1039,426 +1078,64 @@ class FastThreadPool
 };
 
 /**
- * @brief Simple, general-purpose thread pool.
+ * @brief General-purpose thread pool with indefinite blocking wait.
  *
- * This is a straightforward thread pool implementation suitable for:
- * - Simple workloads with low task counts (< 1k tasks)
- * - General application use (50k-500k tasks/second)
- * - Simple task submission patterns
- * - Lower memory overhead and complexity
- * - Easier to understand and debug
+ * Workers block on condition_variable::wait() when idle - zero CPU
+ * consumption, instant wake-up on task submission. Suitable for most
+ * workloads.
  *
- * For high-throughput scenarios (> 1k tasks), consider @ref FastThreadPool or
- * @ref HighPerformancePool.
- *
- * @par How task execution works
- * When you call submit(), the callable is wrapped in a std::packaged_task
- * and pushed into a single shared std::queue under a mutex lock. One
- * sleeping worker is then woken via condition_variable::notify_one(). The
- * woken worker pops the front task from the queue and executes it. Workers
- * block indefinitely on the condition_variable when the queue is empty (no
- * polling timeout), so they consume zero CPU while idle.
- *
- * @par Execution guarantees
- * - Every successfully submitted task (submit() returned without throwing)
- *   is guaranteed to eventually execute.
- * - submit() throws std::runtime_error if the pool is already shutting
- *   down. In that case the task is NOT enqueued.
- * - Tasks are stored in a FIFO queue. Multiple workers pop concurrently, so
- *   submission order is roughly preserved but completion order is
- *   non-deterministic.
- * - The returned std::future becomes ready once the task finishes. If the
- *   task threw an exception, future.get() rethrows it.
- * - On shutdown(), the stop flag is set and all workers are woken. Each
- *   worker finishes its current task and then exits only if the queue is
- *   empty. This means all tasks that were enqueued before shutdown() are
- *   guaranteed to execute.
- * - wait_for_tasks() blocks until the queue is empty AND no worker is
- *   currently executing a task.
- *
- * @par Thread safety
- * submit() may be called from any thread concurrently. All task-queue access
- * is serialized through queue_mutex_.
- *
- * @par Wake-up behaviour
- * Workers block on a std::condition_variable (no polling timeout), so they
- * consume no CPU while idle but wake instantly when a task is enqueued.
- *
- * @par Internal counter note
- * Unlike @ref FastThreadPool and @ref HighPerformancePool, active_tasks_ and
- * completed_tasks_ are incremented/decremented while queue_mutex_ is held.
- * This means they are always consistent with the queue size, but every task
- * completion acquires the mutex an extra time.
- *
- * @par Exception handling
- * Exceptions thrown by tasks are caught inside the worker loop. They are
- * stored in the std::future returned by submit(). The worker thread
- * continues processing.
- *
- * @par Lifetime
- * The destructor calls shutdown() and joins all worker threads. Can block
- * if tasks are still running.
- *
- * @par Copyability / movability
- * Not copyable, not movable.
+ * @see ThreadPoolBase, IndefiniteWait
  */
-class ThreadPool
-{
-  public:
-    using Task = std::function<void()>;
-
-    struct Statistics
-    {
-        size_t total_threads;
-        size_t active_threads;
-        size_t pending_tasks;
-        size_t completed_tasks;
-    };
-
-    explicit ThreadPool(size_t num_threads = std::thread::hardware_concurrency())
-        : num_threads_(num_threads == 0 ? 1 : num_threads), stop_(false)
-    {
-        workers_.reserve(num_threads_);
-
-        // Create worker threads
-        for (size_t i = 0; i < num_threads_; ++i)
-        {
-            workers_.emplace_back(&ThreadPool::worker_function, this);
-        }
-    }
-
-    ThreadPool(ThreadPool const&) = delete;
-    auto operator=(ThreadPool const&) -> ThreadPool& = delete;
-
-    ~ThreadPool()
-    {
-        shutdown();
-    }
-
-    /**
-     * @brief Submit a task to the thread pool
-     */
-    template <typename F, typename... Args>
-    auto submit(F&& f, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>
-    {
-        using return_type = std::invoke_result_t<F, Args...>;
-
-        auto task = std::make_shared<std::packaged_task<return_type()>>(
-            std::bind(std::forward<F>(f), std::forward<Args>(args)...));
-
-        std::future<return_type> result = task->get_future();
-
-        {
-            std::lock_guard<std::mutex> lock(queue_mutex_);
-
-            if (stop_)
-            {
-                throw std::runtime_error("ThreadPool is shutting down");
-            }
-
-            tasks_.emplace([task]() { (*task)(); });
-        }
-
-        condition_.notify_one();
-        return result;
-    }
-
-    /**
-     * @brief Submit multiple tasks
-     */
-    template <typename Iterator>
-    auto submit_range(Iterator begin, Iterator end) -> std::vector<std::future<void>>
-    {
-        std::vector<std::future<void>> futures;
-        futures.reserve(std::distance(begin, end));
-
-        for (auto it = begin; it != end; ++it)
-        {
-            futures.push_back(submit(*it));
-        }
-
-        return futures;
-    }
-
-    /**
-     * @brief Apply a function to a range of values in parallel
-     */
-    template <typename Iterator, typename F>
-    void parallel_for_each(Iterator begin, Iterator end, F&& func)
-    {
-        std::vector<std::future<void>> futures;
-        futures.reserve(std::distance(begin, end));
-
-        for (auto it = begin; it != end; ++it)
-        {
-            futures.push_back(submit([func, it]() { func(*it); }));
-        }
-
-        // Wait for all tasks to complete
-        for (auto& future : futures)
-        {
-            future.wait();
-        }
-    }
-
-    [[nodiscard]] auto size() const noexcept -> size_t
-    {
-        return num_threads_;
-    }
-
-    [[nodiscard]] auto pending_tasks() const -> size_t
-    {
-        std::lock_guard<std::mutex> lock(queue_mutex_);
-        return tasks_.size();
-    }
-
-    /**
-     * @brief Configure thread properties
-     */
-    auto configure_threads(std::string const& name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
-                           ThreadPriority priority = ThreadPriority::normal()) -> bool
-    {
-        bool success = true;
-
-        for (size_t i = 0; i < workers_.size(); ++i)
-        {
-            std::string const thread_name = name_prefix + "_" + std::to_string(i);
-
-            if (!workers_[i].set_name(thread_name))
-            {
-                success = false;
-            }
-
-            if (!workers_[i].set_scheduling_policy(policy, priority))
-            {
-                success = false;
-            }
-        }
-
-        return success;
-    }
-
-    auto set_affinity(ThreadAffinity const& affinity) -> bool
-    {
-        bool success = true;
-
-        for (auto& worker : workers_)
-        {
-            if (!worker.set_affinity(affinity))
-            {
-                success = false;
-            }
-        }
-
-        return success;
-    }
-
-    auto distribute_across_cpus() -> bool
-    {
-        auto const cpu_count = std::thread::hardware_concurrency();
-        if (cpu_count == 0)
-            return false;
-
-        bool success = true;
-
-        for (size_t i = 0; i < workers_.size(); ++i)
-        {
-            ThreadAffinity affinity({static_cast<int>(i % cpu_count)});
-            if (!workers_[i].set_affinity(affinity))
-            {
-                success = false;
-            }
-        }
-
-        return success;
-    }
-
-    void wait_for_tasks()
-    {
-        std::unique_lock<std::mutex> lock(queue_mutex_);
-        task_finished_condition_.wait(lock, [this] { return tasks_.empty() && active_tasks_ == 0; });
-    }
-
-    void shutdown()
-    {
-        {
-            std::lock_guard<std::mutex> lock(queue_mutex_);
-            if (stop_)
-                return;
-            stop_ = true;
-        }
-
-        condition_.notify_all();
-
-        for (auto& worker : workers_)
-        {
-            if (worker.joinable())
-            {
-                worker.join();
-            }
-        }
-
-        workers_.clear();
-    }
-
-    [[nodiscard]] auto get_statistics() const -> Statistics
-    {
-        std::lock_guard<std::mutex> lock(queue_mutex_);
-        Statistics stats;
-        stats.total_threads = num_threads_;
-        stats.active_threads = active_tasks_;
-        stats.pending_tasks = tasks_.size();
-        stats.completed_tasks = completed_tasks_;
-        return stats;
-    }
-
-  private:
-    size_t num_threads_;
-    std::vector<ThreadWrapper> workers_;
-    std::queue<Task> tasks_;
-
-    mutable std::mutex queue_mutex_;
-    std::condition_variable condition_;
-    std::condition_variable task_finished_condition_;
-    std::atomic<bool> stop_;
-    std::atomic<size_t> active_tasks_{0};
-    std::atomic<size_t> completed_tasks_{0};
-
-    void worker_function()
-    {
-        while (true)
-        {
-            Task task;
-
-            {
-                std::unique_lock<std::mutex> lock(queue_mutex_);
-
-                condition_.wait(lock, [this] { return stop_ || !tasks_.empty(); });
-
-                if (stop_ && tasks_.empty())
-                {
-                    return;
-                }
-
-                task = std::move(tasks_.front());
-                tasks_.pop();
-                ++active_tasks_;
-            }
-
-            try
-            {
-                task();
-            }
-            catch (...)
-            {
-                // Log exception or handle as needed
-            }
-
-            {
-                std::lock_guard<std::mutex> lock(queue_mutex_);
-                --active_tasks_;
-                ++completed_tasks_;
-            }
-
-            task_finished_condition_.notify_all();
-        }
-    }
-};
+using ThreadPool = ThreadPoolBase<IndefiniteWait>;
 
 /**
- * @brief Singleton accessor for a process-wide @ref ThreadPool instance.
+ * @brief Thread pool with 10 ms polling wait for lower wake-up latency.
  *
- * Provides static convenience methods that forward to a single @ref ThreadPool
+ * Workers poll with condition_variable::wait_for(10 ms), trading a small
+ * amount of idle CPU for more consistent latency under bursty workloads.
+ *
+ * @see ThreadPoolBase, PollingWait
+ */
+using FastThreadPool = ThreadPoolBase<PollingWait>;
+
+// ---------------------------------------------------------------------------
+// GlobalPool
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Singleton accessor for a process-wide pool instance.
+ *
+ * Provides static convenience methods that forward to a single pool
  * whose lifetime is managed as a function-local static (Meyer's singleton).
- *
- * @par Thread safety
- * The underlying @ref ThreadPool is created on the first call to instance() and is
- * guaranteed to be thread-safe in C++11 and later (magic statics). All
- * forwarded methods (submit, submit_range, parallel_for_each) are as
- * thread-safe as the corresponding @ref ThreadPool methods.
- *
- * @par Pool size
- * The pool is created with @c std::thread::hardware_concurrency() threads.
- * This size is fixed for the lifetime of the process; there is no API to
- * resize the singleton pool after creation.
- *
- * @par Static destruction order
- * Because the pool is a function-local static, it is destroyed during static
- * destruction in reverse order of construction. Submitting work to the global
- * pool from destructors of other static objects is undefined behaviour if the
- * pool has already been destroyed. Prefer explicit lifetime management in
- * programs with complex static initialization dependencies.
- *
- * @par Copyability / movability
- * Not instantiable (private constructor). All access is through static
- * methods.
- */
-class GlobalThreadPool
-{
-  public:
-    static auto instance() -> ThreadPool&
-    {
-        static ThreadPool pool(std::thread::hardware_concurrency());
-        return pool;
-    }
-
-    template <typename F, typename... Args>
-    static auto submit(F&& f, Args&&... args)
-    {
-        return instance().submit(std::forward<F>(f), std::forward<Args>(args)...);
-    }
-
-    template <typename Iterator>
-    static auto submit_range(Iterator begin, Iterator end)
-    {
-        return instance().submit_range(begin, end);
-    }
-
-    template <typename Iterator, typename F>
-    static void parallel_for_each(Iterator begin, Iterator end, F&& func)
-    {
-        instance().parallel_for_each(begin, end, std::forward<F>(func));
-    }
-
-  private:
-    GlobalThreadPool() = default;
-};
-
-/**
- * @brief Singleton accessor for a process-wide @ref HighPerformancePool instance.
- *
- * Provides static convenience methods that forward to a single
- * @ref HighPerformancePool whose lifetime is managed as a function-local static
- * (Meyer's singleton).
  *
  * @par Thread safety
  * The underlying pool is created on the first call to instance() and is
  * guaranteed to be thread-safe in C++11 and later (magic statics). All
- * forwarded methods (submit, submit_batch, parallel_for_each) are as
- * thread-safe as the corresponding @ref HighPerformancePool methods.
+ * forwarded methods are as thread-safe as the corresponding pool methods.
  *
  * @par Pool size
  * The pool is created with @c std::thread::hardware_concurrency() threads.
- * This size is fixed for the lifetime of the process; there is no API to
- * resize the singleton pool after creation.
+ * This size is fixed for the lifetime of the process.
  *
  * @par Static destruction order
  * Because the pool is a function-local static, it is destroyed during static
  * destruction in reverse order of construction. Submitting work to the global
  * pool from destructors of other static objects is undefined behaviour if the
- * pool has already been destroyed. Prefer explicit lifetime management in
- * programs with complex static initialization dependencies.
+ * pool has already been destroyed.
  *
  * @par Copyability / movability
  * Not instantiable (private constructor). All access is through static
  * methods.
+ *
+ * @tparam PoolType The concrete pool type to wrap.
  */
-class GlobalHighPerformancePool
+template <typename PoolType>
+class GlobalPool
 {
   public:
-    static auto instance() -> HighPerformancePool&
+    static auto instance() -> PoolType&
     {
-        static HighPerformancePool pool(std::thread::hardware_concurrency());
+        static PoolType pool(std::thread::hardware_concurrency());
         return pool;
     }
 
@@ -1481,8 +1158,14 @@ class GlobalHighPerformancePool
     }
 
   private:
-    GlobalHighPerformancePool() = default;
+    GlobalPool() = default;
 };
+
+/** @brief Singleton @ref ThreadPool accessor. */
+using GlobalThreadPool = GlobalPool<ThreadPool>;
+
+/** @brief Singleton @ref HighPerformancePool accessor. */
+using GlobalHighPerformancePool = GlobalPool<HighPerformancePool>;
 
 /**
  * @brief Convenience wrapper that applies a callable to every element of a
@@ -1494,17 +1177,6 @@ class GlobalHighPerformancePool
  * @endcode
  *
  * The call blocks until every element has been processed.
- *
- * @par Thread safety
- * The function itself is thread-safe (it forwards to @ref GlobalThreadPool which
- * guards its queue with a mutex). However, the caller must ensure that
- * concurrent invocations of @p func on different elements do not race on
- * shared state.
- *
- * @par Pool lifetime
- * On the first call, GlobalThreadPool::instance() lazily creates the
- * singleton pool sized to @c std::thread::hardware_concurrency(). See
- * @ref GlobalThreadPool for static-destruction-order caveats.
  *
  * @tparam Container Any type exposing begin() / end() iterators.
  * @tparam F         Callable compatible with @c void(Container::value_type&).

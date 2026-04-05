@@ -159,67 +159,18 @@ class ThreadControlBlock
     [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
-        if (!handle_)
-            return unexpected(std::make_error_code(std::errc::no_such_process));
-        using SetThreadGroupAffinityFn = BOOL(WINAPI*)(HANDLE, const GROUP_AFFINITY*, PGROUP_AFFINITY);
-        HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
-        if (hMod)
-        {
-            auto set_group_affinity = reinterpret_cast<SetThreadGroupAffinityFn>(
-                reinterpret_cast<void*>(GetProcAddress(hMod, "SetThreadGroupAffinity")));
-            if (set_group_affinity && affinity.has_any())
-            {
-                GROUP_AFFINITY ga{};
-                ga.Mask = static_cast<KAFFINITY>(affinity.get_mask());
-                ga.Group = affinity.get_group();
-                if (set_group_affinity(handle_, &ga, nullptr) != 0)
-                    return {};
-                return unexpected(std::make_error_code(std::errc::operation_not_permitted));
-            }
-        }
-        DWORD_PTR mask = static_cast<DWORD_PTR>(affinity.get_mask());
-        if (SetThreadAffinityMask(handle_, mask) != 0)
-            return {};
-        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+        return detail::apply_affinity(handle_, affinity);
 #else
-        if (pthread_setaffinity_np(pthreadHandle_, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
+        return detail::apply_affinity(pthreadHandle_, affinity);
 #endif
     }
 
     [[nodiscard]] auto set_priority(ThreadPriority priority) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
-        if (!handle_)
-            return unexpected(std::make_error_code(std::errc::no_such_process));
-        int win_priority;
-        int prio_val = priority.value();
-        if (prio_val <= -10)
-            win_priority = THREAD_PRIORITY_IDLE;
-        else if (prio_val <= -5)
-            win_priority = THREAD_PRIORITY_LOWEST;
-        else if (prio_val < 0)
-            win_priority = THREAD_PRIORITY_BELOW_NORMAL;
-        else if (prio_val == 0)
-            win_priority = THREAD_PRIORITY_NORMAL;
-        else if (prio_val <= 5)
-            win_priority = THREAD_PRIORITY_ABOVE_NORMAL;
-        else if (prio_val <= 10)
-            win_priority = THREAD_PRIORITY_HIGHEST;
-        else
-            win_priority = THREAD_PRIORITY_TIME_CRITICAL;
-        if (SetThreadPriority(handle_, win_priority) != 0)
-            return {};
-        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+        return detail::apply_priority(handle_, priority);
 #else
-        const int policy = SCHED_OTHER;
-        auto params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
-        if (!params_result.has_value())
-            return unexpected(params_result.error());
-        if (pthread_setschedparam(pthreadHandle_, policy, &params_result.value()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
+        return detail::apply_priority(pthreadHandle_, priority);
 #endif
     }
 
@@ -227,15 +178,9 @@ class ThreadControlBlock
         -> expected<void, std::error_code>
     {
 #ifdef _WIN32
-        return set_priority(priority);
+        return detail::apply_scheduling_policy(handle_, policy, priority);
 #else
-        const int policy_int = static_cast<int>(policy);
-        auto params_result = SchedulerParams::create_for_policy(policy, priority);
-        if (!params_result.has_value())
-            return unexpected(params_result.error());
-        if (pthread_setschedparam(pthreadHandle_, policy_int, &params_result.value()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
+        return detail::apply_scheduling_policy(pthreadHandle_, policy, priority);
 #endif
     }
 

@@ -279,118 +279,18 @@ class BaseThreadWrapper : protected detail::ThreadStorage<ThreadType, OwnershipT
 
     [[nodiscard]] auto set_priority(ThreadPriority priority) -> expected<void, std::error_code>
     {
-#ifdef _WIN32
-        const auto handle = native_handle();
-        // Map ThreadPriority to Windows priority
-        // Windows thread priorities range from -15 (THREAD_PRIORITY_IDLE) to +15 (THREAD_PRIORITY_TIME_CRITICAL)
-        // We'll map the priority value to Windows constants
-        int win_priority;
-        int prio_val = priority.value();
-
-        if (prio_val <= -10)
-        {
-            win_priority = THREAD_PRIORITY_IDLE;
-        }
-        else if (prio_val <= -5)
-        {
-            win_priority = THREAD_PRIORITY_LOWEST;
-        }
-        else if (prio_val < 0)
-        {
-            win_priority = THREAD_PRIORITY_BELOW_NORMAL;
-        }
-        else if (prio_val == 0)
-        {
-            win_priority = THREAD_PRIORITY_NORMAL;
-        }
-        else if (prio_val <= 5)
-        {
-            win_priority = THREAD_PRIORITY_ABOVE_NORMAL;
-        }
-        else if (prio_val <= 10)
-        {
-            win_priority = THREAD_PRIORITY_HIGHEST;
-        }
-        else
-        {
-            win_priority = THREAD_PRIORITY_TIME_CRITICAL;
-        }
-
-        if (SetThreadPriority(handle, win_priority) != 0)
-            return {};
-        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
-#else
-        const auto handle = native_handle();
-        int const policy = SCHED_OTHER;
-
-        auto params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
-
-        if (!params_result.has_value())
-        {
-            return unexpected(params_result.error());
-        }
-
-        if (pthread_setschedparam(handle, policy, &params_result.value()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
-#endif
+        return detail::apply_priority(native_handle(), priority);
     }
 
     [[nodiscard]] auto set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority)
         -> expected<void, std::error_code>
     {
-#ifdef _WIN32
-        // Windows doesn't have the same scheduling policy concept as Linux
-        // We'll just set the priority and return success
-        return set_priority(priority);
-#else
-        const auto handle = native_handle();
-        int const policy_int = static_cast<int>(policy);
-
-        auto params_result = SchedulerParams::create_for_policy(policy, priority);
-        if (!params_result.has_value())
-        {
-            return unexpected(params_result.error());
-        }
-
-        if (pthread_setschedparam(handle, policy_int, &params_result.value()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
-#endif
+        return detail::apply_scheduling_policy(native_handle(), policy, priority);
     }
 
     [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) -> expected<void, std::error_code>
     {
-#ifdef _WIN32
-        const auto handle = native_handle();
-        // Prefer Group Affinity if available
-        using SetThreadGroupAffinityFn = BOOL(WINAPI*)(HANDLE, const GROUP_AFFINITY*, PGROUP_AFFINITY);
-        HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
-        if (hMod)
-        {
-            auto set_group_affinity = reinterpret_cast<SetThreadGroupAffinityFn>(
-                reinterpret_cast<void*>(GetProcAddress(hMod, "SetThreadGroupAffinity")));
-            if (set_group_affinity && affinity.has_any())
-            {
-                GROUP_AFFINITY ga{};
-                ga.Mask = static_cast<KAFFINITY>(affinity.get_mask());
-                ga.Group = affinity.get_group();
-                if (set_group_affinity(handle, &ga, nullptr) != 0)
-                    return {};
-                return unexpected(std::make_error_code(std::errc::operation_not_permitted));
-            }
-        }
-        // Fallback to legacy mask (single-group systems)
-        DWORD_PTR mask = static_cast<DWORD_PTR>(affinity.get_mask());
-        if (SetThreadAffinityMask(handle, mask) != 0)
-            return {};
-        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
-#else
-        const auto handle = native_handle();
-        if (pthread_setaffinity_np(handle, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
-#endif
+        return detail::apply_affinity(native_handle(), affinity);
     }
 
     [[nodiscard]] auto get_affinity() const -> std::optional<ThreadAffinity>
@@ -610,14 +510,9 @@ class ThreadWrapper : public BaseThreadWrapper<std::thread, detail::OwningTag>
     static auto create_with_config(std::string const& name, SchedulingPolicy policy, ThreadPriority priority, F&& f,
                                    Args&&... args) -> ThreadWrapper
     {
-
         ThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
-        if (auto r = wrapper.set_name(name); !r.has_value())
-        {
-        }
-        if (auto r = wrapper.set_scheduling_policy(policy, priority); !r.has_value())
-        {
-        }
+        (void)wrapper.set_name(name);
+        (void)wrapper.set_scheduling_policy(policy, priority);
         return wrapper;
     }
 };
@@ -765,14 +660,9 @@ class JThreadWrapper : public BaseThreadWrapper<std::jthread, detail::OwningTag>
     static auto create_with_config(std::string const& name, SchedulingPolicy policy, ThreadPriority priority, F&& f,
                                    Args&&... args) -> JThreadWrapper
     {
-
         JThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
-        if (auto r = wrapper.set_name(name); !r.has_value())
-        {
-        }
-        if (auto r = wrapper.set_scheduling_policy(policy, priority); !r.has_value())
-        {
-        }
+        (void)wrapper.set_name(name);
+        (void)wrapper.set_scheduling_policy(policy, priority);
         return wrapper;
     }
 };
@@ -977,13 +867,7 @@ class ThreadByNameView
 #else
         if (!found())
             return unexpected(std::make_error_code(std::errc::no_such_process));
-        int const policy = SCHED_OTHER;
-        auto params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
-        if (!params_result.has_value())
-            return unexpected(params_result.error());
-        if (sched_setscheduler(handle_, policy, &params_result.value()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
+        return detail::apply_priority(handle_, priority);
 #endif
     }
 
@@ -995,13 +879,7 @@ class ThreadByNameView
 #else
         if (!found())
             return unexpected(std::make_error_code(std::errc::no_such_process));
-        int policy_int = static_cast<int>(policy);
-        auto params_result = SchedulerParams::create_for_policy(policy, priority);
-        if (!params_result.has_value())
-            return unexpected(params_result.error());
-        if (sched_setscheduler(handle_, policy_int, &params_result.value()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
+        return detail::apply_scheduling_policy(handle_, policy, priority);
 #endif
     }
 
@@ -1012,9 +890,7 @@ class ThreadByNameView
 #else
         if (!found())
             return unexpected(std::make_error_code(std::errc::no_such_process));
-        if (sched_setaffinity(handle_, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
+        return detail::apply_affinity(handle_, affinity);
 #endif
     }
 

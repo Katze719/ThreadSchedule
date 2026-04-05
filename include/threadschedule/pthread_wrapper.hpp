@@ -168,40 +168,18 @@ class PThreadWrapper
 
     [[nodiscard]] auto set_priority(ThreadPriority priority) const -> expected<void, std::error_code>
     {
-        int const policy = SCHED_OTHER;
-        auto params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
-
-        if (!params_result.has_value())
-        {
-            return unexpected(params_result.error());
-        }
-
-        if (pthread_setschedparam(thread_, policy, &params_result.value()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
+        return detail::apply_priority(thread_, priority);
     }
 
     [[nodiscard]] auto set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority) const
         -> expected<void, std::error_code>
     {
-        int const policy_int = static_cast<int>(policy);
-        auto params_result = SchedulerParams::create_for_policy(policy, priority);
-
-        if (!params_result.has_value())
-        {
-            return unexpected(params_result.error());
-        }
-
-        if (pthread_setschedparam(thread_, policy_int, &params_result.value()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
+        return detail::apply_scheduling_policy(thread_, policy, priority);
     }
 
     [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) const -> expected<void, std::error_code>
     {
-        if (pthread_setaffinity_np(thread_, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
+        return detail::apply_affinity(thread_, affinity);
     }
 
     [[nodiscard]] auto get_affinity() const -> std::optional<ThreadAffinity>
