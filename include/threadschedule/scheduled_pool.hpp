@@ -184,23 +184,7 @@ class ScheduledThreadPoolT
      */
     auto schedule_at(TimePoint time_point, Task task) -> ScheduledTaskHandle
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        uint64_t const task_id = next_task_id_++;
-        ScheduledTaskHandle handle(task_id);
-
-        ScheduledTaskInfo info;
-        info.id = task_id;
-        info.next_run = time_point;
-        info.interval = Duration::zero();
-        info.task = std::move(task);
-        info.cancelled = handle.get_cancel_flag();
-        info.periodic = false;
-
-        scheduled_tasks_.insert({time_point, std::move(info)});
-        condition_.notify_one();
-
-        return handle;
+        return insert_task(time_point, Duration::zero(), std::move(task), false);
     }
 
     /**
@@ -226,23 +210,8 @@ class ScheduledThreadPoolT
      */
     auto schedule_periodic_after(Duration initial_delay, Duration interval, Task task) -> ScheduledTaskHandle
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        uint64_t const task_id = next_task_id_++;
-        ScheduledTaskHandle handle(task_id);
-
-        ScheduledTaskInfo info;
-        info.id = task_id;
-        info.next_run = std::chrono::steady_clock::now() + initial_delay;
-        info.interval = interval;
-        info.task = std::move(task);
-        info.cancelled = handle.get_cancel_flag();
-        info.periodic = true;
-
-        scheduled_tasks_.insert({info.next_run, std::move(info)});
-        condition_.notify_one();
-
-        return handle;
+        auto const run_time = std::chrono::steady_clock::now() + initial_delay;
+        return insert_task(run_time, interval, std::move(task), true);
     }
 
     /**
@@ -298,9 +267,7 @@ class ScheduledThreadPoolT
     /**
      * @brief Configure worker threads
      *
-     * Note: Return type depends on the underlying pool type.
-     * @ref ThreadPool returns bool, @ref HighPerformancePool returns expected<void, std::error_code>.
-     * For consistent behavior, access the pool directly via thread_pool().
+     * Returns expected<void, std::error_code> from the underlying pool.
      */
     auto configure_threads(std::string const& name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
                            ThreadPriority priority = ThreadPriority::normal())
@@ -318,6 +285,27 @@ class ScheduledThreadPoolT
 
     std::multimap<TimePoint, ScheduledTaskInfo> scheduled_tasks_;
     std::atomic<uint64_t> next_task_id_;
+
+    auto insert_task(TimePoint run_time, Duration interval, Task task, bool periodic) -> ScheduledTaskHandle
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        uint64_t const task_id = next_task_id_++;
+        ScheduledTaskHandle handle(task_id);
+
+        ScheduledTaskInfo info;
+        info.id = task_id;
+        info.next_run = run_time;
+        info.interval = interval;
+        info.task = std::move(task);
+        info.cancelled = handle.get_cancel_flag();
+        info.periodic = periodic;
+
+        scheduled_tasks_.insert({run_time, std::move(info)});
+        condition_.notify_one();
+
+        return handle;
+    }
 
     void scheduler_loop()
     {

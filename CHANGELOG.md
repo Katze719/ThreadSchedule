@@ -1,3 +1,85 @@
+# Changelog
+
+## v2.0.0 (unreleased)
+
+### Breaking Changes
+
+- **`ThreadPool` and `FastThreadPool` are now type aliases** for
+  `ThreadPoolBase<IndefiniteWait>` and `ThreadPoolBase<PollingWait>`. Behavior
+  is unchanged, but code that forward-declares or specializes on the concrete
+  class name may need adjustment.
+
+- **`configure_threads()`, `set_affinity()`, `distribute_across_cpus()`** on
+  `ThreadPool` and `FastThreadPool` now return `expected<void, std::error_code>`
+  instead of `bool`. `HighPerformancePool` already used this return type.
+  Migration: `if (pool.configure_threads(...))` still compiles (expected has
+  `operator bool`), but code that stores the result in a `bool` variable needs
+  updating to `auto` or the expected type.
+
+- **`ThreadPool::Statistics`** now includes `tasks_per_second` and
+  `avg_task_time` fields (previously only on `FastThreadPool` and
+  `HighPerformancePool`).
+
+- **`submit_range()` removed** from `ThreadPool`. Use `submit_batch()` instead
+  (consistent with `FastThreadPool` and `HighPerformancePool`). `submit_batch()`
+  is also more efficient: it acquires the queue lock once for the entire batch
+  instead of per-item.
+
+- **`GlobalThreadPool::submit_range()` removed**. Use
+  `GlobalThreadPool::submit_batch()`.
+
+- **`HighPerformancePoolWithErrors`, `FastThreadPoolWithErrors`,
+  `ThreadPoolWithErrors`** are now type aliases for `PoolWithErrors<Pool>`. The
+  public API is unchanged.
+
+- **`GlobalThreadPool`, `GlobalHighPerformancePool`** are now type aliases for
+  `GlobalPool<Pool>`. The public API is unchanged.
+
+### New Types
+
+- `ThreadPoolBase<WaitPolicy>` - parameterized single-queue thread pool.
+- `IndefiniteWait` / `PollingWait` - wait policy types for `ThreadPoolBase`.
+- `PoolWithErrors<PoolType>` - generic error-handling pool wrapper.
+- `GlobalPool<PoolType>` - generic singleton pool accessor.
+
+### Internal Improvements
+
+- **~1000 lines of code duplication removed** across `thread_pool.hpp`,
+  `thread_pool_with_errors.hpp`, `thread_wrapper.hpp`, `thread_registry.hpp`,
+  `pthread_wrapper.hpp`, `profiles.hpp`, and `scheduled_pool.hpp`.
+
+- **Priority / affinity / scheduling policy** OS-level logic centralized into
+  `detail::apply_priority()`, `detail::apply_scheduling_policy()`, and
+  `detail::apply_affinity()` free functions (overloaded for `pthread_t`,
+  `pid_t`, and `HANDLE`). `BaseThreadWrapper`, `ThreadControlBlock`,
+  `PThreadWrapper`, and `ThreadByNameView` now delegate to these shared
+  implementations.
+
+- **`apply_profile()` overloads** refactored to use shared
+  `detail::apply_profile_to()` and `detail::apply_profile_to_pool()` helpers.
+
+- **`ScheduledThreadPoolT`**: `schedule_at()` and `schedule_periodic_after()`
+  now share a private `insert_task()` helper.
+
+### Migration Guide
+
+```cpp
+// v1: bool return
+bool ok = pool.configure_threads("worker");
+
+// v2: expected return (operator bool still works in conditions)
+auto result = pool.configure_threads("worker");
+if (!result.has_value()) {
+    std::cerr << result.error().message() << std::endl;
+}
+
+// v1: submit_range
+auto futures = pool.submit_range(tasks.begin(), tasks.end());
+
+// v2: submit_batch (same signature, more efficient)
+auto futures = pool.submit_batch(tasks.begin(), tasks.end());
+```
+
 ## v1.4.1
 
 - Fix: `*WrapperReg` types (`ThreadWrapperReg`, `JThreadWrapperReg`,
