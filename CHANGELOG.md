@@ -137,6 +137,10 @@
 
 ### Migration Guide
 
+Full step-by-step guide: **[docs/MIGRATION_V2.md](docs/MIGRATION_V2.md)**.
+
+Quick reference:
+
 ```cpp
 // v1: bool return
 bool ok = pool.configure_threads("worker");
