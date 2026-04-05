@@ -38,25 +38,7 @@ class PoolWithErrors
     template <typename F, typename... Args>
     auto submit(F&& f, Args&&... args) -> FutureWithErrorHandler<std::invoke_result_t<F, Args...>>
     {
-        auto handler = error_handler_;
-        auto wrapped_task = [f = std::forward<F>(f), args = std::make_tuple(std::forward<Args>(args)...), handler]() {
-            try
-            {
-                return std::apply(f, args);
-            }
-            catch (...)
-            {
-                TaskError error;
-                error.exception = std::current_exception();
-                error.thread_id = std::this_thread::get_id();
-                error.timestamp = std::chrono::steady_clock::now();
-                handler->handle_error(error);
-                throw;
-            }
-        };
-
-        auto future = pool_.submit(std::move(wrapped_task));
-        return FutureWithErrorHandler<std::invoke_result_t<F, Args...>>(std::move(future));
+        return submit_impl({}, std::forward<F>(f), std::forward<Args>(args)...);
     }
 
     /**
@@ -66,27 +48,7 @@ class PoolWithErrors
     auto submit_with_description(std::string const& description, F&& f, Args&&... args)
         -> FutureWithErrorHandler<std::invoke_result_t<F, Args...>>
     {
-        auto handler = error_handler_;
-        auto wrapped_task = [f = std::forward<F>(f), args = std::make_tuple(std::forward<Args>(args)...), handler,
-                             description]() {
-            try
-            {
-                return std::apply(f, args);
-            }
-            catch (...)
-            {
-                TaskError error;
-                error.exception = std::current_exception();
-                error.task_description = description;
-                error.thread_id = std::this_thread::get_id();
-                error.timestamp = std::chrono::steady_clock::now();
-                handler->handle_error(error);
-                throw;
-            }
-        };
-
-        auto future = pool_.submit(std::move(wrapped_task));
-        return FutureWithErrorHandler<std::invoke_result_t<F, Args...>>(std::move(future));
+        return submit_impl(description, std::forward<F>(f), std::forward<Args>(args)...);
     }
 
     auto add_error_callback(ErrorCallback callback) -> size_t
@@ -156,6 +118,27 @@ class PoolWithErrors
     }
 
   private:
+    template <typename F, typename... Args>
+    auto submit_impl(std::string description, F&& f, Args&&... args)
+        -> FutureWithErrorHandler<std::invoke_result_t<F, Args...>>
+    {
+        auto handler = error_handler_;
+        auto wrapped_task = [f = std::forward<F>(f), args = std::make_tuple(std::forward<Args>(args)...), handler,
+                             desc = std::move(description)]() {
+            try
+            {
+                return std::apply(f, args);
+            }
+            catch (...)
+            {
+                handler->handle_error(TaskError::capture(desc));
+                throw;
+            }
+        };
+        auto future = pool_.submit(std::move(wrapped_task));
+        return FutureWithErrorHandler<std::invoke_result_t<F, Args...>>(std::move(future));
+    }
+
     PoolType pool_;
     std::shared_ptr<ErrorHandler> error_handler_;
 };

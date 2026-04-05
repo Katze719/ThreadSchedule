@@ -154,43 +154,36 @@ class ThreadControlBlock
     {
         return stdId_;
     }
-    // Removed name/component metadata from control block; metadata lives in RegisteredThreadInfo
-
-    [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) const -> expected<void, std::error_code>
+  private:
+    [[nodiscard]] auto native_handle() const
     {
 #ifdef _WIN32
-        return detail::apply_affinity(handle_, affinity);
+        return handle_;
 #else
-        return detail::apply_affinity(pthreadHandle_, affinity);
+        return pthreadHandle_;
 #endif
+    }
+
+  public:
+    [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) const -> expected<void, std::error_code>
+    {
+        return detail::apply_affinity(native_handle(), affinity);
     }
 
     [[nodiscard]] auto set_priority(ThreadPriority priority) const -> expected<void, std::error_code>
     {
-#ifdef _WIN32
-        return detail::apply_priority(handle_, priority);
-#else
-        return detail::apply_priority(pthreadHandle_, priority);
-#endif
+        return detail::apply_priority(native_handle(), priority);
     }
 
     [[nodiscard]] auto set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority) const
         -> expected<void, std::error_code>
     {
-#ifdef _WIN32
-        return detail::apply_scheduling_policy(handle_, policy, priority);
-#else
-        return detail::apply_scheduling_policy(pthreadHandle_, policy, priority);
-#endif
+        return detail::apply_scheduling_policy(native_handle(), policy, priority);
     }
 
     [[nodiscard]] auto set_name(std::string const& name) const -> expected<void, std::error_code>
     {
-#ifdef _WIN32
-        return detail::apply_name(handle_, name);
-#else
-        return detail::apply_name(pthreadHandle_, name);
-#endif
+        return detail::apply_name(native_handle(), name);
     }
 
     static auto create_for_current_thread() -> std::shared_ptr<ThreadControlBlock>
@@ -218,6 +211,86 @@ class ThreadControlBlock
     pthread_t pthreadHandle_{};
 #endif
 };
+
+namespace detail
+{
+
+/**
+ * @brief CRTP mixin that provides functional-style query facade methods.
+ *
+ * The derived class must implement a public @c query() method returning a
+ * QueryView-like object. All facade methods (filter, map, for_each,
+ * find_if, any, all, none, take, skip, count, empty, apply) delegate to it.
+ *
+ * Return types are deduced via @c auto so the mixin can be used as a base
+ * class before the concrete QueryView type is fully defined (CRTP).
+ *
+ * @tparam Derived CRTP derived type.
+ */
+template <typename Derived>
+class QueryFacadeMixin
+{
+    auto self() const -> Derived const& { return static_cast<Derived const&>(*this); }
+
+  public:
+    template <typename Predicate>
+    [[nodiscard]] auto filter(Predicate&& pred) const
+    {
+        return self().query().filter(std::forward<Predicate>(pred));
+    }
+
+    [[nodiscard]] auto count() const -> size_t { return self().query().count(); }
+
+    [[nodiscard]] auto empty() const -> bool { return self().query().empty(); }
+
+    template <typename Fn>
+    void for_each(Fn&& fn) const
+    {
+        self().query().for_each(std::forward<Fn>(fn));
+    }
+
+    template <typename Predicate, typename Fn>
+    void apply(Predicate&& pred, Fn&& fn) const
+    {
+        self().query().filter(std::forward<Predicate>(pred)).for_each(std::forward<Fn>(fn));
+    }
+
+    template <typename Fn>
+    [[nodiscard]] auto map(Fn&& fn) const -> std::vector<std::invoke_result_t<Fn, RegisteredThreadInfo const&>>
+    {
+        return self().query().map(std::forward<Fn>(fn));
+    }
+
+    template <typename Predicate>
+    [[nodiscard]] auto find_if(Predicate&& pred) const -> std::optional<RegisteredThreadInfo>
+    {
+        return self().query().find_if(std::forward<Predicate>(pred));
+    }
+
+    template <typename Predicate>
+    [[nodiscard]] auto any(Predicate&& pred) const -> bool
+    {
+        return self().query().any(std::forward<Predicate>(pred));
+    }
+
+    template <typename Predicate>
+    [[nodiscard]] auto all(Predicate&& pred) const -> bool
+    {
+        return self().query().all(std::forward<Predicate>(pred));
+    }
+
+    template <typename Predicate>
+    [[nodiscard]] auto none(Predicate&& pred) const -> bool
+    {
+        return self().query().none(std::forward<Predicate>(pred));
+    }
+
+    [[nodiscard]] auto take(size_t n) const { return self().query().take(n); }
+
+    [[nodiscard]] auto skip(size_t n) const { return self().query().skip(n); }
+};
+
+} // namespace detail
 
 /**
  * @brief Central registry of threads indexed by OS-level thread ID (Tid).
@@ -254,6 +327,8 @@ class ThreadControlBlock
  * query() returns a @ref QueryView holding a **snapshot** of the registry at the
  * moment of the call.  Subsequent changes to the registry (new
  * registrations, unregistrations) are not reflected in an existing @ref QueryView.
+ * The same functional-style helpers (filter, map, for_each, etc.) are
+ * inherited from @ref detail::QueryFacadeMixin.
  *
  * @par Scheduling helpers
  * set_affinity(), set_priority(), set_scheduling_policy(), and set_name()
@@ -261,43 +336,22 @@ class ThreadControlBlock
  * delegate to the control block.  Returns @c std::errc::no_such_process if
  * the TID is not registered or has no control block.
  */
-class ThreadRegistry
+class ThreadRegistry : public detail::QueryFacadeMixin<ThreadRegistry>
 {
   public:
     ThreadRegistry() = default;
     ThreadRegistry(ThreadRegistry const&) = delete;
     auto operator=(ThreadRegistry const&) -> ThreadRegistry& = delete;
 
-    // Register/unregister the CURRENT thread (to be called inside the running thread)
     void register_current_thread(std::string name = std::string(), std::string componentTag = std::string())
     {
-        Tid const tid = ThreadInfo::get_thread_id();
         RegisteredThreadInfo info;
-        info.tid = tid;
+        info.tid = ThreadInfo::get_thread_id();
         info.stdId = std::this_thread::get_id();
         info.name = std::move(name);
         info.componentTag = std::move(componentTag);
         info.alive = true;
-
-        {
-            std::unique_lock<std::shared_mutex> lock(mutex_);
-            auto it = threads_.find(tid);
-            if (it == threads_.end())
-            {
-                auto stored = info; // copy for callback
-                threads_.emplace(tid, std::move(info));
-                if (onRegister_)
-                {
-                    auto cb = onRegister_;
-                    lock.unlock();
-                    cb(stored);
-                }
-            }
-            else
-            {
-                // Duplicate registration of the same TID is a no-op (first registration wins)
-            }
-        }
+        try_register(std::move(info));
     }
 
     void register_current_thread(std::shared_ptr<ThreadControlBlock> const& controlBlock,
@@ -312,23 +366,7 @@ class ThreadRegistry
         info.componentTag = std::move(componentTag);
         info.alive = true;
         info.control = controlBlock;
-        std::unique_lock<std::shared_mutex> lock(mutex_);
-        auto it = threads_.find(info.tid);
-        if (it == threads_.end())
-        {
-            auto stored = info; // copy for callback
-            threads_.emplace(info.tid, std::move(info));
-            if (onRegister_)
-            {
-                auto cb = onRegister_;
-                lock.unlock();
-                cb(stored);
-            }
-        }
-        else
-        {
-            // Duplicate registration of the same TID is a no-op (first registration wins)
-        }
+        try_register(std::move(info));
     }
 
     void unregister_current_thread()
@@ -528,74 +566,6 @@ class ThreadRegistry
         return QueryView(std::move(snapshot));
     }
 
-    template <typename Predicate>
-    [[nodiscard]] auto filter(Predicate&& pred) const -> QueryView
-    {
-        return query().filter(std::forward<Predicate>(pred));
-    }
-
-    [[nodiscard]] auto count() const -> size_t
-    {
-        return query().count();
-    }
-
-    [[nodiscard]] auto empty() const -> bool
-    {
-        return query().empty();
-    }
-
-    template <typename Fn>
-    void for_each(Fn&& fn) const
-    {
-        query().for_each(std::forward<Fn>(fn));
-    }
-
-    template <typename Predicate, typename Fn>
-    void apply(Predicate&& pred, Fn&& fn) const
-    {
-        query().filter(std::forward<Predicate>(pred)).for_each(std::forward<Fn>(fn));
-    }
-
-    template <typename Fn>
-    [[nodiscard]] auto map(Fn&& fn) const -> std::vector<std::invoke_result_t<Fn, RegisteredThreadInfo const&>>
-    {
-        return query().map(std::forward<Fn>(fn));
-    }
-
-    template <typename Predicate>
-    [[nodiscard]] auto find_if(Predicate&& pred) const -> std::optional<RegisteredThreadInfo>
-    {
-        return query().find_if(std::forward<Predicate>(pred));
-    }
-
-    template <typename Predicate>
-    [[nodiscard]] auto any(Predicate&& pred) const -> bool
-    {
-        return query().any(std::forward<Predicate>(pred));
-    }
-
-    template <typename Predicate>
-    [[nodiscard]] auto all(Predicate&& pred) const -> bool
-    {
-        return query().all(std::forward<Predicate>(pred));
-    }
-
-    template <typename Predicate>
-    [[nodiscard]] auto none(Predicate&& pred) const -> bool
-    {
-        return query().none(std::forward<Predicate>(pred));
-    }
-
-    [[nodiscard]] auto take(size_t n) const -> QueryView
-    {
-        return query().take(n);
-    }
-
-    [[nodiscard]] auto skip(size_t n) const -> QueryView
-    {
-        return query().skip(n);
-    }
-
     [[nodiscard]] auto set_affinity(Tid tid, ThreadAffinity const& affinity) const -> expected<void, std::error_code>
     {
         auto blk = lock_block(tid);
@@ -643,6 +613,22 @@ class ThreadRegistry
     }
 
   private:
+    void try_register(RegisteredThreadInfo info)
+    {
+        std::unique_lock<std::shared_mutex> lock(mutex_);
+        auto it = threads_.find(info.tid);
+        if (it != threads_.end())
+            return;
+        auto stored = info;
+        threads_.emplace(info.tid, std::move(info));
+        if (onRegister_)
+        {
+            auto cb = onRegister_;
+            lock.unlock();
+            cb(stored);
+        }
+    }
+
     [[nodiscard]] auto lock_block(Tid tid) const -> std::shared_ptr<ThreadControlBlock>
     {
         std::shared_lock<std::shared_mutex> lock(mutex_);
@@ -654,7 +640,6 @@ class ThreadRegistry
     mutable std::shared_mutex mutex_;
     std::unordered_map<Tid, RegisteredThreadInfo> threads_;
 
-    // Integration hooks
     std::function<void(RegisteredThreadInfo const&)> onRegister_;
     std::function<void(RegisteredThreadInfo const&)> onUnregister_;
 };
@@ -777,89 +762,6 @@ inline auto build_mode_string() -> char const*
 {
     return is_runtime_build ? "runtime" : "header-only";
 }
-
-namespace detail
-{
-
-/**
- * @brief CRTP mixin that provides functional-style query facade methods.
- *
- * The derived class must implement a public @c query() method returning a
- * @ref ThreadRegistry::QueryView. All facade methods (filter, map, for_each,
- * find_if, any, all, none, take, skip, count, empty, apply) delegate to it.
- *
- * @tparam Derived CRTP derived type.
- */
-template <typename Derived>
-class QueryFacadeMixin
-{
-    auto self() const -> Derived const& { return static_cast<Derived const&>(*this); }
-
-  public:
-    template <typename Predicate>
-    [[nodiscard]] auto filter(Predicate&& pred) const -> ThreadRegistry::QueryView
-    {
-        return self().query().filter(std::forward<Predicate>(pred));
-    }
-
-    [[nodiscard]] auto count() const -> size_t { return self().query().count(); }
-
-    [[nodiscard]] auto empty() const -> bool { return self().query().empty(); }
-
-    template <typename Fn>
-    void for_each(Fn&& fn) const
-    {
-        self().query().for_each(std::forward<Fn>(fn));
-    }
-
-    template <typename Predicate, typename Fn>
-    void apply(Predicate&& pred, Fn&& fn) const
-    {
-        self().query().filter(std::forward<Predicate>(pred)).for_each(std::forward<Fn>(fn));
-    }
-
-    template <typename Fn>
-    [[nodiscard]] auto map(Fn&& fn) const -> std::vector<std::invoke_result_t<Fn, RegisteredThreadInfo const&>>
-    {
-        return self().query().map(std::forward<Fn>(fn));
-    }
-
-    template <typename Predicate>
-    [[nodiscard]] auto find_if(Predicate&& pred) const -> std::optional<RegisteredThreadInfo>
-    {
-        return self().query().find_if(std::forward<Predicate>(pred));
-    }
-
-    template <typename Predicate>
-    [[nodiscard]] auto any(Predicate&& pred) const -> bool
-    {
-        return self().query().any(std::forward<Predicate>(pred));
-    }
-
-    template <typename Predicate>
-    [[nodiscard]] auto all(Predicate&& pred) const -> bool
-    {
-        return self().query().all(std::forward<Predicate>(pred));
-    }
-
-    template <typename Predicate>
-    [[nodiscard]] auto none(Predicate&& pred) const -> bool
-    {
-        return self().query().none(std::forward<Predicate>(pred));
-    }
-
-    [[nodiscard]] auto take(size_t n) const -> ThreadRegistry::QueryView
-    {
-        return self().query().take(n);
-    }
-
-    [[nodiscard]] auto skip(size_t n) const -> ThreadRegistry::QueryView
-    {
-        return self().query().skip(n);
-    }
-};
-
-} // namespace detail
 
 /**
  * @brief Aggregates multiple ThreadRegistry instances into a single queryable

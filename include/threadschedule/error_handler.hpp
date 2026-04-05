@@ -38,6 +38,22 @@ struct TaskError
     std::chrono::steady_clock::time_point timestamp;
 
     /**
+     * @brief Capture the current in-flight exception into a TaskError.
+     *
+     * Must be called inside a @c catch block. Fills exception, thread_id,
+     * and timestamp; optionally sets task_description.
+     */
+    static auto capture(std::string description = {}) -> TaskError
+    {
+        TaskError err;
+        err.exception = std::current_exception();
+        err.task_description = std::move(description);
+        err.thread_id = std::this_thread::get_id();
+        err.timestamp = std::chrono::steady_clock::now();
+        return err;
+    }
+
+    /**
      * @brief Extract the message string from the stored exception.
      *
      * Internally re-throws the exception and catches it as @c std::exception
@@ -239,15 +255,7 @@ class ErrorHandledTask
         catch (...)
         {
             if (handler_)
-            {
-                TaskError error;
-                error.exception = std::current_exception();
-                error.task_description = description_;
-                error.thread_id = std::this_thread::get_id();
-                error.timestamp = std::chrono::steady_clock::now();
-
-                handler_->handle_error(error);
-            }
+                handler_->handle_error(TaskError::capture(description_));
         }
     }
 
