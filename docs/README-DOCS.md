@@ -19,6 +19,7 @@ Notes:
 - The documentation includes headers under `include/` and uses the repository `README.md` as the landing page.
 
 Additional guides:
+- [Migrating to v2.0](MIGRATION_V2.md)
 - [Integration Guide](INTEGRATION.md)
 - [Thread Registry](REGISTRY.md)
 - [Scheduled Tasks](SCHEDULED_TASKS.md)
