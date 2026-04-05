@@ -16,6 +16,8 @@
 #include <atomic>
 #include <coroutine>
 #include <exception>
+#include <functional>
+#include <future>
 #include <optional>
 #include <type_traits>
 #include <utility>
@@ -26,6 +28,35 @@ namespace threadschedule
 template <typename T = void>
 class task;
 
+/**
+ * @brief Type-erased executor interface for pool-aware coroutines.
+ *
+ * Implementations schedule a coroutine handle for execution on a specific
+ * executor (e.g. a thread pool).
+ */
+struct executor_base
+{
+    virtual void execute(std::coroutine_handle<>) = 0;
+    virtual ~executor_base() = default;
+};
+
+/**
+ * @brief Executor that dispatches coroutine resumption to a thread pool.
+ *
+ * @tparam Pool A thread pool type providing @c submit(Callable).
+ */
+template <typename Pool>
+struct pool_executor : executor_base
+{
+    Pool& pool;
+    explicit pool_executor(Pool& p) : pool(p) {}
+
+    void execute(std::coroutine_handle<> h) override
+    {
+        pool.submit([h]() mutable { h.resume(); });
+    }
+};
+
 namespace detail
 {
 
@@ -35,10 +66,9 @@ namespace detail
  * @internal This is an implementation detail of the task coroutine machinery.
  *
  * When a task's coroutine body finishes, `final_awaiter` is returned from
- * `final_suspend()`. It is never ready (always suspends), and on suspension
- * it symmetric-transfers to the stored continuation. If no continuation has
- * been set (e.g. the task was started via `sync_wait`), it transfers to
- * `std::noop_coroutine()` to avoid undefined behaviour.
+ * `final_suspend()`. If an executor is set on the promise, the continuation
+ * is dispatched through it (e.g. resumed on a pool thread). Otherwise,
+ * symmetric transfer is used for zero-overhead inline resumption.
  */
 struct final_awaiter
 {
@@ -50,7 +80,13 @@ struct final_awaiter
     template <typename Promise>
     auto await_suspend(std::coroutine_handle<Promise> h) const noexcept -> std::coroutine_handle<>
     {
-        if (auto cont = h.promise().continuation_; cont)
+        auto cont = h.promise().continuation_;
+        if (h.promise().executor_ && cont)
+        {
+            h.promise().executor_->execute(cont);
+            return std::noop_coroutine();
+        }
+        if (cont)
             return cont;
         return std::noop_coroutine();
     }
@@ -78,6 +114,9 @@ struct final_awaiter
  * - **Continuation:** `continuation_` is set by the task's awaiter just
  *   before resuming the task. `final_awaiter` uses it to return control
  *   to the parent coroutine.
+ * - **Executor:** If `executor_` is set (e.g. via `schedule_on`), the
+ *   continuation is dispatched through the executor instead of using
+ *   symmetric transfer.
  */
 template <typename T>
 class task_promise_base
@@ -107,6 +146,7 @@ class task_promise_base
     }
 
     std::coroutine_handle<> continuation_{};
+    executor_base* executor_{nullptr};
 
   protected:
     std::exception_ptr exception_{};
@@ -577,6 +617,71 @@ inline void sync_wait(task<void> t)
 
     if (ex)
         std::rethrow_exception(ex);
+}
+
+// ---------------------------------------------------------------------------
+// schedule_on awaitable
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Awaitable that transfers execution to a thread pool.
+ *
+ * Use `co_await schedule_on{pool}` inside any coroutine to continue
+ * execution on one of the pool's worker threads.
+ *
+ * @tparam Pool A thread pool type providing @c submit(Callable).
+ *
+ * @par Example
+ * @code
+ * task<void> work(HighPerformancePool& pool) {
+ *     co_await schedule_on{pool};
+ *     // now running on a pool thread
+ * }
+ * @endcode
+ */
+template <typename Pool>
+struct schedule_on
+{
+    Pool& pool;
+
+    [[nodiscard]] auto await_ready() const noexcept -> bool { return false; }
+
+    void await_suspend(std::coroutine_handle<> h) const
+    {
+        pool.submit([h]() mutable { h.resume(); });
+    }
+
+    void await_resume() const noexcept {}
+};
+
+// ---------------------------------------------------------------------------
+// run_on convenience
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Submit a coroutine-returning callable to a pool and return a
+ *        @c std::future for its result.
+ *
+ * The callable is invoked on a pool worker thread. Inside the callable,
+ * you can use `co_await` freely -- all continuations run on the calling
+ * pool unless explicitly transferred elsewhere.
+ *
+ * @tparam Pool A thread pool type providing @c submit(Callable).
+ * @tparam F    A callable returning @c task<T>.
+ *
+ * @par Example
+ * @code
+ * auto future = run_on(pool, []() -> task<int> { co_return 42; });
+ * int v = future.get();
+ * @endcode
+ */
+template <typename Pool, typename F>
+auto run_on(Pool& pool, F&& coro_fn)
+    -> std::future<decltype(sync_wait(std::declval<std::invoke_result_t<F>>()))>
+{
+    return pool.submit([fn = std::forward<F>(coro_fn)]() mutable {
+        return sync_wait(fn());
+    });
 }
 
 } // namespace threadschedule

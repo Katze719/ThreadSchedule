@@ -35,12 +35,68 @@
 - **`GlobalThreadPool`, `GlobalHighPerformancePool`** are now type aliases for
   `GlobalPool<Pool>`. The public API is unchanged.
 
+### Quality-of-Life Features
+
+- **`ErrorHandler::remove_callback(id)` / `has_callback(id)`** -- callbacks
+  are now stored in a `std::map` with stable IDs. Individual callbacks can be
+  removed without clearing all of them.
+
+- **`try_submit()` / `try_submit_batch()`** -- non-throwing submission for all
+  pool types, returning `expected<std::future<T>, std::error_code>` instead of
+  throwing on shutdown.
+
+- **Chunked `parallel_for_each`** -- `ThreadPoolBase` now uses the same
+  chunked work distribution as `HighPerformancePool` via a shared
+  `detail::parallel_for_each_chunked` helper (one task per element is gone).
+
+- **`PollingWait<IntervalMs>`** -- tunable polling interval (default 10 ms).
+  `FastThreadPool` is `ThreadPoolBase<PollingWait<>>`.
+
+- **`HighPerformancePool` deque capacity** -- configurable via constructor:
+  `HighPerformancePool(threads, deque_capacity)`.
+
+- **`GlobalPool::init(n)`** -- pre-configure thread count before first use
+  (std::call_once semantics).
+
+- **C++20 ranges overloads** -- `submit_batch(range)`, `try_submit_batch(range)`,
+  `parallel_for_each(range, func)` on all pool types and GlobalPool. Guarded
+  by `__cpp_lib_ranges`.
+
+- **Auto-register pool workers** -- opt-in `register_workers` flag on both
+  pool constructors. Workers register/unregister automatically via
+  `AutoRegisterCurrentThread` RAII guard.
+
+- **Per-task tracing hooks** -- `set_on_task_start(callback)` and
+  `set_on_task_end(callback)` on both pool types. Callbacks receive timestamp,
+  thread ID, and (for end) elapsed duration.
+
+- **Cooperative cancellation** -- `submit(stop_token, F, Args...)` and
+  `try_submit(stop_token, F, Args...)` overloads. Tasks are skipped if stop is
+  requested. Guarded by `__cpp_lib_jthread`.
+
+- **Future combinators** -- new `futures.hpp` with `when_all`, `when_any`,
+  `when_all_settled` (typed and void specializations).
+
+- **Lifecycle modes** -- `ShutdownPolicy::drain` (default) and
+  `ShutdownPolicy::drop_pending`. `shutdown(policy)` replaces the old
+  no-argument `shutdown()`. `shutdown_for(timeout)` provides timed drain.
+
+- **Coroutine scheduler integration** -- `schedule_on{pool}` awaitable to hop
+  to a pool thread, `executor_base` / `pool_executor<Pool>` type-erased
+  executor for pool-aware tasks, `run_on(pool, coro_fn)` convenience returning
+  `std::future`.
+
 ### New Types
 
 - `ThreadPoolBase<WaitPolicy>` - parameterized single-queue thread pool.
-- `IndefiniteWait` / `PollingWait` - wait policy types for `ThreadPoolBase`.
+- `IndefiniteWait` / `PollingWait<IntervalMs>` - wait policy types for `ThreadPoolBase`.
 - `PoolWithErrors<PoolType>` - generic error-handling pool wrapper.
 - `GlobalPool<PoolType>` - generic singleton pool accessor.
+- `ShutdownPolicy` - enum controlling shutdown behavior (drain / drop_pending).
+- `TaskStartCallback` / `TaskEndCallback` - tracing callback types.
+- `executor_base` / `pool_executor<Pool>` - type-erased executor for coroutines.
+- `schedule_on<Pool>` - awaitable for hopping to a pool thread.
+- `futures.hpp` - future combinators (`when_all`, `when_any`, `when_all_settled`).
 
 ### Internal Improvements
 
