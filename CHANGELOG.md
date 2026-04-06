@@ -37,16 +37,16 @@
 
 ### Quality-of-Life Features
 
-- **`ErrorHandler::remove_callback(id)` / `has_callback(id)`** -- callbacks
-  are now stored in a `std::map` with stable IDs. Individual callbacks can be
+- **`ErrorHandler::remove_callback(id)` / `has_callback(id)`** -- callbacks are
+  now stored in a `std::map` with stable IDs. Individual callbacks can be
   removed without clearing all of them.
 
 - **`try_submit()` / `try_submit_batch()`** -- non-throwing submission for all
   pool types, returning `expected<std::future<T>, std::error_code>` instead of
   throwing on shutdown.
 
-- **Chunked `parallel_for_each`** -- `ThreadPoolBase` now uses the same
-  chunked work distribution as `HighPerformancePool` via a shared
+- **Chunked `parallel_for_each`** -- `ThreadPoolBase` now uses the same chunked
+  work distribution as `HighPerformancePool` via a shared
   `detail::parallel_for_each_chunked` helper (one task per element is gone).
 
 - **`PollingWait<IntervalMs>`** -- tunable polling interval (default 10 ms).
@@ -58,12 +58,12 @@
 - **`GlobalPool::init(n)`** -- pre-configure thread count before first use
   (std::call_once semantics).
 
-- **C++20 ranges overloads** -- `submit_batch(range)`, `try_submit_batch(range)`,
-  `parallel_for_each(range, func)` on all pool types and GlobalPool. Guarded
-  by `__cpp_lib_ranges`.
+- **C++20 ranges overloads** -- `submit_batch(range)`,
+  `try_submit_batch(range)`, `parallel_for_each(range, func)` on all pool types
+  and GlobalPool. Guarded by `__cpp_lib_ranges`.
 
-- **Auto-register pool workers** -- opt-in `register_workers` flag on both
-  pool constructors. Workers register/unregister automatically via
+- **Auto-register pool workers** -- opt-in `register_workers` flag on both pool
+  constructors. Workers register/unregister automatically via
   `AutoRegisterCurrentThread` RAII guard.
 
 - **Per-task tracing hooks** -- `set_on_task_start(callback)` and
@@ -81,9 +81,9 @@
   `ShutdownPolicy::drop_pending`. `shutdown(policy)` replaces the old
   no-argument `shutdown()`. `shutdown_for(timeout)` provides timed drain.
 
-- **Coroutine scheduler integration** -- `schedule_on{pool}` awaitable to hop
-  to a pool thread, `executor_base` / `pool_executor<Pool>` type-erased
-  executor for pool-aware tasks, `run_on(pool, coro_fn)` convenience returning
+- **Coroutine scheduler integration** -- `schedule_on{pool}` awaitable to hop to
+  a pool thread, `executor_base` / `pool_executor<Pool>` type-erased executor
+  for pool-aware tasks, `run_on(pool, coro_fn)` convenience returning
   `std::future`.
 
 - **`LightweightPoolT<TaskSize>`** -- ultra-lightweight fire-and-forget pool
@@ -98,21 +98,24 @@
   `submit()` but skips `packaged_task`/`shared_ptr`/`future` overhead.
 
 - **`ScheduledThreadPoolT` now uses `post()`** internally instead of `submit()`,
-  eliminating wasted `future` allocations for every scheduled task dispatch.
-  New alias: `ScheduledLightweightPool = ScheduledThreadPoolT<LightweightPool>`.
+  eliminating wasted `future` allocations for every scheduled task dispatch. New
+  alias: `ScheduledLightweightPool = ScheduledThreadPoolT<LightweightPool>`.
 
 ### New Types
 
 - `ThreadPoolBase<WaitPolicy>` - parameterized single-queue thread pool.
-- `IndefiniteWait` / `PollingWait<IntervalMs>` - wait policy types for `ThreadPoolBase`.
+- `IndefiniteWait` / `PollingWait<IntervalMs>` - wait policy types for
+  `ThreadPoolBase`.
 - `PoolWithErrors<PoolType>` - generic error-handling pool wrapper.
 - `GlobalPool<PoolType>` - generic singleton pool accessor.
 - `ShutdownPolicy` - enum controlling shutdown behavior (drain / drop_pending).
 - `TaskStartCallback` / `TaskEndCallback` - tracing callback types.
 - `executor_base` / `pool_executor<Pool>` - type-erased executor for coroutines.
 - `schedule_on<Pool>` - awaitable for hopping to a pool thread.
-- `futures.hpp` - future combinators (`when_all`, `when_any`, `when_all_settled`).
-- `LightweightPoolT<TaskSize>` / `LightweightPool` - fire-and-forget pool with SBO.
+- `futures.hpp` - future combinators (`when_all`, `when_any`,
+  `when_all_settled`).
+- `LightweightPoolT<TaskSize>` / `LightweightPool` - fire-and-forget pool with
+  SBO.
 - `detail::SboCallable<TaskSize>` - type-erased callable with inline storage.
 - `ScheduledLightweightPool` - scheduled pool backed by `LightweightPool`.
 
@@ -134,6 +137,52 @@
 
 - **`ScheduledThreadPoolT`**: `schedule_at()` and `schedule_periodic_after()`
   now share a private `insert_task()` helper.
+
+- **Pool worker configuration deduplicated**: `configure_threads()`,
+  `set_affinity()`, `distribute_across_cpus()` in `HighPerformancePool` and
+  `ThreadPoolBase` now delegate to shared `detail::configure_worker_threads`,
+  `detail::set_worker_affinity`, `detail::distribute_workers_across_cpus`
+  templates.
+
+- **Thread naming/affinity reading centralized**: `set_name()`, `get_name()`,
+  `get_affinity()` across `BaseThreadWrapper`, `PThreadWrapper`, and
+  `ThreadControlBlock` now delegate to `detail::apply_name`,
+  `detail::read_name`, `detail::read_affinity` in `scheduler_policy.hpp`.
+
+- **`FutureWithErrorHandler<void>` specialization removed**: The primary
+  template now handles both `T` and `void` via `if constexpr`, eliminating ~70
+  lines of duplicated code. No API change.
+
+- **`CompositeThreadRegistry` facade deduplicated**: The 12 query facade methods
+  (filter, map, for_each, find_if, any, all, none, take, skip, count, empty,
+  apply) are now inherited from `detail::QueryFacadeMixin<Derived>` CRTP base.
+  No API change.
+
+- **`ThreadRegistry` inherits `detail::QueryFacadeMixin`**: The 12 facade
+  methods (filter, map, for_each, find_if, any, all, none, take, skip, count,
+  empty, apply) are now provided by the same CRTP mixin as
+  `CompositeThreadRegistry`, eliminating the duplicate implementations.
+
+- **POSIX scheduling helpers consolidated**: `apply_priority` and
+  `apply_scheduling_policy` for both `pthread_t` and `pid_t` now share a common
+  `detail::apply_sched_params` template, eliminating duplicated param validation
+  and error handling.
+
+- **`ThreadRegistry::register_current_thread` consolidated**: Both overloads now
+  delegate to a private `try_register(RegisteredThreadInfo)` method, removing
+  the duplicated lock/emplace/callback logic.
+
+- **`PoolWithErrors` submit methods consolidated**: `submit()` and
+  `submit_with_description()` now delegate to a private `submit_impl` with
+  optional description parameter.
+
+- **`TaskError::capture()` factory**: New static factory method centralizes the
+  repeated exception/thread_id/timestamp capture pattern. Used by
+  `ErrorHandledTask` and `PoolWithErrors`.
+
+- **`ThreadControlBlock` native handle accessor**: Private `native_handle()`
+  method replaces four identical `#ifdef _WIN32` dispatch blocks in the
+  set_affinity/set_priority/set_scheduling_policy/set_name methods.
 
 ### Migration Guide
 
@@ -157,54 +206,6 @@ auto futures = pool.submit_range(tasks.begin(), tasks.end());
 // v2: submit_batch (same signature, more efficient)
 auto futures = pool.submit_batch(tasks.begin(), tasks.end());
 ```
-
-### Internal improvements (v2.0.0 continued)
-
-- **Pool worker configuration deduplicated**: `configure_threads()`,
-  `set_affinity()`, `distribute_across_cpus()` in `HighPerformancePool` and
-  `ThreadPoolBase` now delegate to shared `detail::configure_worker_threads`,
-  `detail::set_worker_affinity`, `detail::distribute_workers_across_cpus`
-  templates.
-
-- **Thread naming/affinity reading centralized**: `set_name()`, `get_name()`,
-  `get_affinity()` across `BaseThreadWrapper`, `PThreadWrapper`, and
-  `ThreadControlBlock` now delegate to `detail::apply_name`,
-  `detail::read_name`, `detail::read_affinity` in `scheduler_policy.hpp`.
-
-- **`FutureWithErrorHandler<void>` specialization removed**: The primary
-  template now handles both `T` and `void` via `if constexpr`, eliminating
-  ~70 lines of duplicated code. No API change.
-
-- **`CompositeThreadRegistry` facade deduplicated**: The 12 query facade
-  methods (filter, map, for_each, find_if, any, all, none, take, skip, count,
-  empty, apply) are now inherited from `detail::QueryFacadeMixin<Derived>`
-  CRTP base. No API change.
-
-- **`ThreadRegistry` inherits `detail::QueryFacadeMixin`**: The 12 facade
-  methods (filter, map, for_each, find_if, any, all, none, take, skip, count,
-  empty, apply) are now provided by the same CRTP mixin as
-  `CompositeThreadRegistry`, eliminating the duplicate implementations.
-
-- **POSIX scheduling helpers consolidated**: `apply_priority` and
-  `apply_scheduling_policy` for both `pthread_t` and `pid_t` now share a
-  common `detail::apply_sched_params` template, eliminating duplicated param
-  validation and error handling.
-
-- **`ThreadRegistry::register_current_thread` consolidated**: Both overloads
-  now delegate to a private `try_register(RegisteredThreadInfo)` method,
-  removing the duplicated lock/emplace/callback logic.
-
-- **`PoolWithErrors` submit methods consolidated**: `submit()` and
-  `submit_with_description()` now delegate to a private `submit_impl` with
-  optional description parameter.
-
-- **`TaskError::capture()` factory**: New static factory method centralizes
-  the repeated exception/thread_id/timestamp capture pattern. Used by
-  `ErrorHandledTask` and `PoolWithErrors`.
-
-- **`ThreadControlBlock` native handle accessor**: Private `native_handle()`
-  method replaces four identical `#ifdef _WIN32` dispatch blocks in the
-  set_affinity/set_priority/set_scheduling_policy/set_name methods.
 
 ## v1.4.1
 
