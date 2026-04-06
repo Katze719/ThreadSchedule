@@ -67,7 +67,7 @@ coroutines, `std::stop_token`). Highlights:
 | **Observability**           | Optional auto-registration of pool workers in the thread registry; per-task `set_on_task_start` / `set_on_task_end` hooks.                                                                                                                                           |
 | **Errors**                  | `ErrorHandler` callbacks get stable IDs; `remove_callback(id)` / `has_callback(id)`.                                                                                                                                                                                 |
 
-See [CHANGELOG.md](CHANGELOG.md) for the full list, including breaking changes
+See <a href="CHANGELOG.md">CHANGELOG.md</a> for the full list, including breaking changes
 when upgrading from v1.x.
 
 **Upgrading from v1.x:** [Migration guide (v2.0)](docs/MIGRATION_V2.md)

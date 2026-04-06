@@ -4,7 +4,7 @@ This guide helps you move from v1.x to **v2.0.0**. It lists **breaking changes**
 first, then **behavioral changes** you should be aware of, and finally
 **optional upgrades** that are not required but often worthwhile.
 
-For the authoritative list of every change, see [CHANGELOG.md](../CHANGELOG.md).
+For the authoritative list of every change, see <a href="../CHANGELOG.md">CHANGELOG.md</a>.
 
 ## 1. Upgrade steps
 
@@ -162,7 +162,7 @@ These are **not** required for a successful build but match v2 design well:
 ## 7. Further reading
 
 - [README.md](../README.md) -- "What's new in v2.0" summary table
-- [CHANGELOG.md](../CHANGELOG.md) -- full v2.0.0 notes
+- <a href="../CHANGELOG.md">CHANGELOG.md</a> -- full v2.0.0 notes
 - [INTEGRATION.md](INTEGRATION.md) -- CMake and package managers
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) -- pools with errors and callbacks
 - [SCHEDULED_TASKS.md](SCHEDULED_TASKS.md) -- scheduled pools and aliases
