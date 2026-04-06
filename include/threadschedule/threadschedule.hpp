@@ -21,7 +21,7 @@
  * @brief Modern C++17/20/23/26 Thread Scheduling Library
  *
  * A comprehensive header-only library for advanced thread management
- * on Linux systems, providing C++ wrappers for pthreads, std::thread,
+ * on Linux and Windows, providing C++ wrappers for pthreads, std::thread,
  * and std::jthread with extended functionality.
  *
  * Features:

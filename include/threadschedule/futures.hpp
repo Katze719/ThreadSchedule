@@ -2,8 +2,8 @@
 
 /**
  * @file futures.hpp
- * @brief Combinators for @c std::future: @ref when_all, @ref when_any,
- *        @ref when_all_settled.
+ * @brief Combinators for @c std::future: @c when_all, @c when_any,
+ *        @c when_all_settled.
  *
  * These utilities simplify waiting on multiple futures produced by thread
  * pool submissions.

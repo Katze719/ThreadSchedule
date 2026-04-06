@@ -63,7 +63,7 @@ class ScheduledTaskHandle
  * @brief Thread pool augmented with delayed and periodic task scheduling.
  *
  * Non-copyable, non-movable. Combines a dedicated scheduler thread with
- * an underlying PoolType (default: @ref ThreadPool) that does the actual work.
+ * an underlying PoolType (default: @c ThreadPool) that does the actual work.
  *
  * @par How task execution works
  * The pool owns a single scheduler thread that runs an internal loop
@@ -74,9 +74,9 @@ class ScheduledTaskHandle
  *   1. Removes it from the multimap.
  *   2. Checks if the task has been cancelled (via the atomic flag). If
  *      cancelled, the task is discarded.
- *   3. Submits the task to the underlying PoolType via pool_.submit().
+ *   3. Posts the task to the underlying PoolType via pool_.post().
  *      From this point on, the task follows the execution rules of the
- *      underlying pool (see @ref ThreadPool, @ref FastThreadPool, or
+ *      underlying pool (see @c ThreadPool, @c FastThreadPool, or
  *      @ref HighPerformancePool documentation).
  *   4. For periodic tasks, the scheduler immediately re-inserts the task
  *      into the multimap with next_run += interval. This means the next
@@ -97,7 +97,7 @@ class ScheduledTaskHandle
  *   execute. The scheduler thread exits immediately on shutdown, so
  *   future-scheduled tasks are lost.
  * - Cancellation is cooperative: calling handle.cancel() sets an atomic
- *   flag. The scheduler checks this flag before submitting the task to
+ *   flag. The scheduler checks this flag before posting the task to
  *   the pool. Additionally, the pool-side wrapper checks the flag again
  *   right before calling the task. However, a task that is already
  *   running will NOT be interrupted by cancel().
@@ -381,13 +381,13 @@ class ScheduledThreadPoolT
     }
 };
 
-/** @brief @ref ScheduledThreadPoolT using the default @ref ThreadPool backend. */
+/** @brief @ref ScheduledThreadPoolT using the default @c ThreadPool backend. */
 using ScheduledThreadPool = ScheduledThreadPoolT<ThreadPool>;
 /** @brief @ref ScheduledThreadPoolT using @ref HighPerformancePool as backend. */
 using ScheduledHighPerformancePool = ScheduledThreadPoolT<HighPerformancePool>;
-/** @brief @ref ScheduledThreadPoolT using @ref FastThreadPool as backend. */
+/** @brief @ref ScheduledThreadPoolT using @c FastThreadPool as backend. */
 using ScheduledFastThreadPool = ScheduledThreadPoolT<FastThreadPool>;
-/** @brief @ref ScheduledThreadPoolT using @ref LightweightPool as backend (minimal overhead). */
+/** @brief @ref ScheduledThreadPoolT using @c LightweightPool as backend (minimal overhead). */
 using ScheduledLightweightPool = ScheduledThreadPoolT<LightweightPool>;
 
 } // namespace threadschedule

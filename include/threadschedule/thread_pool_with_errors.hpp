@@ -184,10 +184,10 @@ class PoolWithErrors
 /** @brief @ref HighPerformancePool with integrated error handling. */
 using HighPerformancePoolWithErrors = PoolWithErrors<HighPerformancePool>;
 
-/** @brief @ref FastThreadPool with integrated error handling. */
+/** @brief @c FastThreadPool with integrated error handling. */
 using FastThreadPoolWithErrors = PoolWithErrors<FastThreadPool>;
 
-/** @brief @ref ThreadPool with integrated error handling. */
+/** @brief @c ThreadPool with integrated error handling. */
 using ThreadPoolWithErrors = PoolWithErrors<ThreadPool>;
 
 } // namespace threadschedule

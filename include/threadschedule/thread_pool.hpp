@@ -718,7 +718,7 @@ class HighPerformancePool
      * @brief Fire-and-forget task submission (throwing variant).
      *
      * Enqueues a callable without creating a @c std::packaged_task or
-     * @c std::future, giving roughly 3x higher throughput than @ref submit()
+     * @c std::future, giving roughly 3x higher throughput than \c submit()
      * for tasks whose return value is not needed.
      *
      * @throws std::runtime_error If the pool is shutting down.
@@ -812,7 +812,7 @@ class HighPerformancePool
      *
      * Acquires the lock once per batch, distributing tasks across worker
      * queues in round-robin fashion. Significantly more efficient than
-     * calling @ref submit() in a loop for large batches.
+     * calling @c submit() in a loop for large batches.
      *
      * @tparam Iterator Forward iterator whose value_type is callable as @c void().
      * @return @c expected containing a vector of futures, or
@@ -1743,6 +1743,7 @@ class ThreadPoolBase
 };
 
 /**
+ * @typedef ThreadPool
  * @brief General-purpose thread pool with indefinite blocking wait.
  *
  * Workers block on condition_variable::wait() when idle - zero CPU
@@ -1754,6 +1755,7 @@ class ThreadPoolBase
 using ThreadPool = ThreadPoolBase<IndefiniteWait>;
 
 /**
+ * @typedef FastThreadPool
  * @brief Thread pool with 10 ms polling wait for lower wake-up latency.
  *
  * Workers poll with condition_variable::wait_for(10 ms), trading a small
@@ -1771,7 +1773,8 @@ using FastThreadPool = ThreadPoolBase<PollingWait<>>;
  * @brief Ultra-lightweight fire-and-forget thread pool.
  *
  * Designed for maximum throughput on tasks whose return value is not needed.
- * Typical measured throughput is **3x** higher than @ref submit() on the
+ * Typical measured throughput is **3x** higher than @c submit() on e.g.
+ * @ref HighPerformancePool on the
  * same hardware, because @c LightweightPoolT avoids the overhead of
  * @c std::packaged_task, @c std::future, and @c std::shared_ptr entirely.
  *
@@ -1793,7 +1796,7 @@ using FastThreadPool = ThreadPoolBase<PollingWait<>>;
  *   (no heap allocation). Larger callables fall back to the heap.
  *
  * @par What is @e not included (by design)
- * - No @c std::future / @c std::packaged_task (use @ref submit() on other
+ * - No @c std::future / @c std::packaged_task (use @c submit() on other
  *   pools if you need return values).
  * - No statistics counters (@ref HighPerformancePool::get_statistics).
  * - No tracing hooks (@ref HighPerformancePool::set_on_task_start).
@@ -2098,6 +2101,7 @@ class LightweightPoolT
 };
 
 /**
+ * @typedef LightweightPool
  * @brief Default lightweight pool with 64-byte task slots (56 bytes usable).
  *
  * Sufficient for lambdas capturing up to ~7 pointers on 64-bit platforms.
@@ -2243,15 +2247,21 @@ class GlobalPool
     }
 };
 
-/** @brief Singleton @ref ThreadPool accessor. */
+/**
+ * @typedef GlobalThreadPool
+ * @brief Singleton accessor for the process-wide @c ThreadPool instance.
+ */
 using GlobalThreadPool = GlobalPool<ThreadPool>;
 
-/** @brief Singleton @ref HighPerformancePool accessor. */
+/**
+ * @typedef GlobalHighPerformancePool
+ * @brief Singleton accessor for the process-wide @ref HighPerformancePool instance.
+ */
 using GlobalHighPerformancePool = GlobalPool<HighPerformancePool>;
 
 /**
  * @brief Convenience wrapper that applies a callable to every element of a
- *        container in parallel using the @ref GlobalThreadPool singleton.
+ *        container in parallel using the @c GlobalThreadPool singleton.
  *
  * Equivalent to:
  * @code
