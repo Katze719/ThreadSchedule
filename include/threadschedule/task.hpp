@@ -2,11 +2,11 @@
 
 /**
  * @file task.hpp
- * @brief Lazy single-value coroutine (`task<T>`) and blocking bridge (`sync_wait`).
+ * @brief Coroutine @c task, @c sync_wait, and pool helpers @c schedule_on / @c run_on.
  *
- * A `task<T>` represents a lazy coroutine that produces exactly one value
- * (or throws). It does not begin execution until it is `co_await`ed by
- * another coroutine or passed to `sync_wait()`.
+ * @c task is lazy until @c co_await or @c sync_wait. For how work moves onto a
+ * thread pool and what nested @c schedule_on does, see struct @c schedule_on and
+ * function template @c run_on below (C++20 only).
  *
  * Requires C++20 coroutine support.
  */
@@ -114,9 +114,8 @@ struct final_awaiter
  * - **Continuation:** `continuation_` is set by the task's awaiter just
  *   before resuming the task. `final_awaiter` uses it to return control
  *   to the parent coroutine.
- * - **Executor:** If `executor_` is set (e.g. via `schedule_on`), the
- *   continuation is dispatched through the executor instead of using
- *   symmetric transfer.
+ * - **Executor:** If @c executor_ is set on the promise, the continuation is
+ *   dispatched through that executor instead of using symmetric transfer.
  */
 template <typename T>
 class task_promise_base
@@ -624,18 +623,44 @@ inline void sync_wait(task<void> t)
 // ---------------------------------------------------------------------------
 
 /**
- * @brief Awaitable that transfers execution to a thread pool.
+ * @brief Awaitable that continues the current coroutine on a thread pool worker.
  *
- * Use `co_await schedule_on{pool}` inside any coroutine to continue
- * execution on one of the pool's worker threads.
+ * @tparam Pool Pool type providing @c submit(Callable) (for example
+ *         HighPerformancePool, ThreadPool, FastThreadPool).
  *
- * @tparam Pool A thread pool type providing @c submit(Callable).
+ * @par Mechanism
+ * The coroutine stays a single @c task frame. Nothing is split into separate
+ * compiled "halves". @c co_await schedule_on{pool} does the following:
+ * -# The coroutine suspends at the @c co_await.
+ * -# @c await_suspend enqueues a job on @p pool that calls @c resume() on this
+ *    coroutine handle.
+ * -# A worker runs that job; @c resume() continues the coroutine on that
+ *    thread, starting with the line after the @c co_await. Everything after
+ *    that point runs on that worker until another explicit transfer.
+ *
+ * Code before the first @c co_await schedule_on{pool} runs on whatever thread
+ * was already running the coroutine (for example @c main under @c sync_wait, or
+ * a pool thread if you were already there). Code after runs on whichever worker
+ * picked up the @c submit.
+ *
+ * @par Nested @c schedule_on
+ * Each @c co_await schedule_on queues another @c submit(resume). With two
+ * different pools, you first continue on a worker of the first pool, then on a
+ * worker of the second. Nesting @c schedule_on on the same pool still uses
+ * @c pool.submit each time: you may run on another worker of that pool. There
+ * is no guarantee it is the same OS thread as before.
+ *
+ * @par Versus @c co_await on another @c task
+ * Awaiting another @c task usually does not post to a pool; when the child
+ * finishes, the parent is typically resumed on the same thread (symmetric
+ * transfer / direct resume). Only @c co_await schedule_on (or similar)
+ * explicitly pushes the continuation onto the pool queue.
  *
  * @par Example
  * @code
  * task<void> work(HighPerformancePool& pool) {
  *     co_await schedule_on{pool};
- *     // now running on a pool thread
+ *     // runs on a pool worker from here until the next transfer
  * }
  * @endcode
  */
@@ -659,15 +684,18 @@ struct schedule_on
 // ---------------------------------------------------------------------------
 
 /**
- * @brief Submit a coroutine-returning callable to a pool and return a
- *        @c std::future for its result.
+ * @brief Run a callable that returns @c task<T> on a pool worker; return
+ *        @c std::future for the result.
  *
- * The callable is invoked on a pool worker thread. Inside the callable,
- * you can use `co_await` freely -- all continuations run on the calling
- * pool unless explicitly transferred elsewhere.
+ * @tparam Pool Pool type providing @c submit(Callable).
+ * @tparam F Callable with signature returning @c task<T> (for some @c T).
  *
- * @tparam Pool A thread pool type providing @c submit(Callable).
- * @tparam F    A callable returning @c task<T>.
+ * @par Behaviour
+ * The callable is invoked on a worker thread. That worker calls @c sync_wait
+ * on the @c task returned by the callable, so the coroutine body runs there.
+ * Nested @c co_await on other @c task objects typically keeps resuming on that
+ * same worker unless you @c co_await schedule_on to hand off again. The
+ * @c std::future is fulfilled when @c sync_wait completes inside the worker.
  *
  * @par Example
  * @code
