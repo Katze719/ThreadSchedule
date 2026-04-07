@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file thread_pool.hpp
+ * @brief Thread pools: HighPerformancePool, ThreadPoolBase, LightweightPoolT, and GlobalPool.
+ */
+
 #include "expected.hpp"
 #include "scheduler_policy.hpp"
 #include "thread_registry.hpp"
@@ -777,8 +782,10 @@ class HighPerformancePool
 
 #if __cpp_lib_jthread >= 201911L
     /**
-     * @brief Submit a cancellable task. If stop is already requested the task
-     *        is skipped and the future throws @c std::future_error (broken_promise).
+     * @brief Submit a cancellable task (C++20).
+     *
+     * If @p token is already stopped the task body is skipped and
+     * the future receives a default-constructed result.
      */
     template <typename F, typename... Args>
     auto submit(std::stop_token token, F&& f, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>
@@ -791,9 +798,7 @@ class HighPerformancePool
         });
     }
 
-    /**
-     * @brief Non-throwing cancellable submission.
-     */
+    /// @brief Non-throwing cancellable submission (C++20).
     template <typename F, typename... Args>
     auto try_submit(std::stop_token token, F&& f, Args&&... args)
         -> expected<std::future<std::invoke_result_t<F, Args...>>, std::error_code>
@@ -973,7 +978,7 @@ class HighPerformancePool
      *
      * Each worker is named @c name_prefix + "_0", @c "_1", etc.
      *
-     * @return @c expected<void, std::error_code> -- error if the OS
+     * @return @c expected<void, std::error_code> - error if the OS
      *         rejected any configuration call.
      */
     auto configure_threads(std::string const& name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
@@ -1963,8 +1968,8 @@ class LightweightPoolT
     /**
      * @brief Shut the pool down.
      *
-     * @param policy @c drain (default) -- workers finish all queued tasks
-     *               before exiting. @c drop_pending -- the queue is cleared
+     * @param policy @c drain (default) - workers finish all queued tasks
+     *               before exiting. @c drop_pending - the queue is cleared
      *               and only the currently executing tasks are allowed to
      *               finish.
      *

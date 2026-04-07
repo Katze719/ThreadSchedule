@@ -234,11 +234,11 @@ graph TD
 - **Runtime Mode**: Shared runtime created at startup, provides global registry instance
 
 - Core entrypoints:
-  - `threadschedule::registry()` – default global registry
-  - `threadschedule::set_external_registry(...)` – app-injected global registry
-  - `threadschedule::CompositeThreadRegistry` – merge multiple registries (views)
-  - `threadschedule::AutoRegisterCurrentThread` – RAII auto-registration
-  - `threadschedule::ThreadWrapperReg` – opt-in wrapper that auto-registers
+  - `threadschedule::registry()` - default global registry
+  - `threadschedule::set_external_registry(...)` - app-injected global registry
+  - `threadschedule::CompositeThreadRegistry` - merge multiple registries (views)
+  - `threadschedule::AutoRegisterCurrentThread` - RAII auto-registration
+  - `threadschedule::ThreadWrapperReg` - opt-in wrapper that auto-registers
 
 **Important:** The registry **requires control blocks** for all control operations (`set_affinity`, `set_priority`, `set_scheduling_policy`, `set_name`). Threads registered without control blocks can be queried but not controlled. Use `ThreadWrapperReg` or `AutoRegisterCurrentThread` to automatically create and register control blocks.
 
@@ -316,8 +316,8 @@ target_link_libraries(your_dso PRIVATE ThreadSchedule::ThreadSchedule ThreadSche
 ```
 
 - Exported APIs (same as header-only), provided by the runtime:
-  - `threadschedule::registry()` – returns the single process-wide registry instance
-  - `threadschedule::set_external_registry(ThreadRegistry*)` – optionally redirect runtime to an app-owned instance
+  - `threadschedule::registry()` - returns the single process-wide registry instance
+  - `threadschedule::set_external_registry(ThreadRegistry*)` - optionally redirect runtime to an app-owned instance
 
 Notes:
 - With `THREADSCHEDULE_RUNTIME=ON`, the header declares these functions and the `.so/.dll` provides the definitions.
@@ -529,7 +529,7 @@ void foreign_thread() {
 }
 ```
 
-#### 5) Runtime (shared) example – app + two DSOs
+#### 5) Runtime (shared) example - app + two DSOs
 
 This repository includes a minimal working example under `examples/runtime_shared/` that demonstrates using `THREADSCHEDULE_RUNTIME`:
 
@@ -581,7 +581,7 @@ cmake -B build -DTHREADSCHEDULE_RUNTIME=ON -DTHREADSCHEDULE_BUILD_EXAMPLES=ON
 cmake --build build --target runtime_main
 ```
 
-Run `runtime_main` – it will list threads from both DSOs via the single shared registry.
+Run `runtime_main` - it will list threads from both DSOs via the single shared registry.
 
 ### Platform notes
 
@@ -593,9 +593,9 @@ Run `runtime_main` – it will list threads from both DSOs via the single shared
 ### Error handling
 
 All control functions return `expected<void, std::error_code>`. Typical errors include:
-- `std::errc::no_such_process` – Thread not found in registry or no control block available
-- `std::errc::operation_not_permitted` – Insufficient privileges
-- `std::errc::invalid_argument` – Invalid parameters
+- `std::errc::no_such_process` - Thread not found in registry or no control block available
+- `std::errc::operation_not_permitted` - Insufficient privileges
+- `std::errc::invalid_argument` - Invalid parameters
 
 
 ### Duplicate registrations

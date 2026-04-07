@@ -144,7 +144,7 @@ inline auto when_all_settled(std::vector<std::future<void>>& futures)
  * Polls all futures round-robin with a 1 ms timeout until one is ready,
  * then returns its index and value.
  *
- * @note The remaining futures are left in their current state -- the caller
+ * @note The remaining futures are left in their current state - the caller
  *       is responsible for managing their lifetime.
  *
  * @tparam T The value type of each future.

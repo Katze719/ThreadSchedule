@@ -35,7 +35,7 @@ or with optional **shared runtime** for multi-DSO applications.
 - **NUMA-aware Topology Helpers**: Easy affinity builders across nodes
 - **Chaos Testing**: RAII controller to perturb affinity/priority for validation
 - **C++20 Coroutines**: `task<T>`, `generator<T>`, and `sync_wait` out of the
-  box -- no boilerplate promise types needed
+  box - no boilerplate promise types needed
 - **High-Performance Pools**: Work-stealing pool, `post()` / `try_post()`, and
   optional `LightweightPool` for fire-and-forget workloads with minimal overhead
 - **Scheduled Tasks**: Run tasks at specific times, after delays, or
@@ -54,12 +54,12 @@ coroutines, `std::stop_token`). Highlights:
 
 | Area                        | What changed                                                                                                                                                                                                                                                         |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Lightweight pool**        | `LightweightPoolT<TaskSize>` / `LightweightPool` -- fire-and-forget only, configurable SBO buffer (default 64 B), no futures or stats. Workers are still `ThreadWrapper` (name, affinity, policy). Ideal for maximum throughput when you do not need a return value. |
-| **`post()` / `try_post()`** | On `HighPerformancePool`, `ThreadPool` / `FastThreadPool`, and `GlobalPool` -- same queue path as `submit()` but skips `packaged_task` / `future` overhead.                                                                                                          |
-| **Non-throwing submit**     | `try_submit()` / `try_submit_batch()` return `expected<future, std::error_code>` instead of throwing on shutdown.                                                                                                                                                    |
+| **Lightweight pool**        | `LightweightPoolT<TaskSize>` / `LightweightPool` - fire-and-forget only, configurable SBO buffer (default 64 B), no futures or stats. Workers are still `ThreadWrapper` (name, affinity, policy). Ideal for maximum throughput when you do not need a return value. |
+| **`post()` / `try_post()`** | On `HighPerformancePool`, `ThreadPool` / `FastThreadPool`, and `GlobalPool` - same queue path as `submit()` but skips `packaged_task` / `future` overhead.                                                                                                          |
+| **Non-throwing submit**     | `try_submit()` returns `expected<future<R>, error_code>`; `try_submit_batch()` returns `expected<vector<future<void>>, error_code>` instead of throwing on shutdown.                                                                                                  |
 | **Scheduled dispatch**      | `ScheduledThreadPoolT` dispatches with `post()` internally. Alias `ScheduledLightweightPool` uses `LightweightPool` as the backend.                                                                                                                                  |
 | **Shutdown**                | `ShutdownPolicy::drain` (default) vs `drop_pending`; `shutdown_for(timeout)` for a timed drain.                                                                                                                                                                      |
-| **Parallel loops**          | Chunked `parallel_for_each` on single-queue pools (same helper as the work-stealing pool).                                                                                                                                                                           |
+| **Parallel loops**          | Chunked `parallel_for_each` on all pool types (shared helper across single-queue and work-stealing pools).                                                                                                                                                           |
 | **Tuning**                  | `PollingWait<IntervalMs>` for `FastThreadPool`, configurable work-stealing deque capacity on `HighPerformancePool`, `GlobalPool::init(n)` before first use.                                                                                                          |
 | **C++20**                   | Ranges overloads for batch submit and `parallel_for_each`; `submit`/`try_submit` with `std::stop_token` (cooperative skip).                                                                                                                                          |
 | **Futures**                 | `when_all`, `when_any`, `when_all_settled` in `futures.hpp`.                                                                                                                                                                                                         |
@@ -104,32 +104,32 @@ on:
 | Platform            | Compiler           | C++17 | C++20 | C++23 | C++26 |
 | ------------------- | ------------------ | :---: | :---: | :---: | :---: |
 | **Linux (x86_64)**  |                    |       |       |       |       |
-| Ubuntu 22.04        | GCC 11             |  ✅   |  ✅   |  ✅   |   -   |
-| Ubuntu 22.04        | GCC 12             |   -   |  ✅   |   -   |   -   |
-| Ubuntu 22.04        | Clang 14           |  ✅   |  ✅   |  ✅   |   -   |
-| Ubuntu 22.04        | Clang 15           |   -   |  ✅   |  ✅   |   -   |
-| Ubuntu 24.04        | GCC 13             |  ✅   |  ✅   |  ✅   |   -   |
-| Ubuntu 24.04        | GCC 14             |  ✅   |  ✅   |  ✅   |  ✅   |
-| Ubuntu 24.04        | GCC 15             |   -   |  ✅   |  ✅   |  ✅   |
-| Ubuntu 24.04        | Clang 16           |  ✅   |  ✅   |   -   |   -   |
-| Ubuntu 24.04        | Clang 18           |  ✅   |  ✅   |   -   |   -   |
-| Ubuntu 24.04        | Clang 19           |   -   |  ✅   |  ✅   |  ✅   |
-| Ubuntu 24.04        | Clang 21           |   -   |  ✅   |  ✅   |  ✅   |
+| Ubuntu 22.04        | GCC 11             |  yes   |  yes   |  yes   |   -   |
+| Ubuntu 22.04        | GCC 12             |   -   |  yes   |   -   |   -   |
+| Ubuntu 22.04        | Clang 14           |  yes   |  yes   |  yes   |   -   |
+| Ubuntu 22.04        | Clang 15           |   -   |  yes   |  yes   |   -   |
+| Ubuntu 24.04        | GCC 13             |  yes   |  yes   |  yes   |   -   |
+| Ubuntu 24.04        | GCC 14             |  yes   |  yes   |  yes   |  yes   |
+| Ubuntu 24.04        | GCC 15             |   -   |  yes   |  yes   |  yes   |
+| Ubuntu 24.04        | Clang 16           |  yes   |  yes   |   -   |   -   |
+| Ubuntu 24.04        | Clang 18           |  yes   |  yes   |   -   |   -   |
+| Ubuntu 24.04        | Clang 19           |   -   |  yes   |  yes   |  yes   |
+| Ubuntu 24.04        | Clang 21           |   -   |  yes   |  yes   |  yes   |
 | **Linux (ARM64)**   |                    |       |       |       |       |
-| Ubuntu 24.04 ARM64  | GCC 13 (system)    |  ✅   |  ✅   |  ✅   |   -   |
-| Ubuntu 24.04 ARM64  | GCC 14             |   -   |  ✅   |  ✅   |  ✅   |
+| Ubuntu 24.04 ARM64  | GCC 13 (system)    |  yes   |  yes   |  yes   |   -   |
+| Ubuntu 24.04 ARM64  | GCC 14             |   -   |  yes   |  yes   |  yes   |
 | **Windows**         |                    |       |       |       |       |
-| Windows Server 2022 | MSVC 2022          |  ✅   |  ✅   |  ✅   |   -   |
-| Windows Server 2022 | MinGW-w64 (GCC 15) |  ✅   |  ✅   |  ✅   |   -   |
-| Windows Server 2025 | MSVC 2022          |  ✅   |  ✅   |  ✅   |   -   |
-| Windows Server 2025 | MinGW-w64 (GCC 15) |  ✅   |  ✅   |  ✅   |   -   |
+| Windows Server 2022 | MSVC 2022          |  yes   |  yes   |  yes   |   -   |
+| Windows Server 2022 | MinGW-w64 (GCC 15) |  yes   |  yes   |  yes   |   -   |
+| Windows Server 2025 | MSVC 2022          |  yes   |  yes   |  yes   |   -   |
+| Windows Server 2025 | MinGW-w64 (GCC 15) |  yes   |  yes   |  yes   |   -   |
 
 **Additional platforms:** ThreadSchedule should work on other platforms (macOS,
 FreeBSD, other Linux distributions) with standard C++17+ compilers, but these
 are not regularly tested in CI.
 
 > **C++23**: GCC 12's libstdc++ lacks monadic `std::expected` operations
-> (`and_then`, `transform`, …). Clang 16/18 on Ubuntu 24.04 use GCC 14's
+> (`and_then`, `transform`, ...). Clang 16/18 on Ubuntu 24.04 use GCC 14's
 > libstdc++ headers which expose `std::expected` incorrectly to those Clang
 > versions. These combinations are therefore only tested up to C++20.
 >
@@ -243,7 +243,7 @@ int main() {
         std::cout << "Frequent task!" << std::endl;
     });
 
-    // v2: ScheduledLightweightPool -- same API, LightweightPool backend (post-based dispatch)
+    // v2: ScheduledLightweightPool - same API, LightweightPool backend (post-based dispatch)
     
     // Error handling
     HighPerformancePoolWithErrors pool_safe(4);
@@ -398,7 +398,7 @@ auto value = pool.submit([]{ return 42; }); // standard future-based API remains
 
 ### Coroutines (C++20)
 
-Lazy coroutine primitives -- no boilerplate promise types required.
+Lazy coroutine primitives - no boilerplate promise types required.
 
 ```cpp
 #include <threadschedule/threadschedule.hpp>
@@ -410,7 +410,7 @@ task<int> compute(int x) {
 }
 
 task<int> pipeline() {
-    int a = co_await compute(21);  // lazy -- starts here
+    int a = co_await compute(21);  // lazy - starts here
     co_return a;                   // 42
 }
 

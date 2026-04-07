@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file thread_pool_with_errors.hpp
+ * @brief PoolWithErrors wrapper that combines any pool with an ErrorHandler.
+ */
+
 #include "error_handler.hpp"
 #include "thread_pool.hpp"
 #include <memory>

@@ -217,7 +217,7 @@ auto futures = pool.submit_batch(tasks.begin(), tasks.end());
   pointers work as callables (e.g.
   `JThreadWrapperReg("n", "c", &MyClass::run, this)`).
 - Fix: `JThreadWrapperReg` now correctly forwards `std::stop_token` to callables
-  that accept it, while also supporting callables without `stop_token` — the
+  that accept it, while also supporting callables without `stop_token` - the
   previous `auto&&...` wrapper always claimed to accept a token, causing a
   compile error when the user's callable did not.
 
@@ -237,7 +237,7 @@ auto futures = pool.submit_batch(tasks.begin(), tasks.end());
   required scheduling API.
 - Added: `FastThreadPool::set_affinity()` and `FastThreadPool::wait_for_tasks()`
   for API parity with `ThreadPool` and `HighPerformancePool`.
-- Added: Missing forwarding methods in `WithErrors` wrappers —
+- Added: Missing forwarding methods in `WithErrors` wrappers -
   `HighPerformancePoolWithErrors::set_affinity()`,
   `FastThreadPoolWithErrors::set_affinity()` and
   `FastThreadPoolWithErrors::wait_for_tasks()`.
@@ -250,12 +250,12 @@ auto futures = pool.submit_batch(tasks.begin(), tasks.end());
   all pool classes, and `ScheduledTaskHandle`.
 - Removed: Unused `thread_local std::random_device` in
   `HighPerformancePool::worker_function`.
-- Added: C++20 coroutine primitive `task<T>` (`task.hpp`) — a lazy single-value
+- Added: C++20 coroutine primitive `task<T>` (`task.hpp`) - a lazy single-value
   coroutine that starts execution only when `co_await`ed. Includes full
   `task<void>` specialisation and exception propagation.
-- Added: `sync_wait(task<T>)` / `sync_wait(task<void>)` — blocking bridge that
+- Added: `sync_wait(task<T>)` / `sync_wait(task<void>)` - blocking bridge that
   runs a task on the calling thread and returns its result.
-- Added: C++20 coroutine primitive `generator<T>` (`generator.hpp`) — a lazy
+- Added: C++20 coroutine primitive `generator<T>` (`generator.hpp`) - a lazy
   multi-value coroutine producing elements via `co_yield`. Supports range-based
   for loops (`begin()` / `end()` with `std::default_sentinel_t`). Automatically
   aliases `std::generator<T>` when C++23 `__cpp_lib_generator` is available.
@@ -277,7 +277,7 @@ auto futures = pool.submit_batch(tasks.begin(), tasks.end());
 
 - Build/Style: Update `.clang-format` (`IndentPPDirectives: AfterHash`) for
   clearer preprocessor indentation.
-- Core: Improve `expected.hpp` header detection — check `<version>` or
+- Core: Improve `expected.hpp` header detection - check `<version>` or
   `<experimental/version>` presence before including `<expected>`.
 - Refactor: Simplify and clarify conditional compilation in `expected.hpp` for
   maintainability.

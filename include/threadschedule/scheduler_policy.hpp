@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file scheduler_policy.hpp
+ * @brief Scheduling policies, thread priority, and CPU affinity types.
+ */
+
 #include "expected.hpp"
 #include <algorithm>
 #include <cstdint>
