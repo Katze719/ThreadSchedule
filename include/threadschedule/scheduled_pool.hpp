@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file scheduled_pool.hpp
+ * @brief Delayed and periodic task scheduling on top of any pool type.
+ */
+
 #include "expected.hpp"
 #include "thread_pool.hpp"
 #include <atomic>
@@ -107,7 +112,7 @@ class ScheduledTaskHandle
  *   from when the task actually finishes.
  * - There is no returned std::future for scheduled tasks. If you need
  *   to observe the result, use the underlying pool directly via
- *   thread_pool().submit().
+ *   thread_pool().post() or thread_pool().submit().
  *
  * @par Thread safety
  * All schedule_* methods are thread-safe (protected by an internal

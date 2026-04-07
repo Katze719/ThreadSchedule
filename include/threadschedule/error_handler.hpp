@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file error_handler.hpp
+ * @brief Error handling primitives: TaskError, ErrorHandler, and ErrorHandledTask.
+ */
+
 #include <chrono>
 #include <exception>
 #include <functional>
@@ -122,7 +127,7 @@ using ErrorCallback = std::function<void(TaskError const&)>;
  *
  * @par Callback execution
  * - Callbacks are invoked in the order they were registered (FIFO).
- * - Callbacks run **under the lock** -- keep them short and non-blocking to
+ * - Callbacks run **under the lock** - keep them short and non-blocking to
  *   avoid contention with other threads that may call handle_error() or
  *   add_callback() concurrently.
  * - If a callback itself throws, the exception is silently swallowed so that

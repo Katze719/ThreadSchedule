@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file pthread_wrapper.hpp
+ * @brief RAII wrapper around POSIX threads (Linux only).
+ */
+
 #include "concepts.hpp"
 #include "expected.hpp"
 #include "scheduler_policy.hpp"
@@ -26,7 +31,7 @@ namespace threadschedule
 /**
  * @brief RAII wrapper around POSIX threads with a modern C++ interface.
  *
- * Linux-only -- not available on Windows (guarded by @c _WIN32).
+ * Linux-only - not available on Windows (guarded by @c _WIN32).
  *
  * Non-copyable, movable. The destructor automatically joins the thread
  * if it is still joinable, which **blocks** until the thread finishes.
@@ -41,8 +46,8 @@ namespace threadschedule
  *       affect the **calling** thread, not the PThreadWrapper's thread.
  *
  * @par Factory methods
- * - create_with_config()      -- creates a thread and applies name/policy/priority.
- * - create_with_attributes()  -- creates a thread from a raw @c pthread_attr_t.
+ * - create_with_config()      - creates a thread and applies name/policy/priority.
+ * - create_with_attributes()  - creates a thread from a raw @c pthread_attr_t.
  *
  * @see is_thread_like<PThreadWrapper> (specialised to @c true_type at end of file)
  */
@@ -410,7 +415,7 @@ class PThreadAttributes
  *
  * @note The constructor throws @c std::runtime_error if
  *       @c pthread_mutex_init fails. Unusually for a mutex type,
- *       lock() and unlock() also throw on error -- callers should be
+ *       lock() and unlock() also throw on error - callers should be
  *       aware of this when mixing with code that assumes non-throwing
  *       mutex operations.
  */

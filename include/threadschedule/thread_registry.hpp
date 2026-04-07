@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file thread_registry.hpp
+ * @brief Process-wide thread registry, control blocks, and composite registry.
+ */
+
 #include "expected.hpp"
 #include "scheduler_policy.hpp"
 #include "thread_wrapper.hpp" // for ThreadInfo, ThreadAffinity
@@ -61,19 +66,19 @@ using Tid = pid_t; // Linux TID via gettid()
  * Fully copyable and movable (regular value semantics).
  *
  * @par Lifetime
- * A RegisteredThreadInfo is a *snapshot* -- it may outlive the thread it
+ * A RegisteredThreadInfo is a *snapshot* - it may outlive the thread it
  * describes.  The @c alive flag reflects the state at the time the snapshot
  * was taken; it is **not** updated retroactively when the thread unregisters.
  *
  * @par Fields
- * - @c tid   -- OS-level thread identifier (@c pid_t on Linux via
+ * - @c tid   - OS-level thread identifier (@c pid_t on Linux via
  *               @c gettid(), @c DWORD on Windows).
- * - @c stdId -- The corresponding @c std::thread::id.
- * - @c name  -- Human-readable name given at registration time.
- * - @c componentTag -- Optional logical grouping tag (e.g. "io", "compute").
- * - @c alive -- @c true while the thread is registered; set to @c false when
+ * - @c stdId - The corresponding @c std::thread::id.
+ * - @c name  - Human-readable name given at registration time.
+ * - @c componentTag - Optional logical grouping tag (e.g. "io", "compute").
+ * - @c alive - @c true while the thread is registered; set to @c false when
  *               the thread calls @c unregister_current_thread().
- * - @c control -- Shared pointer to the thread's @ref ThreadControlBlock.  May be
+ * - @c control - Shared pointer to the thread's @ref ThreadControlBlock.  May be
  *                 @c nullptr if the thread was registered without a control
  *                 block (i.e. via the name-only overload of
  *                 @c register_current_thread()).
@@ -108,7 +113,7 @@ struct RegisteredThreadInfo
  *
  * @par Thread safety
  * - The object is **not** copyable and **not** movable (identity type).
- * - All @c set_* methods are safe to call from **any** thread -- they operate
+ * - All @c set_* methods are safe to call from **any** thread - they operate
  *   on the stored native handle, not on thread-local state.
  * - Concurrent calls to different @c set_* methods on the same instance are
  *   safe (each call is a single OS syscall on the stored handle).
@@ -404,7 +409,7 @@ class ThreadRegistry : public detail::QueryFacadeMixin<ThreadRegistry>
      *
      * A QueryView is produced by ThreadRegistry::query() (or by chaining
      * operations on an existing QueryView).  It holds an internal
-     * @c std::vector<RegisteredThreadInfo> that is a **snapshot** -- mutations
+     * @c std::vector<RegisteredThreadInfo> that is a **snapshot** - mutations
      * to the originating ThreadRegistry after the QueryView was created are
      * not visible.
      *
@@ -421,18 +426,18 @@ class ThreadRegistry : public detail::QueryFacadeMixin<ThreadRegistry>
      *
      * @par API
      * Provides a functional-style interface:
-     * - **filter(pred)** -- returns a new QueryView containing only entries
+     * - **filter(pred)** - returns a new QueryView containing only entries
      *   that satisfy @p pred.
-     * - **map(fn)** -- transforms each entry and returns a
+     * - **map(fn)** - transforms each entry and returns a
      *   @c std::vector<R>.
-     * - **for_each(fn)** -- applies @p fn to every entry.
-     * - **find_if(pred)** -- returns the first matching entry, or
+     * - **for_each(fn)** - applies @p fn to every entry.
+     * - **find_if(pred)** - returns the first matching entry, or
      *   @c std::nullopt.
-     * - **any / all / none(pred)** -- boolean aggregation predicates.
-     * - **take(n) / skip(n)** -- positional slicing, returning new
+     * - **any / all / none(pred)** - boolean aggregation predicates.
+     * - **take(n) / skip(n)** - positional slicing, returning new
      *   QueryViews.
-     * - **count() / empty()** -- size queries.
-     * - **entries()** -- direct access to the underlying vector.
+     * - **count() / empty()** - size queries.
+     * - **entries()** - direct access to the underlying vector.
      */
     class QueryView
     {
@@ -838,7 +843,7 @@ class CompositeThreadRegistry : public detail::QueryFacadeMixin<CompositeThreadR
  *
  * @par Copyability / movability
  * - **Not copyable** (deleted).
- * - **Movable** -- move construction / assignment transfers registration
+ * - **Movable** - move construction / assignment transfers registration
  *   ownership to the new instance and disarms the source.
  *
  * @par Thread safety

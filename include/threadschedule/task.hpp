@@ -536,7 +536,7 @@ class sync_wait_task
  *        its result.
  *
  * This is the primary bridge between coroutine code and synchronous code.
- * The task is resumed **on the calling thread** -- no thread pool or
+ * The task is resumed **on the calling thread** - no thread pool or
  * executor is involved.
  *
  * If the task's coroutine body throws an exception, `sync_wait`
@@ -587,7 +587,7 @@ auto sync_wait(task<T> t) -> T
  * Overload for void tasks. Behaves identically to the `task<T>` overload
  * but returns nothing.
  *
- * The task is resumed **on the calling thread** -- no thread pool or
+ * The task is resumed **on the calling thread** - no thread pool or
  * executor is involved. If the task body throws, the exception is
  * re-thrown to the caller.
  *

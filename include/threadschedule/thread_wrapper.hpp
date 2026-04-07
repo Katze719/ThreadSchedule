@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file thread_wrapper.hpp
+ * @brief Enhanced thread wrappers: ThreadWrapper, JThreadWrapper, and non-owning views.
+ */
+
 #include "expected.hpp"
 #include "scheduler_policy.hpp"
 #include <optional>
