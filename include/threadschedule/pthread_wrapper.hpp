@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file pthread_wrapper.hpp
+ * @brief RAII wrapper around POSIX threads (Linux only).
+ */
+
 #include "concepts.hpp"
 #include "expected.hpp"
 #include "scheduler_policy.hpp"
@@ -9,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -25,7 +31,7 @@ namespace threadschedule
 /**
  * @brief RAII wrapper around POSIX threads with a modern C++ interface.
  *
- * Linux-only -- not available on Windows (guarded by @c _WIN32).
+ * Linux-only - not available on Windows (guarded by @c _WIN32).
  *
  * Non-copyable, movable. The destructor automatically joins the thread
  * if it is still joinable, which **blocks** until the thread finishes.
@@ -40,8 +46,8 @@ namespace threadschedule
  *       affect the **calling** thread, not the PThreadWrapper's thread.
  *
  * @par Factory methods
- * - create_with_config()      -- creates a thread and applies name/policy/priority.
- * - create_with_attributes()  -- creates a thread from a raw @c pthread_attr_t.
+ * - create_with_config()      - creates a thread and applies name/policy/priority.
+ * - create_with_attributes()  - creates a thread from a raw @c pthread_attr_t.
  *
  * @see is_thread_like<PThreadWrapper> (specialised to @c true_type at end of file)
  */
@@ -59,9 +65,11 @@ class PThreadWrapper
     explicit PThreadWrapper(F&& func, Args&&... args) : thread_(0), joined_(false)
     {
 
-        // Store the callable in a way pthread can handle
         auto callable =
-            std::make_unique<std::function<void()>>(std::bind(std::forward<F>(func), std::forward<Args>(args)...));
+            std::make_unique<std::function<void()>>([fn = std::forward<F>(func),
+                                                     tup = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+                std::apply(std::move(fn), std::move(tup));
+            });
 
         int const result = pthread_create(&thread_, nullptr, thread_function, callable.release());
 
@@ -146,72 +154,35 @@ class PThreadWrapper
         return thread_;
     }
 
-    // Extended pthread functionality
     [[nodiscard]] auto set_name(std::string const& name) const -> expected<void, std::error_code>
     {
-        if (name.length() > 15)
-            return expected<void, std::error_code>(unexpect, std::make_error_code(std::errc::invalid_argument));
-        if (pthread_setname_np(thread_, name.c_str()) == 0)
-            return {};
-        return expected<void, std::error_code>(unexpect, std::error_code(errno, std::generic_category()));
+        return detail::apply_name(thread_, name);
     }
 
     [[nodiscard]] auto get_name() const -> std::optional<std::string>
     {
-        char name[16]; // Linux limit + 1
-        if (pthread_getname_np(thread_, name, sizeof(name)) == 0)
-        {
-            return std::string(name);
-        }
-        return std::nullopt;
+        return detail::read_name(thread_);
     }
 
     [[nodiscard]] auto set_priority(ThreadPriority priority) const -> expected<void, std::error_code>
     {
-        int const policy = SCHED_OTHER;
-        auto params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
-
-        if (!params_result.has_value())
-        {
-            return unexpected(params_result.error());
-        }
-
-        if (pthread_setschedparam(thread_, policy, &params_result.value()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
+        return detail::apply_priority(thread_, priority);
     }
 
     [[nodiscard]] auto set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority) const
         -> expected<void, std::error_code>
     {
-        int const policy_int = static_cast<int>(policy);
-        auto params_result = SchedulerParams::create_for_policy(policy, priority);
-
-        if (!params_result.has_value())
-        {
-            return unexpected(params_result.error());
-        }
-
-        if (pthread_setschedparam(thread_, policy_int, &params_result.value()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
+        return detail::apply_scheduling_policy(thread_, policy, priority);
     }
 
     [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) const -> expected<void, std::error_code>
     {
-        if (pthread_setaffinity_np(thread_, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
+        return detail::apply_affinity(thread_, affinity);
     }
 
     [[nodiscard]] auto get_affinity() const -> std::optional<ThreadAffinity>
     {
-        ThreadAffinity affinity;
-        if (pthread_getaffinity_np(thread_, sizeof(cpu_set_t), const_cast<cpu_set_t*>(&affinity.native_handle())) == 0)
-        {
-            return affinity;
-        }
-        return std::nullopt;
+        return detail::read_affinity(thread_);
     }
 
     // Cancellation support
@@ -258,7 +229,10 @@ class PThreadWrapper
 
         PThreadWrapper wrapper;
         auto callable =
-            std::make_unique<std::function<void()>>(std::bind(std::forward<F>(func), std::forward<Args>(args)...));
+            std::make_unique<std::function<void()>>([fn = std::forward<F>(func),
+                                                     tup = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+                std::apply(std::move(fn), std::move(tup));
+            });
 
         int const result = pthread_create(&wrapper.thread_, &attr, thread_function, callable.release());
 
@@ -441,7 +415,7 @@ class PThreadAttributes
  *
  * @note The constructor throws @c std::runtime_error if
  *       @c pthread_mutex_init fails. Unusually for a mutex type,
- *       lock() and unlock() also throw on error -- callers should be
+ *       lock() and unlock() also throw on error - callers should be
  *       aware of this when mixing with code that assumes non-throwing
  *       mutex operations.
  */

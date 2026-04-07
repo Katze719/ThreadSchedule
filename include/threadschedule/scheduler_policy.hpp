@@ -1,8 +1,14 @@
 #pragma once
 
+/**
+ * @file scheduler_policy.hpp
+ * @brief Scheduling policies, thread priority, and CPU affinity types.
+ */
+
 #include "expected.hpp"
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -11,6 +17,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
+#include <pthread.h>
 #include <sched.h>
 #include <sys/resource.h>
 #endif
@@ -481,5 +488,245 @@ inline auto to_string(SchedulingPolicy policy) -> std::string
         return "UNKNOWN";
     }
 }
+
+// ---------------------------------------------------------------------------
+// detail:: free functions for thread configuration (priority, policy, affinity)
+//
+// Overloaded by handle type so that every wrapper class can delegate with a
+// single call: detail::apply_priority(handle, priority).
+// ---------------------------------------------------------------------------
+
+namespace detail
+{
+
+#ifdef _WIN32
+
+inline auto map_priority_to_win32(int prio_val) -> int
+{
+    if (prio_val <= -10)
+        return THREAD_PRIORITY_IDLE;
+    if (prio_val <= -5)
+        return THREAD_PRIORITY_LOWEST;
+    if (prio_val < 0)
+        return THREAD_PRIORITY_BELOW_NORMAL;
+    if (prio_val == 0)
+        return THREAD_PRIORITY_NORMAL;
+    if (prio_val <= 5)
+        return THREAD_PRIORITY_ABOVE_NORMAL;
+    if (prio_val <= 10)
+        return THREAD_PRIORITY_HIGHEST;
+    return THREAD_PRIORITY_TIME_CRITICAL;
+}
+
+inline auto apply_priority(HANDLE handle, ThreadPriority priority) -> expected<void, std::error_code>
+{
+    if (!handle)
+        return unexpected(std::make_error_code(std::errc::no_such_process));
+    if (SetThreadPriority(handle, map_priority_to_win32(priority.value())) != 0)
+        return {};
+    return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+}
+
+inline auto apply_scheduling_policy(HANDLE handle, SchedulingPolicy /*policy*/, ThreadPriority priority)
+    -> expected<void, std::error_code>
+{
+    return apply_priority(handle, priority);
+}
+
+inline auto apply_affinity(HANDLE handle, ThreadAffinity const& affinity) -> expected<void, std::error_code>
+{
+    if (!handle)
+        return unexpected(std::make_error_code(std::errc::no_such_process));
+    using SetThreadGroupAffinityFn = BOOL(WINAPI*)(HANDLE, const GROUP_AFFINITY*, PGROUP_AFFINITY);
+    HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
+    if (hMod)
+    {
+        auto set_group_affinity = reinterpret_cast<SetThreadGroupAffinityFn>(
+            reinterpret_cast<void*>(GetProcAddress(hMod, "SetThreadGroupAffinity")));
+        if (set_group_affinity && affinity.has_any())
+        {
+            GROUP_AFFINITY ga{};
+            ga.Mask = static_cast<KAFFINITY>(affinity.get_mask());
+            ga.Group = affinity.get_group();
+            if (set_group_affinity(handle, &ga, nullptr) != 0)
+                return {};
+            return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+        }
+    }
+    DWORD_PTR mask = static_cast<DWORD_PTR>(affinity.get_mask());
+    if (SetThreadAffinityMask(handle, mask) != 0)
+        return {};
+    return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+}
+
+inline auto apply_name(HANDLE handle, std::string const& name) -> expected<void, std::error_code>
+{
+    if (!handle)
+        return unexpected(std::make_error_code(std::errc::no_such_process));
+    using SetThreadDescriptionFn = HRESULT(WINAPI*)(HANDLE, PCWSTR);
+    HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
+    if (!hMod)
+        return unexpected(std::make_error_code(std::errc::function_not_supported));
+    auto set_desc = reinterpret_cast<SetThreadDescriptionFn>(
+        reinterpret_cast<void*>(GetProcAddress(hMod, "SetThreadDescription")));
+    if (!set_desc)
+        return unexpected(std::make_error_code(std::errc::function_not_supported));
+    std::wstring wide(name.begin(), name.end());
+    if (SUCCEEDED(set_desc(handle, wide.c_str())))
+        return {};
+    return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+}
+
+inline auto read_name(HANDLE handle) -> std::optional<std::string>
+{
+    if (!handle)
+        return std::nullopt;
+    using GetThreadDescriptionFn = HRESULT(WINAPI*)(HANDLE, PWSTR*);
+    HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
+    if (!hMod)
+        return std::nullopt;
+    auto get_desc = reinterpret_cast<GetThreadDescriptionFn>(
+        reinterpret_cast<void*>(GetProcAddress(hMod, "GetThreadDescription")));
+    if (!get_desc)
+        return std::nullopt;
+    PWSTR thread_name = nullptr;
+    if (SUCCEEDED(get_desc(handle, &thread_name)) && thread_name)
+    {
+        int size = WideCharToMultiByte(CP_UTF8, 0, thread_name, -1, nullptr, 0, nullptr, nullptr);
+        if (size > 0)
+        {
+            std::string result(size - 1, '\0');
+            WideCharToMultiByte(CP_UTF8, 0, thread_name, -1, &result[0], size, nullptr, nullptr);
+            LocalFree(thread_name);
+            return result;
+        }
+        LocalFree(thread_name);
+    }
+    return std::nullopt;
+}
+
+inline auto read_affinity(HANDLE handle) -> std::optional<ThreadAffinity>
+{
+    if (!handle)
+        return std::nullopt;
+    using GetThreadGroupAffinityFn = BOOL(WINAPI*)(HANDLE, PGROUP_AFFINITY);
+    HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
+    if (!hMod)
+        return std::nullopt;
+    auto get_group_affinity = reinterpret_cast<GetThreadGroupAffinityFn>(
+        reinterpret_cast<void*>(GetProcAddress(hMod, "GetThreadGroupAffinity")));
+    if (!get_group_affinity)
+        return std::nullopt;
+    GROUP_AFFINITY ga{};
+    if (get_group_affinity(handle, &ga) != 0)
+    {
+        ThreadAffinity affinity;
+        for (int i = 0; i < 64; ++i)
+        {
+            if ((ga.Mask & (static_cast<KAFFINITY>(1) << i)) != 0)
+                affinity.add_cpu(static_cast<int>(ga.Group) * 64 + i);
+        }
+        if (affinity.has_any())
+            return affinity;
+    }
+    return std::nullopt;
+}
+
+#else // POSIX
+
+// --- shared implementation for pthread_t and pid_t scheduling ---
+
+template <typename SetSchedFn>
+inline auto apply_sched_params(SchedulingPolicy policy, ThreadPriority priority, SetSchedFn&& set_sched)
+    -> expected<void, std::error_code>
+{
+    int const policy_int = static_cast<int>(policy);
+    auto params_result = SchedulerParams::create_for_policy(policy, priority);
+    if (!params_result.has_value())
+        return unexpected(params_result.error());
+    if (set_sched(policy_int, &params_result.value()) == 0)
+        return {};
+    return unexpected(std::error_code(errno, std::generic_category()));
+}
+
+// --- pthread_t overloads (BaseThreadWrapper, ThreadControlBlock, PThreadWrapper) ---
+
+inline auto apply_scheduling_policy(pthread_t handle, SchedulingPolicy policy, ThreadPriority priority)
+    -> expected<void, std::error_code>
+{
+    return apply_sched_params(policy, priority,
+                              [handle](int p, sched_param* sp) { return pthread_setschedparam(handle, p, sp); });
+}
+
+inline auto apply_priority(pthread_t handle, ThreadPriority priority) -> expected<void, std::error_code>
+{
+    return apply_scheduling_policy(handle, SchedulingPolicy::OTHER, priority);
+}
+
+inline auto apply_affinity(pthread_t handle, ThreadAffinity const& affinity) -> expected<void, std::error_code>
+{
+    if (pthread_setaffinity_np(handle, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
+        return {};
+    return unexpected(std::error_code(errno, std::generic_category()));
+}
+
+inline auto apply_name(pthread_t handle, std::string const& name) -> expected<void, std::error_code>
+{
+    if (name.length() > 15)
+        return unexpected(std::make_error_code(std::errc::invalid_argument));
+    if (pthread_setname_np(handle, name.c_str()) == 0)
+        return {};
+    return unexpected(std::error_code(errno, std::generic_category()));
+}
+
+inline auto read_name(pthread_t handle) -> std::optional<std::string>
+{
+    char name[16];
+    if (pthread_getname_np(handle, name, sizeof(name)) == 0)
+        return std::string(name);
+    return std::nullopt;
+}
+
+inline auto read_affinity(pthread_t handle) -> std::optional<ThreadAffinity>
+{
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    if (pthread_getaffinity_np(handle, sizeof(cpu_set_t), &cpuset) == 0)
+    {
+        std::vector<int> cpus;
+        for (int i = 0; i < CPU_SETSIZE; ++i)
+        {
+            if (CPU_ISSET(i, &cpuset))
+                cpus.push_back(i);
+        }
+        return ThreadAffinity(cpus);
+    }
+    return std::nullopt;
+}
+
+// --- pid_t / TID overloads (ThreadByNameView) ---
+
+inline auto apply_scheduling_policy(pid_t tid, SchedulingPolicy policy, ThreadPriority priority)
+    -> expected<void, std::error_code>
+{
+    return apply_sched_params(policy, priority,
+                              [tid](int p, sched_param* sp) { return sched_setscheduler(tid, p, sp); });
+}
+
+inline auto apply_priority(pid_t tid, ThreadPriority priority) -> expected<void, std::error_code>
+{
+    return apply_scheduling_policy(tid, SchedulingPolicy::OTHER, priority);
+}
+
+inline auto apply_affinity(pid_t tid, ThreadAffinity const& affinity) -> expected<void, std::error_code>
+{
+    if (sched_setaffinity(tid, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
+        return {};
+    return unexpected(std::error_code(errno, std::generic_category()));
+}
+
+#endif
+
+} // namespace detail
 
 } // namespace threadschedule
