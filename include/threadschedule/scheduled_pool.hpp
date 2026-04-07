@@ -76,8 +76,8 @@ class ScheduledTaskHandle
  *      cancelled, the task is discarded.
  *   3. Posts the task to the underlying PoolType via pool_.post().
  *      From this point on, the task follows the execution rules of the
- *      underlying pool (see @c ThreadPool, @c FastThreadPool, or
- *      @ref HighPerformancePool documentation).
+ *      underlying pool (see @c ThreadPool, @c FastThreadPool,
+ *      @ref HighPerformancePool, or @c LightweightPool documentation).
  *   4. For periodic tasks, the scheduler immediately re-inserts the task
  *      into the multimap with next_run += interval. This means the next
  *      execution is timed from the scheduled time, not from when the
@@ -126,7 +126,7 @@ class ScheduledTaskHandle
  *         (default: ThreadPool).
  *
  * @see ScheduledThreadPool, ScheduledHighPerformancePool,
- *      ScheduledFastThreadPool (convenience aliases)
+ *      ScheduledFastThreadPool, ScheduledLightweightPool (convenience aliases)
  */
 template <typename PoolType = ThreadPool>
 class ScheduledThreadPoolT
