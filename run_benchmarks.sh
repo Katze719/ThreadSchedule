@@ -234,6 +234,7 @@ echo "  ./build/benchmarks/threadpool_resampling_benchmarks --benchmark_filter=\
 echo ""
 echo -e "${YELLOW}Pool Selection Guide:${NC}"
 echo "  - Use HighPerformancePool for: Batch processing, image processing, high-throughput scenarios (1k+ tasks)"
+echo "  - Use LightweightPool for: Fire-and-forget tasks, lowest overhead, no futures needed"
 echo "  - Use FastThreadPool for: Medium workloads, consistent task patterns (100-10k tasks)"
 echo "  - Use ThreadPool for: Simple workloads, low task counts (< 1k tasks)"
 echo ""

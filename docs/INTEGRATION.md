@@ -84,11 +84,11 @@ int main() {
 ```
 
 **Why CPM?**
-- ✅ Automatic caching - downloads dependencies once
-- ✅ Version pinning - reproducible builds
-- ✅ No git submodules needed
-- ✅ Works seamlessly with CI/CD
-- ✅ Compatible with all CMake features
+- Automatic caching - downloads dependencies once
+- Version pinning - reproducible builds
+- No git submodules needed
+- Works seamlessly with CI/CD
+- Compatible with all CMake features
 
 ### Method 2: CMake FetchContent
 

@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file thread_wrapper.hpp
+ * @brief Enhanced thread wrappers: ThreadWrapper, JThreadWrapper, and non-owning views.
+ */
+
 #include "expected.hpp"
 #include "scheduler_policy.hpp"
 #include <optional>
@@ -202,239 +207,35 @@ class BaseThreadWrapper : protected detail::ThreadStorage<ThreadType, OwnershipT
         return underlying().native_handle();
     }
 
-    // Extended functionality
     [[nodiscard]] auto set_name(std::string const& name) -> expected<void, std::error_code>
     {
-#ifdef _WIN32
-        // Windows supports longer thread names. Try SetThreadDescription dynamically.
-        auto const handle = native_handle();
-        std::wstring wide_name(name.begin(), name.end());
-
-        using SetThreadDescriptionFn = HRESULT(WINAPI*)(HANDLE, PCWSTR);
-        HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
-        if (hMod)
-        {
-            auto set_desc = reinterpret_cast<SetThreadDescriptionFn>(
-                reinterpret_cast<void*>(GetProcAddress(hMod, "SetThreadDescription")));
-            if (set_desc)
-            {
-                if (SUCCEEDED(set_desc(handle, wide_name.c_str())))
-                    return expected<void, std::error_code>();
-                return expected<void, std::error_code>(unexpect, std::make_error_code(std::errc::invalid_argument));
-            }
-        }
-        // Fallback unavailable
-        return expected<void, std::error_code>(unexpect, std::make_error_code(std::errc::function_not_supported));
-#else
-        if (name.length() > 15)
-            return expected<void, std::error_code>(unexpect, std::make_error_code(std::errc::invalid_argument));
-
-        auto const handle = native_handle();
-        if (pthread_setname_np(handle, name.c_str()) == 0)
-            return {};
-        return expected<void, std::error_code>(unexpect, std::error_code(errno, std::generic_category()));
-#endif
+        return detail::apply_name(native_handle(), name);
     }
 
     [[nodiscard]] auto get_name() const -> std::optional<std::string>
     {
-#ifdef _WIN32
-        const auto handle = const_cast<BaseThreadWrapper*>(this)->native_handle();
-        using GetThreadDescriptionFn = HRESULT(WINAPI*)(HANDLE, PWSTR*);
-        HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
-        if (hMod)
-        {
-            auto get_desc = reinterpret_cast<GetThreadDescriptionFn>(
-                reinterpret_cast<void*>(GetProcAddress(hMod, "GetThreadDescription")));
-            if (get_desc)
-            {
-                PWSTR thread_name = nullptr;
-                HRESULT hr = get_desc(handle, &thread_name);
-                if (SUCCEEDED(hr) && thread_name)
-                {
-                    int size = WideCharToMultiByte(CP_UTF8, 0, thread_name, -1, nullptr, 0, nullptr, nullptr);
-                    if (size > 0)
-                    {
-                        std::string result(size - 1, '\0');
-                        WideCharToMultiByte(CP_UTF8, 0, thread_name, -1, &result[0], size, nullptr, nullptr);
-                        LocalFree(thread_name);
-                        return result;
-                    }
-                    LocalFree(thread_name);
-                }
-            }
-        }
-        return std::nullopt;
-#else
-        char name[16]; // Linux limit + 1
-        auto const handle = const_cast<BaseThreadWrapper*>(this)->native_handle();
-
-        if (pthread_getname_np(handle, name, sizeof(name)) == 0)
-        {
-            return std::string(name);
-        }
-        return std::nullopt;
-#endif
+        return detail::read_name(const_cast<BaseThreadWrapper*>(this)->native_handle());
     }
 
     [[nodiscard]] auto set_priority(ThreadPriority priority) -> expected<void, std::error_code>
     {
-#ifdef _WIN32
-        const auto handle = native_handle();
-        // Map ThreadPriority to Windows priority
-        // Windows thread priorities range from -15 (THREAD_PRIORITY_IDLE) to +15 (THREAD_PRIORITY_TIME_CRITICAL)
-        // We'll map the priority value to Windows constants
-        int win_priority;
-        int prio_val = priority.value();
-
-        if (prio_val <= -10)
-        {
-            win_priority = THREAD_PRIORITY_IDLE;
-        }
-        else if (prio_val <= -5)
-        {
-            win_priority = THREAD_PRIORITY_LOWEST;
-        }
-        else if (prio_val < 0)
-        {
-            win_priority = THREAD_PRIORITY_BELOW_NORMAL;
-        }
-        else if (prio_val == 0)
-        {
-            win_priority = THREAD_PRIORITY_NORMAL;
-        }
-        else if (prio_val <= 5)
-        {
-            win_priority = THREAD_PRIORITY_ABOVE_NORMAL;
-        }
-        else if (prio_val <= 10)
-        {
-            win_priority = THREAD_PRIORITY_HIGHEST;
-        }
-        else
-        {
-            win_priority = THREAD_PRIORITY_TIME_CRITICAL;
-        }
-
-        if (SetThreadPriority(handle, win_priority) != 0)
-            return {};
-        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
-#else
-        const auto handle = native_handle();
-        int const policy = SCHED_OTHER;
-
-        auto params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
-
-        if (!params_result.has_value())
-        {
-            return unexpected(params_result.error());
-        }
-
-        if (pthread_setschedparam(handle, policy, &params_result.value()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
-#endif
+        return detail::apply_priority(native_handle(), priority);
     }
 
     [[nodiscard]] auto set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority)
         -> expected<void, std::error_code>
     {
-#ifdef _WIN32
-        // Windows doesn't have the same scheduling policy concept as Linux
-        // We'll just set the priority and return success
-        return set_priority(priority);
-#else
-        const auto handle = native_handle();
-        int const policy_int = static_cast<int>(policy);
-
-        auto params_result = SchedulerParams::create_for_policy(policy, priority);
-        if (!params_result.has_value())
-        {
-            return unexpected(params_result.error());
-        }
-
-        if (pthread_setschedparam(handle, policy_int, &params_result.value()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
-#endif
+        return detail::apply_scheduling_policy(native_handle(), policy, priority);
     }
 
     [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) -> expected<void, std::error_code>
     {
-#ifdef _WIN32
-        const auto handle = native_handle();
-        // Prefer Group Affinity if available
-        using SetThreadGroupAffinityFn = BOOL(WINAPI*)(HANDLE, const GROUP_AFFINITY*, PGROUP_AFFINITY);
-        HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
-        if (hMod)
-        {
-            auto set_group_affinity = reinterpret_cast<SetThreadGroupAffinityFn>(
-                reinterpret_cast<void*>(GetProcAddress(hMod, "SetThreadGroupAffinity")));
-            if (set_group_affinity && affinity.has_any())
-            {
-                GROUP_AFFINITY ga{};
-                ga.Mask = static_cast<KAFFINITY>(affinity.get_mask());
-                ga.Group = affinity.get_group();
-                if (set_group_affinity(handle, &ga, nullptr) != 0)
-                    return {};
-                return unexpected(std::make_error_code(std::errc::operation_not_permitted));
-            }
-        }
-        // Fallback to legacy mask (single-group systems)
-        DWORD_PTR mask = static_cast<DWORD_PTR>(affinity.get_mask());
-        if (SetThreadAffinityMask(handle, mask) != 0)
-            return {};
-        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
-#else
-        const auto handle = native_handle();
-        if (pthread_setaffinity_np(handle, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
-#endif
+        return detail::apply_affinity(native_handle(), affinity);
     }
 
     [[nodiscard]] auto get_affinity() const -> std::optional<ThreadAffinity>
     {
-#ifdef _WIN32
-        const auto handle = const_cast<BaseThreadWrapper*>(this)->native_handle();
-        using GetThreadGroupAffinityFn = BOOL(WINAPI*)(HANDLE, PGROUP_AFFINITY);
-        HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
-        if (hMod)
-        {
-            auto get_group_affinity = reinterpret_cast<GetThreadGroupAffinityFn>(
-                reinterpret_cast<void*>(GetProcAddress(hMod, "GetThreadGroupAffinity")));
-            if (get_group_affinity)
-            {
-                GROUP_AFFINITY ga{};
-                if (get_group_affinity(handle, &ga) != 0)
-                {
-                    ThreadAffinity affinity;
-                    for (int i = 0; i < 64; ++i)
-                    {
-                        if ((ga.Mask & (static_cast<KAFFINITY>(1) << i)) != 0)
-                        {
-                            affinity.add_cpu(static_cast<int>(ga.Group) * 64 + i);
-                        }
-                    }
-                    if (affinity.has_any())
-                    {
-                        return affinity;
-                    }
-                    return std::nullopt;
-                }
-            }
-            return std::nullopt;
-        }
-#else
-        ThreadAffinity affinity;
-        auto const handle = const_cast<BaseThreadWrapper*>(this)->native_handle();
-
-        if (pthread_getaffinity_np(handle, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
-        {
-            return affinity;
-        }
-        return std::nullopt;
-#endif
+        return detail::read_affinity(const_cast<BaseThreadWrapper*>(this)->native_handle());
     }
 
     // Nice value (process-level, affects all threads)
@@ -610,14 +411,9 @@ class ThreadWrapper : public BaseThreadWrapper<std::thread, detail::OwningTag>
     static auto create_with_config(std::string const& name, SchedulingPolicy policy, ThreadPriority priority, F&& f,
                                    Args&&... args) -> ThreadWrapper
     {
-
         ThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
-        if (auto r = wrapper.set_name(name); !r.has_value())
-        {
-        }
-        if (auto r = wrapper.set_scheduling_policy(policy, priority); !r.has_value())
-        {
-        }
+        (void)wrapper.set_name(name);
+        (void)wrapper.set_scheduling_policy(policy, priority);
         return wrapper;
     }
 };
@@ -765,14 +561,9 @@ class JThreadWrapper : public BaseThreadWrapper<std::jthread, detail::OwningTag>
     static auto create_with_config(std::string const& name, SchedulingPolicy policy, ThreadPriority priority, F&& f,
                                    Args&&... args) -> JThreadWrapper
     {
-
         JThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
-        if (auto r = wrapper.set_name(name); !r.has_value())
-        {
-        }
-        if (auto r = wrapper.set_scheduling_policy(policy, priority); !r.has_value())
-        {
-        }
+        (void)wrapper.set_name(name);
+        (void)wrapper.set_scheduling_policy(policy, priority);
         return wrapper;
     }
 };
@@ -977,13 +768,7 @@ class ThreadByNameView
 #else
         if (!found())
             return unexpected(std::make_error_code(std::errc::no_such_process));
-        int const policy = SCHED_OTHER;
-        auto params_result = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, priority);
-        if (!params_result.has_value())
-            return unexpected(params_result.error());
-        if (sched_setscheduler(handle_, policy, &params_result.value()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
+        return detail::apply_priority(handle_, priority);
 #endif
     }
 
@@ -995,13 +780,7 @@ class ThreadByNameView
 #else
         if (!found())
             return unexpected(std::make_error_code(std::errc::no_such_process));
-        int policy_int = static_cast<int>(policy);
-        auto params_result = SchedulerParams::create_for_policy(policy, priority);
-        if (!params_result.has_value())
-            return unexpected(params_result.error());
-        if (sched_setscheduler(handle_, policy_int, &params_result.value()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
+        return detail::apply_scheduling_policy(handle_, policy, priority);
 #endif
     }
 
@@ -1012,9 +791,7 @@ class ThreadByNameView
 #else
         if (!found())
             return unexpected(std::make_error_code(std::errc::no_such_process));
-        if (sched_setaffinity(handle_, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
-            return {};
-        return unexpected(std::error_code(errno, std::generic_category()));
+        return detail::apply_affinity(handle_, affinity);
 #endif
     }
 

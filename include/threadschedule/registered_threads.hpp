@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file registered_threads.hpp
+ * @brief Thread wrappers with automatic global registry registration.
+ */
+
 #include "pthread_wrapper.hpp"
 #include "thread_registry.hpp"
 #include "thread_wrapper.hpp"
@@ -50,7 +55,7 @@ class ThreadWrapperReg : public ThreadWrapper
  * Non-copyable, movable. C++20 only. Behaves like @ref ThreadWrapperReg
  * but wraps a @c std::jthread and handles @c std::stop_token
  * forwarding: the callable may accept a @c stop_token as its first
- * argument, its last argument, or not at all -- all three signatures
+ * argument, its last argument, or not at all - all three signatures
  * are detected at compile time and dispatched accordingly.
  */
 class JThreadWrapperReg : public JThreadWrapper

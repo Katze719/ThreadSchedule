@@ -18,10 +18,10 @@
  * @par Monadic operations
  * Both the primary template and the @c void specialization support the four
  * monadic combinators from P0323R12:
- * - @c and_then  -- chain an operation that returns an @c expected
- * - @c or_else   -- recover from an error, returning an @c expected
- * - @c transform -- map the contained value
- * - @c transform_error -- map the contained error
+ * - @c and_then  - chain an operation that returns an @c expected
+ * - @c or_else   - recover from an error, returning an @c expected
+ * - @c transform - map the contained value
+ * - @c transform_error - map the contained error
  */
 
 #include <exception>
@@ -205,10 +205,10 @@ class unexpected
  *
  * @par Monadic operations
  * The following combinators are provided (matching the C++23 specification):
- * - @c and_then(f)        -- if has_value(), invoke @p f with the value and return the result
- * - @c or_else(f)         -- if in error state, invoke @p f with the error and return the result
- * - @c transform(f)       -- if has_value(), apply @p f to the value and wrap the result
- * - @c transform_error(f) -- if in error state, apply @p f to the error and wrap the result
+ * - @c and_then(f)        - if has_value(), invoke @p f with the value and return the result
+ * - @c or_else(f)         - if in error state, invoke @p f with the error and return the result
+ * - @c transform(f)       - if has_value(), apply @p f to the value and wrap the result
+ * - @c transform_error(f) - if in error state, apply @p f to the error and wrap the result
  */
 template <typename T, typename E = std::error_code>
 class expected

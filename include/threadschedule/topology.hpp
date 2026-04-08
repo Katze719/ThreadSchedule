@@ -47,7 +47,7 @@ struct CpuTopology
  *        Windows: single node, sequential CPU indices.
  *
  * Called frequently by chaos/affinity helpers. The result is not
- * cached internally -- consider caching the returned CpuTopology
+ * cached internally - consider caching the returned CpuTopology
  * yourself if performance of repeated calls matters.
  */
 inline auto read_topology() -> CpuTopology

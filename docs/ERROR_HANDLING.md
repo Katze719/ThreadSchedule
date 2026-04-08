@@ -4,11 +4,11 @@ ThreadSchedule provides comprehensive error handling for asynchronous tasks with
 
 ## Features
 
-- ✅ **Global error callbacks** - Handle all exceptions in one place
-- ✅ **Per-future error callbacks** - Handle specific task errors
-- ✅ **Error context** - Get detailed information about errors (task description, thread ID, timestamp)
-- ✅ **Thread-safe** - Error handlers work correctly across threads
-- ✅ **Non-intrusive** - Original thread pools remain unchanged
+- **Global error callbacks** - Handle all exceptions in one place
+- **Per-future error callbacks** - Handle specific task errors
+- **Error context** - Get detailed information about errors (task description, thread ID, timestamp)
+- **Thread-safe** - Error handlers work correctly across threads
+- **Non-intrusive** - Original thread pools remain unchanged
 
 ## Quick Start
 

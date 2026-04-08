@@ -66,7 +66,7 @@ struct ChaosConfig
  * synchronized, so multiple controllers or concurrent registrations are
  * safe.
  *
- * @warning Intended for testing and validation only -- not for production
+ * @warning Intended for testing and validation only - not for production
  *          use. Perturbations may cause spurious priority inversions and
  *          cache-thrashing.
  *

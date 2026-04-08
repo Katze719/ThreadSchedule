@@ -28,7 +28,7 @@ ThreadWrapper t([]{ /* work */ });
 ThreadPool pool(8);
 auto affs = distribute_affinities_by_numa(pool.size());
 for (size_t i = 0; i < pool.size(); ++i) {
-    // In simple ThreadPool: use set_affinity returning bool
+    // set_affinity returns expected<void, std::error_code>
     (void)pool.set_affinity(affs[i]);
 }
 ```
