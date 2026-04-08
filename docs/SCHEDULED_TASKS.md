@@ -4,11 +4,11 @@ ThreadSchedule provides a powerful scheduling system for running tasks at specif
 
 ## Features
 
-- ✅ **One-time scheduled tasks** - Run a task after a delay or at a specific time
-- ✅ **Periodic tasks** - Run tasks repeatedly at fixed intervals
-- ✅ **Cancellable tasks** - Cancel scheduled tasks before they execute
-- ✅ **Flexible execution** - Choose from ThreadPool (default), HighPerformancePool, or FastThreadPool
-- ✅ **Thread-safe** - Safe to use from multiple threads
+- **One-time scheduled tasks** - Run a task after a delay or at a specific time
+- **Periodic tasks** - Run tasks repeatedly at fixed intervals
+- **Cancellable tasks** - Cancel scheduled tasks before they execute
+- **Flexible execution** - Choose from ThreadPool (default), HighPerformancePool, FastThreadPool, or LightweightPool
+- **Thread-safe** - Safe to use from multiple threads
 
 ## Quick Start
 
@@ -33,7 +33,7 @@ int main() {
 
 ### Pool Types
 
-ThreadSchedule provides three variants of the scheduled pool:
+ThreadSchedule provides four built-in variants of the scheduled pool:
 
 ```cpp
 // Default: Uses ThreadPool (< 1k tasks/sec, simple and efficient)
@@ -44,6 +44,9 @@ ScheduledHighPerformancePool scheduler_hp(4);
 
 // Fast: Uses FastThreadPool (1k-10k tasks/sec, single queue)
 ScheduledFastThreadPool scheduler_fast(4);
+
+// Lightweight: Uses LightweightPool (fire-and-forget, no futures/stats)
+ScheduledLightweightPool scheduler_lw(4);
 
 // Custom: Use any pool type
 ScheduledThreadPoolT<MyCustomPool> scheduler_custom(4);
@@ -270,6 +273,11 @@ auto backup = scheduler.schedule_periodic(std::chrono::hours(24), []() {
 - **Use when**: Medium-frequency scheduling (1k-10k tasks/sec)
 - **Pros**: Single queue, balanced performance
 - **Best for**: Batch processing, moderate workloads
+
+### LightweightPool
+- **Use when**: Fire-and-forget scheduled work, no return values needed
+- **Pros**: Minimal overhead, no future/packaged_task allocation per dispatch
+- **Best for**: Periodic logging, telemetry, cleanup tasks
 
 **Example:**
 ```cpp

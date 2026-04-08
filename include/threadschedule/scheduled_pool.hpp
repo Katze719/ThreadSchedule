@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file scheduled_pool.hpp
+ * @brief Delayed and periodic task scheduling on top of any pool type.
+ */
+
 #include "expected.hpp"
 #include "thread_pool.hpp"
 #include <atomic>
@@ -63,7 +68,7 @@ class ScheduledTaskHandle
  * @brief Thread pool augmented with delayed and periodic task scheduling.
  *
  * Non-copyable, non-movable. Combines a dedicated scheduler thread with
- * an underlying PoolType (default: @ref ThreadPool) that does the actual work.
+ * an underlying PoolType (default: @c ThreadPool) that does the actual work.
  *
  * @par How task execution works
  * The pool owns a single scheduler thread that runs an internal loop
@@ -74,10 +79,10 @@ class ScheduledTaskHandle
  *   1. Removes it from the multimap.
  *   2. Checks if the task has been cancelled (via the atomic flag). If
  *      cancelled, the task is discarded.
- *   3. Submits the task to the underlying PoolType via pool_.submit().
+ *   3. Posts the task to the underlying PoolType via pool_.post().
  *      From this point on, the task follows the execution rules of the
- *      underlying pool (see @ref ThreadPool, @ref FastThreadPool, or
- *      @ref HighPerformancePool documentation).
+ *      underlying pool (see @c ThreadPool, @c FastThreadPool,
+ *      @ref HighPerformancePool, or @c LightweightPool documentation).
  *   4. For periodic tasks, the scheduler immediately re-inserts the task
  *      into the multimap with next_run += interval. This means the next
  *      execution is timed from the scheduled time, not from when the
@@ -97,7 +102,7 @@ class ScheduledTaskHandle
  *   execute. The scheduler thread exits immediately on shutdown, so
  *   future-scheduled tasks are lost.
  * - Cancellation is cooperative: calling handle.cancel() sets an atomic
- *   flag. The scheduler checks this flag before submitting the task to
+ *   flag. The scheduler checks this flag before posting the task to
  *   the pool. Additionally, the pool-side wrapper checks the flag again
  *   right before calling the task. However, a task that is already
  *   running will NOT be interrupted by cancel().
@@ -107,7 +112,7 @@ class ScheduledTaskHandle
  *   from when the task actually finishes.
  * - There is no returned std::future for scheduled tasks. If you need
  *   to observe the result, use the underlying pool directly via
- *   thread_pool().submit().
+ *   thread_pool().post() or thread_pool().submit().
  *
  * @par Thread safety
  * All schedule_* methods are thread-safe (protected by an internal
@@ -126,7 +131,7 @@ class ScheduledTaskHandle
  *         (default: ThreadPool).
  *
  * @see ScheduledThreadPool, ScheduledHighPerformancePool,
- *      ScheduledFastThreadPool (convenience aliases)
+ *      ScheduledFastThreadPool, ScheduledLightweightPool (convenience aliases)
  */
 template <typename PoolType = ThreadPool>
 class ScheduledThreadPoolT
@@ -184,23 +189,7 @@ class ScheduledThreadPoolT
      */
     auto schedule_at(TimePoint time_point, Task task) -> ScheduledTaskHandle
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        uint64_t const task_id = next_task_id_++;
-        ScheduledTaskHandle handle(task_id);
-
-        ScheduledTaskInfo info;
-        info.id = task_id;
-        info.next_run = time_point;
-        info.interval = Duration::zero();
-        info.task = std::move(task);
-        info.cancelled = handle.get_cancel_flag();
-        info.periodic = false;
-
-        scheduled_tasks_.insert({time_point, std::move(info)});
-        condition_.notify_one();
-
-        return handle;
+        return insert_task(time_point, Duration::zero(), std::move(task), false);
     }
 
     /**
@@ -226,23 +215,8 @@ class ScheduledThreadPoolT
      */
     auto schedule_periodic_after(Duration initial_delay, Duration interval, Task task) -> ScheduledTaskHandle
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        uint64_t const task_id = next_task_id_++;
-        ScheduledTaskHandle handle(task_id);
-
-        ScheduledTaskInfo info;
-        info.id = task_id;
-        info.next_run = std::chrono::steady_clock::now() + initial_delay;
-        info.interval = interval;
-        info.task = std::move(task);
-        info.cancelled = handle.get_cancel_flag();
-        info.periodic = true;
-
-        scheduled_tasks_.insert({info.next_run, std::move(info)});
-        condition_.notify_one();
-
-        return handle;
+        auto const run_time = std::chrono::steady_clock::now() + initial_delay;
+        return insert_task(run_time, interval, std::move(task), true);
     }
 
     /**
@@ -298,9 +272,7 @@ class ScheduledThreadPoolT
     /**
      * @brief Configure worker threads
      *
-     * Note: Return type depends on the underlying pool type.
-     * @ref ThreadPool returns bool, @ref HighPerformancePool returns expected<void, std::error_code>.
-     * For consistent behavior, access the pool directly via thread_pool().
+     * Returns expected<void, std::error_code> from the underlying pool.
      */
     auto configure_threads(std::string const& name_prefix, SchedulingPolicy policy = SchedulingPolicy::OTHER,
                            ThreadPriority priority = ThreadPriority::normal())
@@ -318,6 +290,27 @@ class ScheduledThreadPoolT
 
     std::multimap<TimePoint, ScheduledTaskInfo> scheduled_tasks_;
     std::atomic<uint64_t> next_task_id_;
+
+    auto insert_task(TimePoint run_time, Duration interval, Task task, bool periodic) -> ScheduledTaskHandle
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        uint64_t const task_id = next_task_id_++;
+        ScheduledTaskHandle handle(task_id);
+
+        ScheduledTaskInfo info;
+        info.id = task_id;
+        info.next_run = run_time;
+        info.interval = interval;
+        info.task = std::move(task);
+        info.cancelled = handle.get_cancel_flag();
+        info.periodic = periodic;
+
+        scheduled_tasks_.insert({run_time, std::move(info)});
+        condition_.notify_one();
+
+        return handle;
+    }
 
     void scheduler_loop()
     {
@@ -371,7 +364,7 @@ class ScheduledThreadPoolT
                 auto task_copy = info.task;
                 auto cancelled_flag = info.cancelled;
 
-                pool_.submit([task_copy, cancelled_flag]() {
+                pool_.post([task_copy, cancelled_flag]() {
                     if (!cancelled_flag->load(std::memory_order_acquire))
                     {
                         task_copy();
@@ -393,11 +386,13 @@ class ScheduledThreadPoolT
     }
 };
 
-/** @brief @ref ScheduledThreadPoolT using the default @ref ThreadPool backend. */
+/** @brief @ref ScheduledThreadPoolT using the default @c ThreadPool backend. */
 using ScheduledThreadPool = ScheduledThreadPoolT<ThreadPool>;
 /** @brief @ref ScheduledThreadPoolT using @ref HighPerformancePool as backend. */
 using ScheduledHighPerformancePool = ScheduledThreadPoolT<HighPerformancePool>;
-/** @brief @ref ScheduledThreadPoolT using @ref FastThreadPool as backend. */
+/** @brief @ref ScheduledThreadPoolT using @c FastThreadPool as backend. */
 using ScheduledFastThreadPool = ScheduledThreadPoolT<FastThreadPool>;
+/** @brief @ref ScheduledThreadPoolT using @c LightweightPool as backend (minimal overhead). */
+using ScheduledLightweightPool = ScheduledThreadPoolT<LightweightPool>;
 
 } // namespace threadschedule
