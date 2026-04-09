@@ -200,10 +200,16 @@ class ErrorHandler
      */
     void handle_error(TaskError const& error)
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        error_count_++;
+        std::vector<ErrorCallback> snapshot;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            error_count_++;
+            snapshot.reserve(callbacks_.size());
+            for (auto const& [id, callback] : callbacks_)
+                snapshot.push_back(callback);
+        }
 
-        for (auto const& [id, callback] : callbacks_)
+        for (auto const& callback : snapshot)
         {
             try
             {
