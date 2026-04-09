@@ -1,5 +1,102 @@
 # Changelog
 
+## v2.1.0
+
+> **No API/ABI breaking changes.** All modifications are bug fixes (aligning
+> behaviour with documented API), internal optimizations, additive overloads,
+> new classes, and new tests/infrastructure.
+
+### Bug Fixes
+
+- **`when_all<T>` no longer requires default-constructible `T`** -- the
+  `results.emplace_back()` on the exception path was removed. The vector is
+  never consumed when an exception is rethrown. (futures.hpp)
+
+- **`when_any` no longer busy-polls at 1 ms** -- exponential backoff
+  (1 ms → 16 ms cap) and a randomized start index eliminate CPU waste and
+  index bias. Empty input now throws `std::invalid_argument` instead of
+  looping forever. (futures.hpp)
+
+- **`ScheduledThreadPoolT::insert_task` checks `stop_`** -- scheduling a
+  task after `shutdown()` now returns a pre-cancelled `ScheduledTaskHandle`
+  instead of silently inserting a task that will never execute.
+  (scheduled_pool.hpp)
+
+- **`ChaosController` uses actual thread priority** -- priority jitter now
+  reads the real scheduling priority via `sched_getparam()` on Linux instead
+  of hardcoding `ThreadPriority::normal()`. (chaos.hpp)
+
+- **`ErrorHandler::handle_error` releases the lock before invoking
+  callbacks** -- callbacks are snapshot-copied under the mutex, then executed
+  outside the critical section, eliminating deadlock risk when callbacks
+  interact with the handler. (error_handler.hpp)
+
+- **`PoolWithErrors` documentation corrected** -- the doc comment now says
+  "implicitly movable" instead of the incorrect "non-movable".
+  (thread_pool_with_errors.hpp)
+
+### Performance
+
+- **`distribute_affinities_by_numa` calls `read_topology()` once** -- the
+  previous implementation read sysfs O(n) times for n threads. New additive
+  overloads `affinity_for_node(CpuTopology const&, ...)` and
+  `distribute_affinities_by_numa(CpuTopology const&, ...)` accept a
+  pre-read topology snapshot. (topology.hpp)
+
+### New Features
+
+- **`InlinePool`** -- deterministic, single-threaded pool that executes every
+  task synchronously on the calling thread. Same `submit`/`post`/`try_submit`
+  API as `ThreadPool`, making it a drop-in for unit tests.
+  (inline_pool.hpp)
+
+- **`task_group<Pool>`** -- structured concurrency primitive. All submitted
+  tasks are guaranteed to complete before `wait()` returns (or the destructor
+  runs). First exception is captured and rethrown from `wait()`.
+  (task_group.hpp)
+
+- **`PoolWithErrors` forwarding constructor** -- new 2+ argument constructor
+  forwards pool-specific arguments (e.g. `deque_capacity` for
+  `HighPerformancePool`). (thread_pool_with_errors.hpp)
+
+- **`apply_profile_detailed()`** -- new function returning a
+  `std::vector<std::error_code>` with one entry per configuration step,
+  unlike `apply_profile()` which aggregates into a single error code.
+  (profiles.hpp)
+
+### Module Exports
+
+- Added missing exports to `threadschedule.cppm`: `when_all`, `when_any`,
+  `when_all_settled`, `ShutdownPolicy`, `IndefiniteWait`, `PollingWait`,
+  `ThreadPoolBase`, `LightweightPoolT`, `LightweightPool`, `GlobalPool`,
+  `PoolWithErrors`, `ScheduledLightweightPool`, `TaskStartCallback`,
+  `TaskEndCallback`, `schedule_on`, `run_on`, `pool_executor`, `InlinePool`,
+  `task_group`, `apply_profile_detailed`.
+
+### Tests
+
+- **65 new Google Test cases** across four new test files:
+  - `thread_pool_v2_test.cpp` -- `try_submit`, `try_post`, `submit_batch`,
+    `parallel_for_each`, `ShutdownPolicy`, `LightweightPool`, `GlobalPool`,
+    `ScheduledThreadPool`, stop-token tasks, `InlinePool`, `task_group`.
+  - `futures_test.cpp` -- `when_all`, `when_any`, `when_all_settled` (typed
+    and void variants, empty input, exception propagation).
+  - `registry_query_test.cpp` -- chainable `QueryView` API: `filter`, `map`,
+    `for_each`, `find_if`, `any`/`all`/`none`, `take`, `skip`.
+  - `coroutine_pool_test.cpp` -- `schedule_on`, `run_on`, `pool_executor`,
+    nested awaits, cross-pool hops, exception propagation (C++20 coroutines).
+
+### CI / Infrastructure
+
+- **New `sanitizers.yml` workflow** with:
+  - **ASan** (AddressSanitizer + LeakSanitizer)
+  - **TSan** (ThreadSanitizer)
+  - **UBSan** (UndefinedBehaviorSanitizer)
+  - **Code coverage** job (gcov + lcov, artifact upload)
+  - **Clang-Tidy** job (Clang 19, C++20)
+
+---
+
 ## v2.0.0
 
 ### Breaking Changes

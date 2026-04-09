@@ -15,7 +15,8 @@ namespace threadschedule
 /**
  * @brief Thread pool wrapper that combines any pool type with an @ref ErrorHandler.
  *
- * Non-copyable, non-movable. Thread-safe (delegates to the underlying pool).
+ * Non-copyable; implicitly movable (default move operations).
+ * Thread-safe (delegates to the underlying pool).
  *
  * submit() wraps every task so that exceptions are both reported to
  * the @ref ErrorHandler (via registered callbacks) **and** re-thrown, making
@@ -34,6 +35,24 @@ class PoolWithErrors
   public:
     explicit PoolWithErrors(size_t num_threads = std::thread::hardware_concurrency())
         : pool_(num_threads), error_handler_(std::make_shared<ErrorHandler>())
+    {
+    }
+
+    /**
+     * @brief Construct with forwarded pool arguments.
+     *
+     * Enables passing pool-specific constructor arguments (e.g.
+     * @c deque_capacity for @ref HighPerformancePool) while still
+     * attaching the error handler.
+     *
+     * @code
+     * PoolWithErrors<HighPerformancePool> pool(4, 2048, true);
+     * @endcode
+     */
+    template <typename Arg1, typename Arg2, typename... Args>
+    explicit PoolWithErrors(Arg1&& arg1, Arg2&& arg2, Args&&... args)
+        : pool_(std::forward<Arg1>(arg1), std::forward<Arg2>(arg2), std::forward<Args>(args)...),
+          error_handler_(std::make_shared<ErrorHandler>())
     {
     }
 
