@@ -5,11 +5,13 @@
 #include "error_handler.hpp"
 #include "futures.hpp"
 #include "generator.hpp"
+#include "inline_pool.hpp"
 #include "profiles.hpp"
 #include "pthread_wrapper.hpp"
 #include "scheduled_pool.hpp"
 #include "scheduler_policy.hpp"
 #include "task.hpp"
+#include "task_group.hpp"
 #include "thread_pool.hpp"
 #include "thread_pool_with_errors.hpp"
 #include "thread_registry.hpp"
@@ -61,6 +63,7 @@ using ts::GlobalPool;
 using ts::GlobalThreadPool;
 using ts::HighPerformancePool;
 using ts::HighPerformancePoolWithErrors;
+using ts::InlinePool;
 using ts::JThreadWrapper;
 using ts::LightweightPool;
 using ts::LightweightPoolT;
@@ -74,6 +77,7 @@ using ts::ScheduledThreadPool;
 using ts::ScheduledThreadPoolT;
 using ts::SchedulingPolicy;
 using ts::ShutdownPolicy;
+using ts::task_group;
 using ts::TaskError;
 using ts::ThreadAffinity;
 using ts::ThreadByNameView;

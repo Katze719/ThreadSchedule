@@ -1,0 +1,138 @@
+name: Sanitizers
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+  workflow_dispatch:
+
+jobs:
+  sanitizers:
+    name: ${{ matrix.sanitizer }} (GCC 14, C++20)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sanitizer: ASan
+            flags: -fsanitize=address -fno-omit-frame-pointer
+            env_var: ASAN_OPTIONS=detect_leaks=1
+          - sanitizer: TSan
+            flags: -fsanitize=thread
+            env_var: TSAN_OPTIONS=second_deadlock_stack=1
+          - sanitizer: UBSan
+            flags: -fsanitize=undefined -fno-sanitize-recover=all
+            env_var: UBSAN_OPTIONS=print_stacktrace=1
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++-14
+
+    - name: Configure CMake
+      env:
+        CC: gcc-14
+        CXX: g++-14
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          -DCMAKE_CXX_STANDARD=20 \
+          -DCMAKE_CXX_FLAGS="${{ matrix.flags }}" \
+          -DCMAKE_EXE_LINKER_FLAGS="${{ matrix.flags }}" \
+          -DTHREADSCHEDULE_BUILD_TESTS=ON
+
+    - name: Build
+      run: cmake --build build --parallel
+
+    - name: Run tests
+      env:
+        ${{ matrix.env_var }}: ""
+      run: |
+        cd build
+        ctest --output-on-failure --parallel 2 --timeout 120
+
+  coverage:
+    name: Coverage (GCC 14, C++20)
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build g++-14 lcov
+
+    - name: Configure CMake
+      env:
+        CC: gcc-14
+        CXX: g++-14
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DCMAKE_CXX_STANDARD=20 \
+          -DCMAKE_CXX_FLAGS="--coverage -fprofile-arcs -ftest-coverage" \
+          -DCMAKE_EXE_LINKER_FLAGS="--coverage" \
+          -DTHREADSCHEDULE_BUILD_TESTS=ON
+
+    - name: Build
+      run: cmake --build build --parallel
+
+    - name: Run tests
+      run: |
+        cd build
+        ctest --output-on-failure --parallel
+
+    - name: Collect coverage
+      run: |
+        lcov --capture --directory build --output-file coverage.info \
+          --gcov-tool gcov-14 --ignore-errors mismatch
+        lcov --remove coverage.info \
+          '*/build/_deps/*' '/usr/*' '*/tests/*' '*/benchmarks/*' \
+          --output-file coverage.info --ignore-errors unused
+        lcov --list coverage.info
+
+    - name: Upload coverage artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage.info
+
+  clang-tidy:
+    name: Clang-Tidy (Clang 19, C++20)
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build clang-19 clang-tidy-19
+
+    - name: Configure CMake
+      env:
+        CC: clang-19
+        CXX: clang++-19
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_CXX_STANDARD=20 \
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+          -DTHREADSCHEDULE_BUILD_TESTS=ON \
+          -DTHREADSCHEDULE_BUILD_EXAMPLES=ON
+
+    - name: Build
+      run: cmake --build build --parallel
+
+    - name: Run clang-tidy
+      run: |
+        find include/threadschedule -name '*.hpp' | \
+          xargs clang-tidy-19 -p build --warnings-as-errors='*' \
+            --header-filter='include/threadschedule/.*' 2>&1 | \
+          head -200

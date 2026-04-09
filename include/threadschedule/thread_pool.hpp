@@ -1130,6 +1130,11 @@ class HighPerformancePool
                         on_task_start_(start_time, tid);
                 }
 
+                // For submit() tasks the callable is a packaged_task which
+                // catches exceptions internally and stores them in the
+                // std::future shared state - those never reach this catch.
+                // For post() tasks (fire-and-forget) the catch prevents an
+                // unhandled exception from terminating the worker thread.
                 try
                 {
                     task();
@@ -1720,6 +1725,7 @@ class ThreadPoolBase
                         on_task_start_(start_time, tid);
                 }
 
+                // See HighPerformancePool::worker_function for rationale.
                 try
                 {
                     task();
