@@ -14,15 +14,15 @@ class RegistryQueryTest : public ::testing::Test
 
     void register_threads()
     {
-        threads_.emplace_back("alpha", "io", [this](std::stop_token) {
+        threads_.emplace_back("alpha", "io", [this] {
             std::unique_lock<std::mutex> lock(mtx_);
             cv_.wait(lock, [this] { return done_; });
         });
-        threads_.emplace_back("beta", "compute", [this](std::stop_token) {
+        threads_.emplace_back("beta", "compute", [this] {
             std::unique_lock<std::mutex> lock(mtx_);
             cv_.wait(lock, [this] { return done_; });
         });
-        threads_.emplace_back("gamma", "io", [this](std::stop_token) {
+        threads_.emplace_back("gamma", "io", [this] {
             std::unique_lock<std::mutex> lock(mtx_);
             cv_.wait(lock, [this] { return done_; });
         });
@@ -48,12 +48,11 @@ class RegistryQueryTest : public ::testing::Test
     struct RegThread
     {
         std::thread t;
-        RegThread(std::string name, std::string tag, std::function<void(std::stop_token)> fn)
+        RegThread(std::string name, std::string tag, std::function<void()> fn)
         {
             t = std::thread([name = std::move(name), tag = std::move(tag), fn = std::move(fn)] {
                 AutoRegisterCurrentThread guard(name, tag);
-                std::stop_source src;
-                fn(src.get_token());
+                fn();
             });
         }
         ~RegThread()
