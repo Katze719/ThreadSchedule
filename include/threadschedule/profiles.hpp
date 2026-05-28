@@ -16,6 +16,7 @@
 #include "thread_registry.hpp"
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace threadschedule
 {
@@ -218,6 +219,52 @@ inline auto apply_profile(ThreadRegistry& reg, Tid tid, ThreadProfile const& p) 
     if (ok)
         return {};
     return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+}
+
+/**
+ * @brief Apply a profile and return per-step error codes.
+ *
+ * Unlike @ref apply_profile (which aggregates into a single
+ * @c operation_not_permitted), this function returns a vector with one
+ * entry per configuration step. Successful steps have a default
+ * (zero) error code; failed steps carry the specific OS error.
+ *
+ * The steps are, in order:
+ *  0 - set_scheduling_policy
+ *  1 - set_affinity (only present when @c p.affinity has a value)
+ *
+ * @tparam ThreadLike A type satisfying the is_thread_like trait.
+ * @return Vector of error codes, one per step attempted.
+ */
+template <typename ThreadLike, std::enable_if_t<is_thread_like_v<ThreadLike>, int> = 0>
+inline auto apply_profile_detailed(ThreadLike& t, ThreadProfile const& p) -> std::vector<std::error_code>
+{
+    std::vector<std::error_code> results;
+    auto policy_result = t.set_scheduling_policy(p.policy, p.priority);
+    results.push_back(policy_result.has_value() ? std::error_code{} : policy_result.error());
+    if (p.affinity.has_value())
+    {
+        auto aff_result = t.set_affinity(*p.affinity);
+        results.push_back(aff_result.has_value() ? std::error_code{} : aff_result.error());
+    }
+    return results;
+}
+
+/**
+ * @brief Apply a profile to a ThreadControlBlock with per-step errors.
+ * @see apply_profile_detailed(ThreadLike&, ThreadProfile const&)
+ */
+inline auto apply_profile_detailed(ThreadControlBlock& t, ThreadProfile const& p) -> std::vector<std::error_code>
+{
+    std::vector<std::error_code> results;
+    auto policy_result = t.set_scheduling_policy(p.policy, p.priority);
+    results.push_back(policy_result.has_value() ? std::error_code{} : policy_result.error());
+    if (p.affinity.has_value())
+    {
+        auto aff_result = t.set_affinity(*p.affinity);
+        results.push_back(aff_result.has_value() ? std::error_code{} : aff_result.error());
+    }
+    return results;
 }
 
 } // namespace threadschedule

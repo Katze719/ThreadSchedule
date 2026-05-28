@@ -126,15 +126,19 @@ class ChaosController
                 });
             }
 
-            // Priority jitter around current policy
+            // Priority jitter around the thread's actual priority
             if (config_.priority_jitter != 0)
             {
                 std::uniform_int_distribution<int> dist(-config_.priority_jitter, config_.priority_jitter);
                 registry().apply(pred, [&](RegisteredThreadInfo const& info) {
                     int delta = dist(rng);
-                    // Use normal as baseline if we can't read current
-                    ThreadPriority prio = ThreadPriority::normal();
-                    (void)registry().set_priority(info.tid, ThreadPriority{prio.value() + delta});
+                    int baseline = ThreadPriority::normal().value();
+#ifndef _WIN32
+                    sched_param sp{};
+                    if (sched_getparam(info.tid, &sp) == 0)
+                        baseline = sp.sched_priority;
+#endif
+                    (void)registry().set_priority(info.tid, ThreadPriority{baseline + delta});
                 });
             }
 

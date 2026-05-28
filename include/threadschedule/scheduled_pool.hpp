@@ -298,6 +298,12 @@ class ScheduledThreadPoolT
         uint64_t const task_id = next_task_id_++;
         ScheduledTaskHandle handle(task_id);
 
+        if (stop_)
+        {
+            handle.cancel();
+            return handle;
+        }
+
         ScheduledTaskInfo info;
         info.id = task_id;
         info.next_run = run_time;

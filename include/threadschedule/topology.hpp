@@ -140,17 +140,16 @@ inline auto read_topology() -> CpuTopology
 }
 
 /**
- * @brief Build a ThreadAffinity for the given NUMA node.
+ * @brief Build a ThreadAffinity for the given NUMA node using a pre-read topology.
  *
- * Calls read_topology() internally on every invocation (no caching).
- *
+ * @param topo             Pre-read topology snapshot.
  * @param node_index       NUMA node index (wraps if out of range).
  * @param thread_index     Used to select CPU(s) within the node.
  * @param threads_per_node Number of CPUs to include per thread (default 1).
  */
-inline auto affinity_for_node(int node_index, int thread_index, int threads_per_node = 1) -> ThreadAffinity
+inline auto affinity_for_node(CpuTopology const& topo, int node_index, int thread_index, int threads_per_node = 1)
+    -> ThreadAffinity
 {
-    CpuTopology topo = read_topology();
     if (topo.numa_nodes <= 0)
         return {};
     int const n = (node_index % topo.numa_nodes + topo.numa_nodes) % topo.numa_nodes;
@@ -161,13 +160,47 @@ inline auto affinity_for_node(int node_index, int thread_index, int threads_per_
 
     int const cpu = cpus[(thread_index) % static_cast<int>(cpus.size())];
     aff.add_cpu(cpu);
-    // Optionally add more CPUs for the same thread if threads_per_node > 1
     for (int k = 1; k < threads_per_node; ++k)
     {
         int const extra = cpus[(thread_index + k) % static_cast<int>(cpus.size())];
         aff.add_cpu(extra);
     }
     return aff;
+}
+
+/**
+ * @brief Build a ThreadAffinity for the given NUMA node.
+ *
+ * Calls read_topology() internally on every invocation (no caching).
+ *
+ * @param node_index       NUMA node index (wraps if out of range).
+ * @param thread_index     Used to select CPU(s) within the node.
+ * @param threads_per_node Number of CPUs to include per thread (default 1).
+ */
+inline auto affinity_for_node(int node_index, int thread_index, int threads_per_node = 1) -> ThreadAffinity
+{
+    return affinity_for_node(read_topology(), node_index, thread_index, threads_per_node);
+}
+
+/**
+ * @brief Distribute thread affinities across NUMA nodes in round-robin order.
+ *
+ * @overload Uses a pre-read topology to avoid repeated sysfs access.
+ *
+ * @param topo        Pre-read topology snapshot.
+ * @param num_threads Number of affinity masks to generate.
+ * @return Vector of @p num_threads ThreadAffinity objects.
+ */
+inline auto distribute_affinities_by_numa(CpuTopology const& topo, size_t num_threads) -> std::vector<ThreadAffinity>
+{
+    std::vector<ThreadAffinity> result;
+    result.reserve(num_threads);
+    for (size_t i = 0; i < num_threads; ++i)
+    {
+        int node = (topo.numa_nodes > 0) ? static_cast<int>(i % topo.numa_nodes) : 0;
+        result.push_back(affinity_for_node(topo, node, static_cast<int>(i)));
+    }
+    return result;
 }
 
 /**
@@ -181,15 +214,7 @@ inline auto affinity_for_node(int node_index, int thread_index, int threads_per_
  */
 inline auto distribute_affinities_by_numa(size_t num_threads) -> std::vector<ThreadAffinity>
 {
-    CpuTopology topo = read_topology();
-    std::vector<ThreadAffinity> result;
-    result.reserve(num_threads);
-    for (size_t i = 0; i < num_threads; ++i)
-    {
-        int node = (topo.numa_nodes > 0) ? static_cast<int>(i % topo.numa_nodes) : 0;
-        result.push_back(affinity_for_node(node, static_cast<int>(i)));
-    }
-    return result;
+    return distribute_affinities_by_numa(read_topology(), num_threads);
 }
 
 } // namespace threadschedule

@@ -85,16 +85,31 @@ using ::threadschedule::ErrorHandledTask;
 using ::threadschedule::make_error_handled_task;
 using ::threadschedule::FutureWithErrorHandler;
 
+// -- futures.hpp ------------------------------------------------------------
+using ::threadschedule::when_all;
+using ::threadschedule::when_any;
+using ::threadschedule::when_all_settled;
+
 // -- thread_pool.hpp --------------------------------------------------------
+using ::threadschedule::TaskStartCallback;
+using ::threadschedule::TaskEndCallback;
 using ::threadschedule::WorkStealingDeque;
+using ::threadschedule::ShutdownPolicy;
+using ::threadschedule::IndefiniteWait;
+using ::threadschedule::PollingWait;
 using ::threadschedule::HighPerformancePool;
+using ::threadschedule::ThreadPoolBase;
 using ::threadschedule::FastThreadPool;
 using ::threadschedule::ThreadPool;
+using ::threadschedule::LightweightPoolT;
+using ::threadschedule::LightweightPool;
+using ::threadschedule::GlobalPool;
 using ::threadschedule::GlobalThreadPool;
 using ::threadschedule::GlobalHighPerformancePool;
 using ::threadschedule::parallel_for_each;
 
 // -- thread_pool_with_errors.hpp --------------------------------------------
+using ::threadschedule::PoolWithErrors;
 using ::threadschedule::HighPerformancePoolWithErrors;
 using ::threadschedule::FastThreadPoolWithErrors;
 using ::threadschedule::ThreadPoolWithErrors;
@@ -105,16 +120,24 @@ using ::threadschedule::ScheduledThreadPoolT;
 using ::threadschedule::ScheduledThreadPool;
 using ::threadschedule::ScheduledHighPerformancePool;
 using ::threadschedule::ScheduledFastThreadPool;
+using ::threadschedule::ScheduledLightweightPool;
 
 // -- profiles.hpp -----------------------------------------------------------
 using ::threadschedule::ThreadProfile;
 using ::threadschedule::apply_profile;
+using ::threadschedule::apply_profile_detailed;
 
 // -- topology.hpp -----------------------------------------------------------
 using ::threadschedule::CpuTopology;
 using ::threadschedule::read_topology;
 using ::threadschedule::affinity_for_node;
 using ::threadschedule::distribute_affinities_by_numa;
+
+// -- inline_pool.hpp --------------------------------------------------------
+using ::threadschedule::InlinePool;
+
+// -- task_group.hpp ---------------------------------------------------------
+using ::threadschedule::task_group;
 
 // -- chaos.hpp --------------------------------------------------------------
 using ::threadschedule::ChaosConfig;
@@ -124,6 +147,9 @@ using ::threadschedule::ChaosController;
 #if defined(__cpp_impl_coroutine) && __cpp_impl_coroutine >= 201902L
 using ::threadschedule::task;
 using ::threadschedule::sync_wait;
+using ::threadschedule::schedule_on;
+using ::threadschedule::run_on;
+using ::threadschedule::pool_executor;
 using ::threadschedule::generator;
 #endif
 
