@@ -42,12 +42,6 @@ namespace threadschedule
 #define THREADSCHEDULE_API
 #endif
 
-#ifdef _WIN32
-using Tid = unsigned long; // DWORD thread id
-#else
-using Tid = pid_t; // Linux TID via gettid()
-#endif
-
 /**
  * @brief Snapshot of metadata for a single registered thread.
  *

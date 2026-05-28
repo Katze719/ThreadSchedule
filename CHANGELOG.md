@@ -1,5 +1,32 @@
 # Changelog
 
+## v2.2.0
+
+> **No intended API/ABI breaking changes.** This release extends thread-control
+> coverage to library-owned background threads and expands `ThreadInfo` into a
+> lightweight per-thread control handle.
+
+### New Features
+
+- **`ThreadInfo` now supports bound thread IDs** -- it can be default-constructed
+  for the current thread or explicitly constructed from a `Tid`, then used to
+  `set_name`, `get_name`, `set_priority`, `set_scheduling_policy`,
+  `set_affinity`, `get_affinity`, `get_policy`, and `get_priority`.
+  The existing static convenience methods remain available. (`thread_wrapper.hpp`)
+
+- **Library-owned background threads are now configurable** -- `ScheduledThreadPoolT`
+  exposes `scheduler_thread_info()` and `configure_scheduler_thread(...)`, and
+  `ChaosController` exposes `thread_info()` and `configure_thread(...)`, so the
+  scheduler/control threads are no longer anonymous internal `std::thread`s.
+  (`scheduled_pool.hpp`, `chaos.hpp`)
+
+### Internal Improvements
+
+- **Dedicated background threads now use the same wrapper/control path as worker
+  threads** -- scheduler and chaos threads are created as `ThreadWrapper`s and
+  receive stable default names, keeping thread-control behavior consistent
+  across the library. (`scheduled_pool.hpp`, `chaos.hpp`)
+
 ## v2.1.0
 
 > **No API/ABI breaking changes.** All modifications are bug fixes (aligning

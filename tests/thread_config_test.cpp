@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <future>
 #include <threadschedule/threadschedule.hpp>
 
 using namespace threadschedule;
@@ -259,6 +260,48 @@ TEST_F(ThreadConfigTest, ThreadConfigWithSchedulingPolicy)
     // Just ensure it doesn't crash
     thread.join();
     EXPECT_TRUE(executed);
+}
+
+TEST_F(ThreadConfigTest, ThreadInfoDefaultConstructorTargetsCurrentThread)
+{
+    std::promise<std::pair<Tid, Tid>> ids;
+
+    std::thread thread([&ids]() {
+        ThreadInfo info;
+        ids.set_value({info.thread_id(), ThreadInfo::get_thread_id()});
+    });
+
+    auto const [from_constructor, from_static] = ids.get_future().get();
+    thread.join();
+
+    EXPECT_EQ(from_constructor, from_static);
+}
+
+TEST_F(ThreadConfigTest, ThreadInfoExplicitConstructorCanControlTargetThread)
+{
+    std::promise<Tid> started;
+    std::promise<void> release;
+    auto release_future = release.get_future().share();
+
+    std::thread thread([&started, release_future]() mutable {
+        started.set_value(ThreadInfo::get_thread_id());
+        release_future.wait();
+    });
+
+    Tid const tid = started.get_future().get();
+    ThreadInfo info(tid);
+
+    EXPECT_EQ(info.thread_id(), tid);
+    ASSERT_TRUE(info.set_name("ti_remote").has_value());
+
+    auto const name = info.get_name();
+    ASSERT_TRUE(name.has_value());
+    EXPECT_EQ(name.value(), "ti_remote");
+    EXPECT_TRUE(info.get_policy().has_value());
+    EXPECT_TRUE(info.get_priority().has_value());
+
+    release.set_value();
+    thread.join();
 }
 
 // ==================== Nice Value Tests ====================
