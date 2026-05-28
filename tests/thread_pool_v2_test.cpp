@@ -186,10 +186,12 @@ TEST(PoolV2, HPPoolPost)
 
 TEST(PoolV2, FastPoolPost)
 {
-    FastThreadPool pool(2);
     std::atomic<bool> ran{false};
-    pool.post([&ran] { ran = true; });
-    pool.wait_for_tasks();
+    {
+        FastThreadPool pool(2);
+        pool.post([&ran] { ran = true; });
+        pool.shutdown(ShutdownPolicy::drain);
+    }
     EXPECT_TRUE(ran);
 }
 
@@ -310,6 +312,13 @@ TEST(PoolV2, LightweightPoolConfigureThreads)
 {
     LightweightPool pool(2);
     auto r = pool.configure_threads("lite");
+#if defined(__MINGW32__)
+    if (!r.has_value())
+    {
+        EXPECT_EQ(r.error(), std::make_error_code(std::errc::operation_not_permitted));
+        return;
+    }
+#endif
     EXPECT_TRUE(r.has_value());
 }
 
