@@ -439,6 +439,17 @@ class WorkStealingDeque
         bottom_.store(0, std::memory_order_relaxed);
         top_.store(0, std::memory_order_relaxed);
     }
+
+    [[nodiscard]] auto clear_and_count() -> size_t
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        size_t const t = top_.load(std::memory_order_relaxed);
+        size_t const b = bottom_.load(std::memory_order_relaxed);
+        size_t const count = t > b ? t - b : 0;
+        bottom_.store(0, std::memory_order_relaxed);
+        top_.store(0, std::memory_order_relaxed);
+        return count;
+    }
 };
 
 /**
@@ -593,6 +604,7 @@ class HighPerformancePool
      */
     void shutdown(ShutdownPolicy policy = ShutdownPolicy::drain)
     {
+        size_t dropped_tasks = 0;
         {
             std::lock_guard<std::mutex> lock(overflow_mutex_);
             if (stop_.exchange(true, std::memory_order_acq_rel))
@@ -600,12 +612,16 @@ class HighPerformancePool
 
             if (policy == ShutdownPolicy::drop_pending)
             {
+                dropped_tasks += overflow_tasks_.size();
                 std::queue<Task> empty;
                 overflow_tasks_.swap(empty);
                 for (auto& q : worker_queues_)
-                    q->clear();
+                    dropped_tasks += q->clear_and_count();
             }
         }
+
+        if (dropped_tasks != 0)
+            outstanding_tasks_.fetch_sub(dropped_tasks, std::memory_order_acq_rel);
 
         wakeup_condition_.notify_all();
 
@@ -635,9 +651,8 @@ class HighPerformancePool
         }
 
         std::unique_lock<std::mutex> lock(completion_mutex_);
-        bool const drained = completion_condition_.wait_until(lock, deadline, [this] {
-            return pending_tasks() == 0 && active_tasks_.load(std::memory_order_acquire) == 0;
-        });
+        bool const drained = completion_condition_.wait_until(
+            lock, deadline, [this] { return outstanding_tasks_.load(std::memory_order_acquire) == 0; });
 
         shutdown(ShutdownPolicy::drain);
         return drained;
@@ -676,6 +691,7 @@ class HighPerformancePool
 
         if (worker_queues_[preferred_queue]->push([task]() { (*task)(); }))
         {
+            outstanding_tasks_.fetch_add(1, std::memory_order_release);
             wakeup_condition_.notify_one();
             return result;
         }
@@ -685,6 +701,7 @@ class HighPerformancePool
             size_t const idx = (preferred_queue + attempts + 1) % num_threads_;
             if (worker_queues_[idx]->push([task]() { (*task)(); }))
             {
+                outstanding_tasks_.fetch_add(1, std::memory_order_release);
                 wakeup_condition_.notify_one();
                 return result;
             }
@@ -695,6 +712,7 @@ class HighPerformancePool
             if (stop_.load(std::memory_order_relaxed))
                 return unexpected(std::make_error_code(std::errc::operation_canceled));
             overflow_tasks_.emplace([task]() { (*task)(); });
+            outstanding_tasks_.fetch_add(1, std::memory_order_release);
         }
 
         wakeup_condition_.notify_all();
@@ -755,6 +773,7 @@ class HighPerformancePool
 
         if (worker_queues_[preferred_queue]->push(std::move(bound)))
         {
+            outstanding_tasks_.fetch_add(1, std::memory_order_release);
             wakeup_condition_.notify_one();
             return {};
         }
@@ -764,6 +783,7 @@ class HighPerformancePool
             size_t const idx = (preferred_queue + attempts + 1) % num_threads_;
             if (worker_queues_[idx]->push(std::move(bound)))
             {
+                outstanding_tasks_.fetch_add(1, std::memory_order_release);
                 wakeup_condition_.notify_one();
                 return {};
             }
@@ -774,6 +794,7 @@ class HighPerformancePool
             if (stop_.load(std::memory_order_relaxed))
                 return unexpected(std::make_error_code(std::errc::operation_canceled));
             overflow_tasks_.emplace(std::move(bound));
+            outstanding_tasks_.fetch_add(1, std::memory_order_release);
         }
 
         wakeup_condition_.notify_all();
@@ -845,6 +866,7 @@ class HighPerformancePool
             {
                 if (worker_queues_[queue_idx]->push([task]() { (*task)(); }))
                 {
+                    outstanding_tasks_.fetch_add(1, std::memory_order_release);
                     queued = true;
                     break;
                 }
@@ -855,6 +877,7 @@ class HighPerformancePool
             {
                 std::lock_guard<std::mutex> lock(overflow_mutex_);
                 overflow_tasks_.emplace([task]() { (*task)(); });
+                outstanding_tasks_.fetch_add(1, std::memory_order_release);
             }
         }
 
@@ -1008,8 +1031,7 @@ class HighPerformancePool
     void wait_for_tasks()
     {
         std::unique_lock<std::mutex> lock(completion_mutex_);
-        completion_condition_.wait(
-            lock, [this] { return pending_tasks() == 0 && active_tasks_.load(std::memory_order_acquire) == 0; });
+        completion_condition_.wait(lock, [this] { return outstanding_tasks_.load(std::memory_order_acquire) == 0; });
     }
 
     /// @}
@@ -1058,6 +1080,7 @@ class HighPerformancePool
 
     std::atomic<size_t> next_victim_;
     std::atomic<size_t> active_tasks_{0};
+    std::atomic<size_t> outstanding_tasks_{0};
     std::atomic<size_t> completed_tasks_{0};
     std::atomic<size_t> stolen_tasks_{0};
     std::atomic<uint64_t> total_task_time_{0};
@@ -1154,13 +1177,16 @@ class HighPerformancePool
                 }
 
                 active_tasks_.fetch_sub(1, std::memory_order_relaxed);
+                outstanding_tasks_.fetch_sub(1, std::memory_order_acq_rel);
                 completed_tasks_.fetch_add(1, std::memory_order_relaxed);
 
                 completion_condition_.notify_all();
+                wakeup_condition_.notify_all();
             }
             else
             {
-                if (stop_.load(std::memory_order_acquire))
+                if (stop_.load(std::memory_order_acquire)
+                    && outstanding_tasks_.load(std::memory_order_acquire) == 0)
                 {
                     break;
                 }

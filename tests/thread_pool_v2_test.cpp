@@ -2,6 +2,7 @@
 #include <chrono>
 #include <functional>
 #include <gtest/gtest.h>
+#include <numeric>
 #include <threadschedule/threadschedule.hpp>
 #include <vector>
 
