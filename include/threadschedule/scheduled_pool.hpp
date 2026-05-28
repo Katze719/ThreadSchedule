@@ -9,6 +9,8 @@
 #include "thread_pool.hpp"
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <future>
 #include <functional>
 #include <map>
 #include <memory>
@@ -158,7 +160,16 @@ class ScheduledThreadPoolT
     explicit ScheduledThreadPoolT(size_t worker_threads = std::thread::hardware_concurrency())
         : pool_(worker_threads), stop_(false), next_task_id_(1)
     {
-        scheduler_thread_ = std::thread(&ScheduledThreadPoolT::scheduler_loop, this);
+        std::promise<Tid> scheduler_started;
+        auto scheduler_ready = scheduler_started.get_future();
+
+        scheduler_thread_ = ThreadWrapper([this, started = std::move(scheduler_started)]() mutable {
+            started.set_value(ThreadInfo::get_thread_id());
+            scheduler_loop();
+        });
+
+        scheduler_tid_ = scheduler_ready.get();
+        (void)ThreadInfo(scheduler_tid_).set_name("ts_sched_pool");
     }
 
     ScheduledThreadPoolT(ScheduledThreadPoolT const&) = delete;
@@ -280,9 +291,27 @@ class ScheduledThreadPoolT
         return pool_.configure_threads(name_prefix, policy, priority);
     }
 
+    [[nodiscard]] auto scheduler_thread_info() const -> std::optional<ThreadInfo>
+    {
+        if (!scheduler_thread_.joinable() || scheduler_tid_ == Tid{})
+            return std::nullopt;
+        return ThreadInfo(scheduler_tid_);
+    }
+
+    auto configure_scheduler_thread(std::string const& name, SchedulingPolicy policy = SchedulingPolicy::OTHER,
+                                    ThreadPriority priority = ThreadPriority::normal())
+        -> expected<void, std::error_code>
+    {
+        auto info = scheduler_thread_info();
+        if (!info.has_value())
+            return unexpected(std::make_error_code(std::errc::no_such_process));
+        return detail::configure_thread(info.value(), name, policy, priority);
+    }
+
   private:
     PoolType pool_;
-    std::thread scheduler_thread_;
+    ThreadWrapper scheduler_thread_;
+    Tid scheduler_tid_{};
 
     mutable std::mutex mutex_;
     std::condition_variable condition_;

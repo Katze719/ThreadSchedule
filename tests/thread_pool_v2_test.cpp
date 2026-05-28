@@ -404,6 +404,20 @@ TEST(PoolV2, ScheduledInsertAfterShutdownReturnsCancelledHandle)
     EXPECT_TRUE(handle.is_cancelled());
 }
 
+TEST(PoolV2, ScheduledSchedulerThreadCanBeConfigured)
+{
+    ScheduledThreadPool scheduler(2);
+
+    ASSERT_TRUE(scheduler.configure_scheduler_thread("sched_cfg").has_value());
+
+    auto info = scheduler.scheduler_thread_info();
+    ASSERT_TRUE(info.has_value());
+
+    auto const name = info->get_name();
+    ASSERT_TRUE(name.has_value());
+    EXPECT_EQ(name.value(), "sched_cfg");
+}
+
 TEST(PoolV2, ScheduledHPPool)
 {
     ScheduledHighPerformancePool scheduler(2);
@@ -420,6 +434,25 @@ TEST(PoolV2, ScheduledLightweight)
     scheduler.schedule_after(std::chrono::milliseconds(20), [&ran] { ran = true; });
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     EXPECT_TRUE(ran);
+}
+
+TEST(PoolV2, ChaosControllerThreadCanBeConfigured)
+{
+    ChaosConfig cfg;
+    cfg.interval = std::chrono::milliseconds(10);
+    cfg.shuffle_affinity = false;
+    cfg.priority_jitter = 0;
+
+    ChaosController chaos(cfg, [](RegisteredThreadInfo const&) { return false; });
+
+    ASSERT_TRUE(chaos.configure_thread("chaos_cfg").has_value());
+
+    auto info = chaos.thread_info();
+    ASSERT_TRUE(info.has_value());
+
+    auto const name = info->get_name();
+    ASSERT_TRUE(name.has_value());
+    EXPECT_EQ(name.value(), "chaos_cfg");
 }
 
 // ==================== InlinePool ====================
