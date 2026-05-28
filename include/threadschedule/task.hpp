@@ -679,6 +679,9 @@ struct schedule_on
     void await_resume() const noexcept {}
 };
 
+template <typename Pool>
+schedule_on(Pool&) -> schedule_on<Pool>;
+
 // ---------------------------------------------------------------------------
 // run_on convenience
 // ---------------------------------------------------------------------------

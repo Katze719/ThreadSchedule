@@ -439,6 +439,17 @@ class WorkStealingDeque
         bottom_.store(0, std::memory_order_relaxed);
         top_.store(0, std::memory_order_relaxed);
     }
+
+    [[nodiscard]] auto clear_and_count() -> size_t
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        size_t const t = top_.load(std::memory_order_relaxed);
+        size_t const b = bottom_.load(std::memory_order_relaxed);
+        size_t const count = t > b ? t - b : 0;
+        bottom_.store(0, std::memory_order_relaxed);
+        top_.store(0, std::memory_order_relaxed);
+        return count;
+    }
 };
 
 /**
@@ -593,6 +604,7 @@ class HighPerformancePool
      */
     void shutdown(ShutdownPolicy policy = ShutdownPolicy::drain)
     {
+        size_t dropped_tasks = 0;
         {
             std::lock_guard<std::mutex> lock(overflow_mutex_);
             if (stop_.exchange(true, std::memory_order_acq_rel))
@@ -600,13 +612,22 @@ class HighPerformancePool
 
             if (policy == ShutdownPolicy::drop_pending)
             {
+                dropped_tasks += overflow_tasks_.size();
                 std::queue<Task> empty;
                 overflow_tasks_.swap(empty);
                 for (auto& q : worker_queues_)
-                    q->clear();
+                    dropped_tasks += q->clear_and_count();
             }
         }
 
+        if (dropped_tasks != 0)
+        {
+            std::lock_guard<std::mutex> lock(completion_mutex_);
+            outstanding_tasks_.fetch_sub(dropped_tasks, std::memory_order_acq_rel);
+        }
+
+        if (dropped_tasks != 0)
+            completion_condition_.notify_all();
         wakeup_condition_.notify_all();
 
         for (auto& worker : workers_)
@@ -635,9 +656,8 @@ class HighPerformancePool
         }
 
         std::unique_lock<std::mutex> lock(completion_mutex_);
-        bool const drained = completion_condition_.wait_until(lock, deadline, [this] {
-            return pending_tasks() == 0 && active_tasks_.load(std::memory_order_acquire) == 0;
-        });
+        bool const drained = completion_condition_.wait_until(
+            lock, deadline, [this] { return outstanding_tasks_.load(std::memory_order_acquire) == 0; });
 
         shutdown(ShutdownPolicy::drain);
         return drained;
@@ -674,26 +694,31 @@ class HighPerformancePool
 
         size_t const preferred_queue = next_victim_.fetch_add(1, std::memory_order_relaxed) % num_threads_;
 
+        outstanding_tasks_.fetch_add(1, std::memory_order_release);
         if (worker_queues_[preferred_queue]->push([task]() { (*task)(); }))
         {
             wakeup_condition_.notify_one();
             return result;
         }
+        outstanding_tasks_.fetch_sub(1, std::memory_order_acq_rel);
 
         for (size_t attempts = 0; attempts < (std::min)(num_threads_, size_t(3)); ++attempts)
         {
             size_t const idx = (preferred_queue + attempts + 1) % num_threads_;
+            outstanding_tasks_.fetch_add(1, std::memory_order_release);
             if (worker_queues_[idx]->push([task]() { (*task)(); }))
             {
                 wakeup_condition_.notify_one();
                 return result;
             }
+            outstanding_tasks_.fetch_sub(1, std::memory_order_acq_rel);
         }
 
         {
             std::lock_guard<std::mutex> lock(overflow_mutex_);
             if (stop_.load(std::memory_order_relaxed))
                 return unexpected(std::make_error_code(std::errc::operation_canceled));
+            outstanding_tasks_.fetch_add(1, std::memory_order_release);
             overflow_tasks_.emplace([task]() { (*task)(); });
         }
 
@@ -753,26 +778,31 @@ class HighPerformancePool
 
         size_t const preferred_queue = next_victim_.fetch_add(1, std::memory_order_relaxed) % num_threads_;
 
+        outstanding_tasks_.fetch_add(1, std::memory_order_release);
         if (worker_queues_[preferred_queue]->push(std::move(bound)))
         {
             wakeup_condition_.notify_one();
             return {};
         }
+        outstanding_tasks_.fetch_sub(1, std::memory_order_acq_rel);
 
         for (size_t attempts = 0; attempts < (std::min)(num_threads_, size_t(3)); ++attempts)
         {
             size_t const idx = (preferred_queue + attempts + 1) % num_threads_;
+            outstanding_tasks_.fetch_add(1, std::memory_order_release);
             if (worker_queues_[idx]->push(std::move(bound)))
             {
                 wakeup_condition_.notify_one();
                 return {};
             }
+            outstanding_tasks_.fetch_sub(1, std::memory_order_acq_rel);
         }
 
         {
             std::lock_guard<std::mutex> lock(overflow_mutex_);
             if (stop_.load(std::memory_order_relaxed))
                 return unexpected(std::make_error_code(std::errc::operation_canceled));
+            outstanding_tasks_.fetch_add(1, std::memory_order_release);
             overflow_tasks_.emplace(std::move(bound));
         }
 
@@ -843,17 +873,20 @@ class HighPerformancePool
             bool queued = false;
             for (size_t attempts = 0; attempts < num_threads_; ++attempts)
             {
+                outstanding_tasks_.fetch_add(1, std::memory_order_release);
                 if (worker_queues_[queue_idx]->push([task]() { (*task)(); }))
                 {
                     queued = true;
                     break;
                 }
+                outstanding_tasks_.fetch_sub(1, std::memory_order_acq_rel);
                 queue_idx = (queue_idx + 1) % num_threads_;
             }
 
             if (!queued)
             {
                 std::lock_guard<std::mutex> lock(overflow_mutex_);
+                outstanding_tasks_.fetch_add(1, std::memory_order_release);
                 overflow_tasks_.emplace([task]() { (*task)(); });
             }
         }
@@ -1008,8 +1041,7 @@ class HighPerformancePool
     void wait_for_tasks()
     {
         std::unique_lock<std::mutex> lock(completion_mutex_);
-        completion_condition_.wait(
-            lock, [this] { return pending_tasks() == 0 && active_tasks_.load(std::memory_order_acquire) == 0; });
+        completion_condition_.wait(lock, [this] { return outstanding_tasks_.load(std::memory_order_acquire) == 0; });
     }
 
     /// @}
@@ -1058,6 +1090,7 @@ class HighPerformancePool
 
     std::atomic<size_t> next_victim_;
     std::atomic<size_t> active_tasks_{0};
+    std::atomic<size_t> outstanding_tasks_{0};
     std::atomic<size_t> completed_tasks_{0};
     std::atomic<size_t> stolen_tasks_{0};
     std::atomic<uint64_t> total_task_time_{0};
@@ -1124,12 +1157,19 @@ class HighPerformancePool
                 auto const start_time = std::chrono::steady_clock::now();
                 auto const tid = std::this_thread::get_id();
 
+                TaskStartCallback on_task_start;
                 {
                     std::lock_guard<std::mutex> tl(trace_mutex_);
-                    if (on_task_start_)
-                        on_task_start_(start_time, tid);
+                    on_task_start = on_task_start_;
                 }
+                if (on_task_start)
+                    on_task_start(start_time, tid);
 
+                // For submit() tasks the callable is a packaged_task which
+                // catches exceptions internally and stores them in the
+                // std::future shared state - those never reach this catch.
+                // For post() tasks (fire-and-forget) the catch prevents an
+                // unhandled exception from terminating the worker thread.
                 try
                 {
                     task();
@@ -1142,20 +1182,28 @@ class HighPerformancePool
                 auto const task_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
                 total_task_time_.fetch_add(task_duration.count(), std::memory_order_relaxed);
 
+                TaskEndCallback on_task_end;
                 {
                     std::lock_guard<std::mutex> tl(trace_mutex_);
-                    if (on_task_end_)
-                        on_task_end_(end_time, tid, task_duration);
+                    on_task_end = on_task_end_;
                 }
+                if (on_task_end)
+                    on_task_end(end_time, tid, task_duration);
 
                 active_tasks_.fetch_sub(1, std::memory_order_relaxed);
+                {
+                    std::lock_guard<std::mutex> lock(completion_mutex_);
+                    outstanding_tasks_.fetch_sub(1, std::memory_order_acq_rel);
+                }
                 completed_tasks_.fetch_add(1, std::memory_order_relaxed);
 
                 completion_condition_.notify_all();
+                wakeup_condition_.notify_all();
             }
             else
             {
-                if (stop_.load(std::memory_order_acquire))
+                if (stop_.load(std::memory_order_acquire)
+                    && outstanding_tasks_.load(std::memory_order_acquire) == 0)
                 {
                     break;
                 }
@@ -1714,12 +1762,15 @@ class ThreadPoolBase
                 auto const start_time = std::chrono::steady_clock::now();
                 auto const tid = std::this_thread::get_id();
 
+                TaskStartCallback on_task_start;
                 {
                     std::lock_guard<std::mutex> tl(trace_mutex_);
-                    if (on_task_start_)
-                        on_task_start_(start_time, tid);
+                    on_task_start = on_task_start_;
                 }
+                if (on_task_start)
+                    on_task_start(start_time, tid);
 
+                // See HighPerformancePool::worker_function for rationale.
                 try
                 {
                     task();
@@ -1732,13 +1783,18 @@ class ThreadPoolBase
                 auto const task_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
                 total_task_time_.fetch_add(task_duration.count(), std::memory_order_relaxed);
 
+                TaskEndCallback on_task_end;
                 {
                     std::lock_guard<std::mutex> tl(trace_mutex_);
-                    if (on_task_end_)
-                        on_task_end_(end_time, tid, task_duration);
+                    on_task_end = on_task_end_;
                 }
+                if (on_task_end)
+                    on_task_end(end_time, tid, task_duration);
 
-                active_tasks_.fetch_sub(1, std::memory_order_relaxed);
+                {
+                    std::lock_guard<std::mutex> lock(queue_mutex_);
+                    active_tasks_.fetch_sub(1, std::memory_order_relaxed);
+                }
                 completed_tasks_.fetch_add(1, std::memory_order_relaxed);
 
                 task_finished_condition_.notify_all();
