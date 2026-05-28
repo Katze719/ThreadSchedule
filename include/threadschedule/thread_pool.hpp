@@ -621,8 +621,13 @@ class HighPerformancePool
         }
 
         if (dropped_tasks != 0)
+        {
+            std::lock_guard<std::mutex> lock(completion_mutex_);
             outstanding_tasks_.fetch_sub(dropped_tasks, std::memory_order_acq_rel);
+        }
 
+        if (dropped_tasks != 0)
+            completion_condition_.notify_all();
         wakeup_condition_.notify_all();
 
         for (auto& worker : workers_)
@@ -1186,7 +1191,10 @@ class HighPerformancePool
                     on_task_end(end_time, tid, task_duration);
 
                 active_tasks_.fetch_sub(1, std::memory_order_relaxed);
-                outstanding_tasks_.fetch_sub(1, std::memory_order_acq_rel);
+                {
+                    std::lock_guard<std::mutex> lock(completion_mutex_);
+                    outstanding_tasks_.fetch_sub(1, std::memory_order_acq_rel);
+                }
                 completed_tasks_.fetch_add(1, std::memory_order_relaxed);
 
                 completion_condition_.notify_all();
@@ -1783,7 +1791,10 @@ class ThreadPoolBase
                 if (on_task_end)
                     on_task_end(end_time, tid, task_duration);
 
-                active_tasks_.fetch_sub(1, std::memory_order_relaxed);
+                {
+                    std::lock_guard<std::mutex> lock(queue_mutex_);
+                    active_tasks_.fetch_sub(1, std::memory_order_relaxed);
+                }
                 completed_tasks_.fetch_add(1, std::memory_order_relaxed);
 
                 task_finished_condition_.notify_all();
