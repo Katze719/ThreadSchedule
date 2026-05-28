@@ -179,8 +179,14 @@ TEST(PoolV2, HPPoolPost)
 {
     HighPerformancePool pool(2);
     std::atomic<bool> ran{false};
-    pool.post([&ran] { ran = true; });
-    pool.wait_for_tasks();
+    std::promise<void> done;
+    auto completed = done.get_future();
+    pool.post([&ran, &done] {
+        ran = true;
+        done.set_value();
+    });
+    EXPECT_EQ(completed.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+    pool.shutdown(ShutdownPolicy::drain);
     EXPECT_TRUE(ran);
 }
 
