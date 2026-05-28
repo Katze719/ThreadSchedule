@@ -30,11 +30,12 @@ TEST(PoolV2, TrySubmitAfterShutdownReturnsError)
 TEST(PoolV2, TryPostReturnsExpected)
 {
     ThreadPool pool(2);
-    std::atomic<bool> ran{false};
-    auto result = pool.try_post([&ran] { ran = true; });
+    std::promise<void> done;
+    auto finished = done.get_future();
+    auto result = pool.try_post([&done] { done.set_value(); });
     ASSERT_TRUE(result.has_value());
-    pool.wait_for_tasks();
-    EXPECT_TRUE(ran);
+    EXPECT_EQ(finished.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+    pool.shutdown(ShutdownPolicy::drain);
 }
 
 TEST(PoolV2, TryPostAfterShutdownReturnsError)
