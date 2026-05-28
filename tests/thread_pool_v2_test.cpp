@@ -218,14 +218,24 @@ TEST(PoolV2, TraceCallbacksHP)
     HighPerformancePool pool(2);
     std::atomic<int> starts{0};
     std::atomic<int> ends{0};
+    std::promise<void> done;
+    auto finished = done.get_future();
+    std::atomic<bool> signaled{false};
 
     pool.set_on_task_start([&starts](auto, auto) { starts.fetch_add(1, std::memory_order_relaxed); });
-    pool.set_on_task_end([&ends](auto, auto, auto) { ends.fetch_add(1, std::memory_order_relaxed); });
+    pool.set_on_task_end([&ends, &done, &signaled](auto, auto, auto) {
+        if (ends.fetch_add(1, std::memory_order_relaxed) + 1 == 10
+            && !signaled.exchange(true, std::memory_order_relaxed))
+        {
+            done.set_value();
+        }
+    });
 
     for (int i = 0; i < 10; ++i)
         pool.post([] {});
 
-    pool.wait_for_tasks();
+    EXPECT_EQ(finished.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+    pool.shutdown(ShutdownPolicy::drain);
     EXPECT_EQ(starts.load(), 10);
     EXPECT_EQ(ends.load(), 10);
 }
