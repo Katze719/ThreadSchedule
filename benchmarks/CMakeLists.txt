@@ -6,6 +6,7 @@ add_executable(threadpool_basic_benchmarks threadpool_benchmarks.cpp)
 add_executable(threadpool_throughput_benchmarks throughput_benchmarks.cpp)
 add_executable(threadpool_memory_benchmarks memory_benchmarks.cpp)
 add_executable(threadpool_resampling_benchmarks resampling_benchmarks.cpp)
+add_executable(callable_benchmarks callable_benchmarks.cpp)
 
 # Real-world scenario benchmarks
 add_executable(web_server_benchmarks web_server_benchmarks.cpp)
@@ -18,6 +19,7 @@ set(ALL_BENCHMARK_TARGETS
     threadpool_throughput_benchmarks
     threadpool_memory_benchmarks
     threadpool_resampling_benchmarks
+    callable_benchmarks
     web_server_benchmarks
     database_benchmarks
     audio_video_benchmarks
@@ -56,6 +58,7 @@ add_test(NAME ThreadPoolBasicBenchmarks COMMAND threadpool_basic_benchmarks --be
 add_test(NAME ThreadPoolThroughputBenchmarks COMMAND threadpool_throughput_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3)
 add_test(NAME ThreadPoolMemoryBenchmarks COMMAND threadpool_memory_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3)
 add_test(NAME ThreadPoolResamplingBenchmarks COMMAND threadpool_resampling_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3)
+add_test(NAME CallableBenchmarks COMMAND callable_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3)
 add_test(NAME WebServerBenchmarks COMMAND web_server_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3)
 add_test(NAME DatabaseBenchmarks COMMAND database_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3)
 add_test(NAME AudioVideoBenchmarks COMMAND audio_video_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3)
@@ -70,7 +73,9 @@ add_custom_target(run_core_benchmarks
     COMMAND threadpool_throughput_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3
     COMMAND echo "=== Memory Benchmarks ==="
     COMMAND threadpool_memory_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3
-    DEPENDS threadpool_basic_benchmarks threadpool_throughput_benchmarks threadpool_memory_benchmarks
+    COMMAND echo "=== Callable Benchmarks ==="
+    COMMAND callable_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3
+    DEPENDS threadpool_basic_benchmarks threadpool_throughput_benchmarks threadpool_memory_benchmarks callable_benchmarks
     COMMENT "Running core ThreadSchedule benchmarks (explicit target, not part of normal build)"
 )
 

@@ -140,6 +140,8 @@ class ScheduledThreadPoolT
 {
   public:
     using Task = std::function<void()>;
+    using OneShotTask = detail::move_callable<void()>;
+    using PeriodicTask = detail::copyable_callable<void()>;
     using TimePoint = std::chrono::steady_clock::time_point;
     using Duration = std::chrono::steady_clock::duration;
 
@@ -148,7 +150,8 @@ class ScheduledThreadPoolT
         uint64_t id;
         TimePoint next_run;
         Duration interval; // Zero for one-time tasks
-        Task task;
+        OneShotTask one_shot_task;
+        std::shared_ptr<PeriodicTask> periodic_task;
         std::shared_ptr<std::atomic<bool>> cancelled;
         bool periodic;
     };
@@ -189,7 +192,14 @@ class ScheduledThreadPoolT
     auto schedule_after(Duration delay, Task task) -> ScheduledTaskHandle
     {
         auto run_time = std::chrono::steady_clock::now() + delay;
-        return schedule_at(run_time, std::move(task));
+        return insert_one_shot_task(run_time, detail::make_move_callable<void()>(std::move(task)));
+    }
+
+    template <typename F, std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<F>, Task>, int> = 0>
+    auto schedule_after(Duration delay, F&& task) -> ScheduledTaskHandle
+    {
+        auto run_time = std::chrono::steady_clock::now() + delay;
+        return insert_one_shot_task(run_time, detail::make_move_callable<void()>(std::forward<F>(task)));
     }
 
     /**
@@ -200,7 +210,13 @@ class ScheduledThreadPoolT
      */
     auto schedule_at(TimePoint time_point, Task task) -> ScheduledTaskHandle
     {
-        return insert_task(time_point, Duration::zero(), std::move(task), false);
+        return insert_one_shot_task(time_point, detail::make_move_callable<void()>(std::move(task)));
+    }
+
+    template <typename F, std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<F>, Task>, int> = 0>
+    auto schedule_at(TimePoint time_point, F&& task) -> ScheduledTaskHandle
+    {
+        return insert_one_shot_task(time_point, detail::make_move_callable<void()>(std::forward<F>(task)));
     }
 
     /**
@@ -217,6 +233,12 @@ class ScheduledThreadPoolT
         return schedule_periodic_after(Duration::zero(), interval, std::move(task));
     }
 
+    template <typename F, std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<F>, Task>, int> = 0>
+    auto schedule_periodic(Duration interval, F&& task) -> ScheduledTaskHandle
+    {
+        return schedule_periodic_after(Duration::zero(), interval, std::forward<F>(task));
+    }
+
     /**
      * @brief Schedule a task to run periodically after an initial delay
      * @param initial_delay Duration to wait before first execution
@@ -227,7 +249,15 @@ class ScheduledThreadPoolT
     auto schedule_periodic_after(Duration initial_delay, Duration interval, Task task) -> ScheduledTaskHandle
     {
         auto const run_time = std::chrono::steady_clock::now() + initial_delay;
-        return insert_task(run_time, interval, std::move(task), true);
+        return insert_periodic_task(run_time, interval, detail::make_copyable_callable<void()>(std::move(task)));
+    }
+
+    template <typename F, std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<F>, Task>, int> = 0>
+    auto schedule_periodic_after(Duration initial_delay, Duration interval, F&& task) -> ScheduledTaskHandle
+    {
+        auto const run_time = std::chrono::steady_clock::now() + initial_delay;
+        return insert_periodic_task(run_time, interval,
+                                    detail::make_copyable_callable<void()>(std::forward<F>(task)));
     }
 
     /**
@@ -320,7 +350,34 @@ class ScheduledThreadPoolT
     std::multimap<TimePoint, ScheduledTaskInfo> scheduled_tasks_;
     std::atomic<uint64_t> next_task_id_;
 
-    auto insert_task(TimePoint run_time, Duration interval, Task task, bool periodic) -> ScheduledTaskHandle
+    auto insert_one_shot_task(TimePoint run_time, OneShotTask task) -> ScheduledTaskHandle
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        uint64_t const task_id = next_task_id_++;
+        ScheduledTaskHandle handle(task_id);
+
+        if (stop_)
+        {
+            handle.cancel();
+            return handle;
+        }
+
+        ScheduledTaskInfo info;
+        info.id = task_id;
+        info.next_run = run_time;
+        info.interval = Duration::zero();
+        info.one_shot_task = std::move(task);
+        info.cancelled = handle.get_cancel_flag();
+        info.periodic = false;
+
+        scheduled_tasks_.insert({run_time, std::move(info)});
+        condition_.notify_one();
+
+        return handle;
+    }
+
+    auto insert_periodic_task(TimePoint run_time, Duration interval, PeriodicTask task) -> ScheduledTaskHandle
     {
         std::lock_guard<std::mutex> lock(mutex_);
 
@@ -337,9 +394,9 @@ class ScheduledThreadPoolT
         info.id = task_id;
         info.next_run = run_time;
         info.interval = interval;
-        info.task = std::move(task);
+        info.periodic_task = std::make_shared<PeriodicTask>(std::move(task));
         info.cancelled = handle.get_cancel_flag();
-        info.periodic = periodic;
+        info.periodic = true;
 
         scheduled_tasks_.insert({run_time, std::move(info)});
         condition_.notify_one();
@@ -395,22 +452,32 @@ class ScheduledThreadPoolT
             // Schedule for execution in the thread pool
             try
             {
-                // Capture task and periodic info
-                auto task_copy = info.task;
                 auto cancelled_flag = info.cancelled;
-
-                pool_.post([task_copy, cancelled_flag]() {
-                    if (!cancelled_flag->load(std::memory_order_acquire))
-                    {
-                        task_copy();
-                    }
-                });
-
-                // Reschedule if periodic
-                if (info.periodic && !info.cancelled->load(std::memory_order_acquire))
+                if (info.periodic)
                 {
-                    info.next_run += info.interval;
-                    scheduled_tasks_.insert({info.next_run, std::move(info)});
+                    auto periodic_task = info.periodic_task;
+                    pool_.post([periodic_task, cancelled_flag]() {
+                        if (!cancelled_flag->load(std::memory_order_acquire))
+                        {
+                            (*periodic_task)();
+                        }
+                    });
+
+                    if (!info.cancelled->load(std::memory_order_acquire))
+                    {
+                        info.next_run += info.interval;
+                        scheduled_tasks_.insert({info.next_run, std::move(info)});
+                    }
+                }
+                else
+                {
+                    auto one_shot_task = std::move(info.one_shot_task);
+                    pool_.post([task = std::move(one_shot_task), cancelled_flag]() mutable {
+                        if (!cancelled_flag->load(std::memory_order_acquire))
+                        {
+                            task();
+                        }
+                    });
                 }
             }
             catch (...)

@@ -1,7 +1,10 @@
 #include <gtest/gtest.h>
 #include <threadschedule/futures.hpp>
 #include <threadschedule/thread_pool.hpp>
+#include <threadschedule/thread_pool_with_errors.hpp>
+#include <atomic>
 #include <future>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -174,3 +177,46 @@ TEST(FuturesTest, WhenAnyVoidPropagatesException)
 
     EXPECT_THROW(when_any(futures), std::runtime_error);
 }
+
+TEST(FuturesTest, PoolWithErrorsInvokesRegisteredCallback)
+{
+    ThreadPoolWithErrors pool(1);
+    std::promise<std::string> error_seen;
+    auto reported = error_seen.get_future();
+
+    pool.add_error_callback([&error_seen](TaskError const& error) { error_seen.set_value(error.what()); });
+
+    auto future = pool.submit([]() -> int { throw std::runtime_error("boom"); });
+    EXPECT_THROW(future.get(), std::runtime_error);
+    EXPECT_EQ(reported.get(), "boom");
+}
+
+TEST(FuturesTest, PoolWithErrorsSubmitAcceptsMoveOnlyArguments)
+{
+    ThreadPoolWithErrors pool(1);
+    auto payload = std::make_unique<std::string>("wrapped");
+
+    auto future =
+        pool.submit([](std::unique_ptr<std::string> value) { return value == nullptr ? std::string() : *value; },
+                    std::move(payload));
+
+    EXPECT_EQ(future.get(), "wrapped");
+}
+
+#if defined(__cpp_lib_move_only_function) && __cpp_lib_move_only_function >= 202110L
+TEST(FuturesTest, FutureWithErrorHandlerAcceptsMoveOnlyErrorCallback)
+{
+    ThreadPoolWithErrors pool(1);
+    auto callback_done = std::make_unique<std::promise<void>>();
+    auto callback_seen = callback_done->get_future();
+
+    auto future = pool.submit([]() -> int { throw std::runtime_error("move-only"); });
+    future.on_error([done = std::move(callback_done)](std::exception_ptr error) mutable {
+        EXPECT_THROW(std::rethrow_exception(error), std::runtime_error);
+        done->set_value();
+    });
+
+    EXPECT_THROW(future.get(), std::runtime_error);
+    EXPECT_EQ(callback_seen.wait_for(std::chrono::seconds(1)), std::future_status::ready);
+}
+#endif
