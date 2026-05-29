@@ -633,8 +633,162 @@ worker.set_affinity(affinity);
 ### Benchmark Results
 
 Performance varies by system configuration, workload characteristics, and task
-complexity. See [benchmarks/](benchmarks/) for detailed performance analysis,
-real-world scenario testing, and optimization recommendations.
+complexity. The charts below were captured in a single environment; reproduce
+them on your own machine with `./run_benchmark_graphs.sh` (HTML report) or
+regenerate the SVGs with `benchmarks/generate_readme_graphs.py`.
+
+<details>
+<summary><strong>Benchmark environment & build flags</strong></summary>
+
+| Setting          | Value                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| CPU              | AMD Ryzen 5 5600X (6 cores / 12 threads, 32 MiB L3, up to ~4.65 GHz)   |
+| OS / kernel      | Fedora 44, Linux 7.0.4-200.fc44.x86_64                                 |
+| Compiler         | GCC 16.1.1 (`-std=c++23` for the pool charts; C++17/20/23/26 for the callable charts) |
+| Build type       | `Release` (`-O3 -DNDEBUG`)                                             |
+| Extra flags      | `-march=native -ffast-math -fno-omit-frame-pointer`                   |
+| Google Benchmark | v1.9.4                                                                 |
+| Threads          | 4 worker threads unless noted                                         |
+
+The exact compile flags used for every benchmark target (see
+[`benchmarks/CMakeLists.txt`](benchmarks/CMakeLists.txt)):
+
+```bash
+# GCC / Clang
+-O3 -DNDEBUG -fno-omit-frame-pointer -march=native -ffast-math
+# plus the C++ standard: -std=c++23 (pool/reflection charts),
+#                         -std=c++17 / 20 / 23 / 26 (callable charts)
+```
+
+> Absolute numbers are only meaningful relative to each other on the **same**
+> machine and build. `-march=native` and `-ffast-math` in particular mean results
+> are not comparable across CPUs. Re-run the benchmarks locally before drawing
+> conclusions for your hardware.
+
+</details>
+
+**Throughput scales with batch size.** For tiny tasks the
+fire-and-forget `LightweightPool` consistently leads, while the work-stealing
+`HighPerformancePool` pays for its extra machinery and only shines on larger,
+unbalanced workloads:
+
+![Thread pool throughput by batch size](docs/benchmarks/pool_throughput.svg)
+
+**Pick the right pool for the workload.** Running 100,000 trivial tasks, the
+`LightweightPool` finishes ~1.9x faster than the baseline `ThreadPool`, whereas
+the work-stealing pool is slower because the tasks are too small to benefit from
+stealing:
+
+![Thread pool comparison for a light workload](docs/benchmarks/pool_comparison.svg)
+
+**The gap depends heavily on how much work each task does.** With the pool built
+once and the per-task work swept from `tiny` to `heavy`, the picture changes: for
+tiny/medium tasks submission overhead dominates and `LightweightPool` wins by
+~2-3x, but as the per-task work grows the field converges to within ~20% and the
+pool choice stops mattering much. The work-stealing `HighPerformancePool` climbs
+from last place (tiny) to nearly the front (heavy):
+
+![Pool comparison across workload weights](docs/benchmarks/pool_workload.svg)
+
+**Skip the future when you do not need it.** `post()` reuses the same queue path
+as `submit()` but avoids the `packaged_task` / `std::future` overhead, which is
+dramatic for very short tasks:
+
+![post() versus submit() submission overhead](docs/benchmarks/post_vs_submit.svg)
+
+> These numbers measure submission/scheduling overhead with light tasks, so they
+> represent a worst case for pool overhead. As the "workload weights" chart
+> shows, real workloads with heavier per-task work narrow these gaps
+> considerably.
+
+#### Reflection-backed registry queries (GCC 16.1+ / C++26)
+
+With `THREADSCHEDULE_ENABLE_REFLECTION=ON` the registry exposes ergonomic,
+field-oriented queries (`where` / `project` / `find_by`). These trade a little
+performance for readability and compile-time field checking: against
+hand-written STL-style lambdas over 16,384 registered threads they currently run
+slightly slower, so reach for them when expressiveness matters more than the last
+few percent of throughput.
+
+![Reflection query: project a field versus hand-written filter + map](docs/benchmarks/reflection_query.svg)
+
+![Reflection query: find by field versus hand-written find_if](docs/benchmarks/reflection_lookup.svg)
+
+#### Task storage: `std::move_only_function` and SBO callables
+
+The pools store type-erased tasks in one of two ways: `ThreadPool` /
+`FastThreadPool` / `HighPerformancePool` use `detail::move_callable`
+(`std::function` on C++17/20, `std::move_only_function` on C++23+), while
+`LightweightPool` uses a custom small-buffer callable (`SboCallable<64>`). The
+`callable_std_benchmarks` target isolates the build + invoke cost of these
+wrappers (away from thread-scheduling noise) and is compiled under every standard.
+
+**Does replacing `std::function` help?** For small captures, switching to
+`std::move_only_function` on C++23+ cuts the per-task wrapper cost by ~30%
+(~4.6 ns to ~3.1 ns). For larger captures the heap allocation dominates and the
+wrapper choice barely matters:
+
+![move_callable cost across C++ standards](docs/benchmarks/callable_standards.svg)
+
+**Do the SBO callables help?** Yes — and this is the bigger effect. A 48-byte
+capture fits `LightweightPool`'s 56-byte inline buffer but overflows the
+standard-library callables' small buffer, so the latter heap-allocate. The SBO
+path is then ~6x faster (~3.4 ns vs ~21 ns per task). Once a capture is too big
+for any inline buffer (128 B), both allocate and the advantage disappears:
+
+![SBO callable versus standard-library callable](docs/benchmarks/callable_sbo.svg)
+
+<details>
+<summary><strong>How big is a task, really? (capture sizes &amp; inline buffers)</strong></summary>
+
+A task is usually a lambda, and **a lambda's size is the sum of what it captures**
+(plus alignment padding). A capture-less lambda is effectively free; each captured
+pointer or reference adds 8 bytes, and capturing objects *by value* adds their
+full size. Concrete sizes on this platform (GCC 16 / libstdc++, x86_64):
+
+| What the task captures                              | Example                                  | Size   |
+| --------------------------------------------------- | ---------------------------------------- | ------ |
+| nothing (stateless)                                 | `pool.post([]{ tick(); });`              | ~1 B   |
+| one pointer / reference / `this`                    | `pool.post([&q]{ q.drain(); });`         | 8 B    |
+| two pointers / references                           | `pool.post([&a, &b]{ join(a, b); });`    | 16 B   |
+| a `std::shared_ptr` by value                        | `pool.post([h]{ h->run(); });`           | 16 B   |
+| a `std::vector` by value                            | `pool.post([data]{ process(data); });`   | 24 B   |
+| a `std::string` by value                            | `pool.post([name]{ log(name); });`       | 32 B   |
+| ~6 small values / handles (the chart's "medium")    | `pool.post([id,a,b,c,d,e]{ ... });`      | 48 B   |
+| a big array / struct by value (the chart's "large") | `pool.post([frame]{ encode(frame); });`  | 128 B  |
+
+Each storage type keeps small callables **inline** (no allocation) up to a fixed
+buffer size, and falls back to a heap allocation above it:
+
+| Storage                       | Inline buffer | Used by                                   |
+| ----------------------------- | ------------- | ----------------------------------------- |
+| `std::function`               | ≤ 16 B        | `ThreadPool` family on C++17/20           |
+| `std::move_only_function`     | ≤ 24 B        | `ThreadPool` family on C++23+             |
+| `SboCallable<64>`             | ≤ 56 B        | `LightweightPool` (`= LightweightPoolT<64>`) |
+
+`SboCallable<TaskSize>` lays each task out as one cache line:
+
+```
+  |<------------- TaskSize = 64 B ------------->|
+  [ vtable* (8 B) | inline capture buffer (56 B) ]
+```
+
+**Typical real tasks capture a few pointers/handles plus maybe a small value, so
+they land in the ~8-48 B range.** That fits `LightweightPool`'s 56 B buffer with
+no allocation, but overflows `std::function`'s 16 B buffer (one allocation per
+task). If you capture large objects by value you blow past every inline buffer -
+capture a pointer/handle to the data instead, or bump the buffer with
+`LightweightPoolT<128>`.
+
+</details>
+
+> Takeaway: keep task captures small. They stay inline (no allocation) in
+> `LightweightPool`, and on C++23+ the other pools also benefit from the
+> move-only wrapper. This is exactly why `post()` and `LightweightPool` are the
+> recommended low-overhead paths.
+
+See [benchmarks/](benchmarks/) for detailed performance analysis, real-world
+scenario testing, and optimization recommendations.
 
 ## Platform-Specific Features
 
