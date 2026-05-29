@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 482" width="820" height="482" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+<rect x="0" y="0" width="820" height="482" rx="14" fill="#ffffff" stroke="#dbe3ef" />
+<text x="24" y="34" fill="#122033" font-size="18" font-weight="700">Thread pool throughput by batch size</text>
+<text x="24" y="56" fill="#5b6b82" font-size="13">Tasks processed per second for the light workload (higher is better)</text>
+<line x1="64" y1="396.0" x2="796" y2="396.0" stroke="#dbe3ef" stroke-width="1" />
+<text x="56" y="400.0" fill="#5b6b82" font-size="11" text-anchor="end">0.0</text>
+<line x1="64" y1="336.0" x2="796" y2="336.0" stroke="#dbe3ef" stroke-width="1" />
+<text x="56" y="340.0" fill="#5b6b82" font-size="11" text-anchor="end">0.8</text>
+<line x1="64" y1="276.0" x2="796" y2="276.0" stroke="#dbe3ef" stroke-width="1" />
+<text x="56" y="280.0" fill="#5b6b82" font-size="11" text-anchor="end">1.6</text>
+<line x1="64" y1="216.0" x2="796" y2="216.0" stroke="#dbe3ef" stroke-width="1" />
+<text x="56" y="220.0" fill="#5b6b82" font-size="11" text-anchor="end">2.4</text>
+<line x1="64" y1="156.0" x2="796" y2="156.0" stroke="#dbe3ef" stroke-width="1" />
+<text x="56" y="160.0" fill="#5b6b82" font-size="11" text-anchor="end">3.2</text>
+<line x1="64" y1="96.0" x2="796" y2="96.0" stroke="#dbe3ef" stroke-width="1" />
+<text x="56" y="100.0" fill="#5b6b82" font-size="11" text-anchor="end">4.0</text>
+<text x="16" y="88" fill="#5b6b82" font-size="12" font-weight="600">M tasks / second</text>
+<rect x="87.4" y="388.5" width="22.9" height="7.5" rx="3" fill="#2a7fff" />
+<rect x="112.3" y="388.6" width="22.9" height="7.4" rx="3" fill="#16a34a" />
+<rect x="137.2" y="391.9" width="22.9" height="4.1" rx="3" fill="#f59e0b" />
+<rect x="162.1" y="388.6" width="22.9" height="7.4" rx="3" fill="#db2777" />
+<text x="137.2" y="414.0" fill="#122033" font-size="12" font-weight="600" text-anchor="middle">10</text>
+<rect x="233.8" y="349.0" width="22.9" height="47.0" rx="3" fill="#2a7fff" />
+<rect x="258.7" y="349.5" width="22.9" height="46.5" rx="3" fill="#16a34a" />
+<rect x="283.6" y="365.0" width="22.9" height="31.0" rx="3" fill="#f59e0b" />
+<rect x="308.5" y="336.2" width="22.9" height="59.8" rx="3" fill="#db2777" />
+<text x="283.6" y="414.0" fill="#122033" font-size="12" font-weight="600" text-anchor="middle">100</text>
+<rect x="380.2" y="294.2" width="22.9" height="101.8" rx="3" fill="#2a7fff" />
+<rect x="405.1" y="302.0" width="22.9" height="94.0" rx="3" fill="#16a34a" />
+<rect x="430.0" y="322.6" width="22.9" height="73.4" rx="3" fill="#f59e0b" />
+<rect x="454.9" y="165.1" width="22.9" height="230.9" rx="3" fill="#db2777" />
+<text x="430.0" y="414.0" fill="#122033" font-size="12" font-weight="600" text-anchor="middle">1,000</text>
+<rect x="526.6" y="267.9" width="22.9" height="128.1" rx="3" fill="#2a7fff" />
+<rect x="551.5" y="278.6" width="22.9" height="117.4" rx="3" fill="#16a34a" />
+<rect x="576.4" y="311.0" width="22.9" height="85.0" rx="3" fill="#f59e0b" />
+<rect x="601.3" y="151.8" width="22.9" height="244.2" rx="3" fill="#db2777" />
+<text x="576.4" y="414.0" fill="#122033" font-size="12" font-weight="600" text-anchor="middle">10,000</text>
+<rect x="673.0" y="277.8" width="22.9" height="118.2" rx="3" fill="#2a7fff" />
+<rect x="697.9" y="287.7" width="22.9" height="108.3" rx="3" fill="#16a34a" />
+<rect x="722.8" y="309.0" width="22.9" height="87.0" rx="3" fill="#f59e0b" />
+<rect x="747.7" y="161.5" width="22.9" height="234.5" rx="3" fill="#db2777" />
+<text x="722.8" y="414.0" fill="#122033" font-size="12" font-weight="600" text-anchor="middle">100,000</text>
+<rect x="64" y="440" width="14" height="14" rx="3" fill="#2a7fff" />
+<text x="84" y="452" fill="#122033" font-size="12">ThreadPool</text>
+<rect x="166.0" y="440" width="14" height="14" rx="3" fill="#16a34a" />
+<text x="186.0" y="452" fill="#122033" font-size="12">FastThreadPool</text>
+<rect x="296.8" y="440" width="14" height="14" rx="3" fill="#f59e0b" />
+<text x="316.8" y="452" fill="#122033" font-size="12">HighPerformancePool</text>
+<rect x="463.6" y="440" width="14" height="14" rx="3" fill="#db2777" />
+<text x="483.6" y="452" fill="#122033" font-size="12">LightweightPool</text>
+</svg>

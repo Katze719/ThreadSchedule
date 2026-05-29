@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 208" width="760" height="208" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+<rect x="0" y="0" width="760" height="208" rx="14" fill="#ffffff" stroke="#dbe3ef" />
+<text x="24" y="34" fill="#122033" font-size="18" font-weight="700">post() vs submit()</text>
+<text x="24" y="56" fill="#5b6b82" font-size="13">Submission overhead for 100,000 tasks: post() skips the future/packaged_task path (lower is better)</text>
+<text x="24" y="102" fill="#122033" font-size="13" font-weight="600">post(fire-forget)</text>
+<rect x="200" y="80" width="44.7" height="34" rx="6" fill="#16a34a" />
+<text x="254.7" y="102" fill="#122033" font-size="13" font-weight="600">13.33 ms  (8.63x faster)</text>
+<text x="24" y="158" fill="#122033" font-size="13" font-weight="600">submit(future)</text>
+<rect x="200" y="136" width="386.0" height="34" rx="6" fill="#2a7fff" />
+<text x="596.0" y="158" fill="#122033" font-size="13" font-weight="600">115.05 ms  (baseline)</text>
+</svg>
