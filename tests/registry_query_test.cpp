@@ -171,3 +171,36 @@ TEST_F(RegistryQueryTest, ChainedFilterMapForEach)
     EXPECT_TRUE(names.count("alpha"));
     EXPECT_TRUE(names.count("gamma"));
 }
+
+#if defined(THREADSCHEDULE_HAS_REFLECTION) && THREADSCHEDULE_HAS_REFLECTION
+TEST_F(RegistryQueryTest, ReflectionContainsAndFindBy)
+{
+    EXPECT_TRUE(registry().contains<registered_thread_fields::name()>("beta"));
+    auto found = registry().find_by<registered_thread_fields::name()>("beta");
+    ASSERT_TRUE(found.has_value());
+    EXPECT_EQ(found->componentTag, "compute");
+}
+
+TEST_F(RegistryQueryTest, ReflectionWhereAndProject)
+{
+    auto io_names =
+        registry().where<registered_thread_fields::componentTag()>("io").project<registered_thread_fields::name()>();
+    EXPECT_EQ(io_names.size(), 2u);
+    std::set<std::string> names(io_names.begin(), io_names.end());
+    EXPECT_TRUE(names.count("alpha"));
+    EXPECT_TRUE(names.count("gamma"));
+}
+
+TEST_F(RegistryQueryTest, ReflectionQueryViewWhereIf)
+{
+    auto names = registry()
+                     .query()
+                     .where_if<registered_thread_fields::alive()>([](bool alive) { return alive; })
+                     .where_if<registered_thread_fields::name()>([](std::string const& name) {
+                         return name.starts_with("g");
+                     })
+                     .project<registered_thread_fields::name()>();
+    ASSERT_EQ(names.size(), 1u);
+    EXPECT_EQ(names.front(), "gamma");
+}
+#endif
