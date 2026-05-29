@@ -27,6 +27,47 @@
   receive stable default names, keeping thread-control behavior consistent
   across the library. (`scheduled_pool.hpp`, `chaos.hpp`)
 
+- **Callable storage is now feature-gated by language/library support** --
+  internal task and callback paths use modern standard call wrappers when they
+  are available: move-only task queues can use `std::move_only_function`
+  (C++23+ libraries), reusable hooks/callbacks can use
+  `std::copyable_function` (C++26-capable libraries), and older standards keep
+  the `std::function` fallback. Public aliases remain source-compatible while
+  new templated setter/registration overloads avoid unnecessary type-erasure
+  constraints. (`callable.hpp`, `thread_pool.hpp`, `scheduled_pool.hpp`,
+  `error_handler.hpp`, `thread_registry.hpp`, `thread_pool_with_errors.hpp`,
+  `pthread_wrapper.hpp`)
+
+### Performance
+
+- **Move-only tasks are now supported on more hot paths** -- `post`/`try_post`
+  and scheduler one-shot dispatch can carry move-only captures directly instead
+  of forcing a copyable `std::function` path on newer standard libraries.
+  This reduces adaptation overhead for fire-and-forget workloads and enables
+  more modern task payloads without wrapper glue. (`thread_pool.hpp`,
+  `scheduled_pool.hpp`, `thread_pool_with_errors.hpp`, `pthread_wrapper.hpp`)
+
+### Tests
+
+- **New regression coverage for modern callable paths** -- tests now cover
+  move-only `post` tasks, move-only scheduled tasks, move-only
+  `FutureWithErrorHandler::on_error(...)` callbacks, `PoolWithErrors` with
+  move-only arguments, and `ThreadInfo(Tid)` invalid-target behavior.
+  (`thread_pool_v2_test.cpp`, `futures_test.cpp`, `thread_config_test.cpp`)
+
+- **New callable benchmark target** -- `callable_benchmarks` compares small
+  capture, large capture, and move-only capture posting overhead on
+  `ThreadPool` and `HighPerformancePool` as a local performance validation
+  tool. (`benchmarks/callable_benchmarks.cpp`, `benchmarks/CMakeLists.txt`)
+
+### CI / Infrastructure
+
+- **Added Linux C++26 coverage for GCC 16 and Clang 22** -- the main test
+  workflow now installs and runs additional `ubuntu-24.04` jobs for
+  `gcc-16`/`g++-16` and `clang-22`/`clang++-22`, extending verification of the
+  modern callable and C++26 code paths without replacing the existing matrix.
+  (`.github/workflows/tests.yml`)
+
 ## v2.1.0
 
 > **No API/ABI breaking changes.** All modifications are bug fixes (aligning
