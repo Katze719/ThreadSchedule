@@ -185,7 +185,7 @@ inline auto affinity_for_node(int node_index, int thread_index, int threads_per_
 /**
  * @brief Distribute thread affinities across NUMA nodes in round-robin order.
  *
- * @overload Uses a pre-read topology to avoid repeated sysfs access.
+ * Uses a pre-read topology to avoid repeated sysfs access.
  *
  * @param topo        Pre-read topology snapshot.
  * @param num_threads Number of affinity masks to generate.
