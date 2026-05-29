@@ -43,6 +43,9 @@ or with optional **shared runtime** for multi-DSO applications.
 - **Modern Callable Paths**: Newer standard libraries can use
   `std::move_only_function` / `std::copyable_function` internally for lower
   adaptation overhead while keeping the public API source-compatible
+- **GCC 16 Reflection APIs**: Optional C++26 reflection utilities and
+  reflection-backed registry queries when building with GCC 16.1+ and
+  `-freflection`
 - **Scheduled Tasks**: Run tasks at specific times, after delays, or
   periodically
 - **Error Handling**: Comprehensive exception handling with error callbacks and
@@ -157,6 +160,11 @@ are not regularly tested in CI.
 >
 > **C++26**: Requires GCC 14+ or Clang 19+. MSVC does not yet expose
 > `cxx_std_26` to CMake; C++26 on Windows is not tested.
+>
+> **Reflection APIs**: The optional `threadschedule::reflect` API and
+> reflection-backed registry queries require GCC 16.1+ with
+> `THREADSCHEDULE_ENABLE_REFLECTION=ON`. These APIs are not built on other
+> toolchains or standards.
 >
 > **GCC 15**: Installed via `ppa:ubuntu-toolchain-r/test` on Ubuntu 24.04.
 >
@@ -418,6 +426,47 @@ Notes:
   registered with control blocks to be controllable via the registry.
 - Use `*Reg` wrappers (e.g., `ThreadWrapperReg`) or `AutoRegisterCurrentThread`
   for automatic control block creation and registration.
+
+### Reflection-powered registry queries (GCC 16.1+ / C++26)
+
+When `THREADSCHEDULE_ENABLE_REFLECTION=ON` is active on GCC 16.1+ with
+`-std=c++26`, ThreadSchedule exposes field metadata and faster field-oriented
+registry queries.
+
+```cpp
+#include <threadschedule/threadschedule.hpp>
+using namespace threadschedule;
+
+auto io_names =
+    registry()
+        .where<registered_thread_fields::componentTag()>("io")
+        .project<registered_thread_fields::name()>();
+
+auto live_compute =
+    registry()
+        .where<registered_thread_fields::componentTag()>("compute")
+        .where_if<registered_thread_fields::alive()>([](bool alive) {
+            return alive;
+        })
+        .project<registered_thread_fields::tid(), registered_thread_fields::name()>();
+
+bool has_scheduler = registry().contains<registered_thread_fields::name()>("sched_main");
+```
+
+You can also inspect reflected library types directly:
+
+```cpp
+#include <threadschedule/threadschedule.hpp>
+using namespace threadschedule;
+
+static_assert(reflect::field_count<RegisteredThreadInfo>() == 6);
+static_assert(reflect::field_name<RegisteredThreadInfo, 2>() == "name");
+
+ThreadProfile profile = profiles::throughput();
+reflect::visit_fields(profile, [](std::string_view field, auto const& value) {
+    // inspect compile-time-described fields at runtime
+});
+```
 
 Find by name (Linux):
 

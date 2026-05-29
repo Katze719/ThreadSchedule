@@ -126,6 +126,19 @@ if(TARGET gtest)
         PROPERTIES TIMEOUT 120
     )
 
+    if(THREADSCHEDULE_HAS_REFLECTION)
+        add_executable(reflection_test reflection_test.cpp)
+        target_link_libraries(reflection_test
+            ThreadSchedule::ThreadSchedule
+            gtest
+            gtest_main
+        )
+        gtest_discover_tests(reflection_test
+            DISCOVERY_TIMEOUT 60
+            PROPERTIES TIMEOUT 120
+        )
+    endif()
+
     if(THREADSCHEDULE_RUNTIME)
         add_executable(runtime_registry_test runtime_registry_test.cpp)
         target_link_libraries(runtime_registry_test 

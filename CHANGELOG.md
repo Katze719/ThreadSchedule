@@ -1,5 +1,72 @@
 # Changelog
 
+## v2.3.0
+
+> **No intended API/ABI breaking changes for existing non-reflection users.**
+> This release adds an optional GCC-16/C++26 reflection surface and uses it to
+> expose faster registry projection/filter paths without changing the existing
+> query API.
+
+### New Features
+
+- **Optional GCC 16.1+ reflection API** -- when building with C++26,
+  `THREADSCHEDULE_ENABLE_REFLECTION=ON`, and working `-freflection` support,
+  the library now exports `threadschedule::reflect::*` for field metadata,
+  field visitation, compile-time projection, and type/field naming.
+  (`reflection.hpp`, `threadschedule.cppm`, `CMakeLists.txt`)
+
+- **Reflection-backed registry selectors** -- `ThreadRegistry` and
+  `QueryView` now expose field-oriented helpers such as
+  `where<registered_thread_fields::componentTag()>(...)`,
+  `where_if<registered_thread_fields::alive()>(...)`,
+  `find_by<registered_thread_fields::name()>(...)`,
+  `contains<...>(...)`, and `project<...>()` when reflection is enabled.
+  (`thread_registry.hpp`)
+
+### Performance
+
+- **Lower-overhead registry projections on reflection builds** -- direct
+  field-projection and field-filter paths now run under the registry's shared
+  lock and can skip the older `filter(...).map(...)` layering when callers opt
+  into the new reflection APIs. This reduces intermediate traversal and avoids
+  some full-entry transformation work for hot query paths. (`thread_registry.hpp`)
+
+- **More metadata is now promoted at compile time** -- reflection field names
+  and type display names are now stabilized via `std::define_static_string(...)`
+  and reused through `consteval` helpers such as `field_names<T>()`, reducing
+  repeated compile-time reconstruction of the same metadata. (`reflection.hpp`)
+
+### Documentation
+
+- **README examples for reflection queries** -- the top-level README now shows
+  how to combine `threadschedule::reflect` with field-based registry queries
+  and projections. (`README.md`)
+
+- **New CMake reference entry for reflection** -- the reference now documents
+  `THREADSCHEDULE_ENABLE_REFLECTION` and the GCC 16.1+/C++26 activation path.
+  (`docs/CMAKE_REFERENCE.md`)
+
+### Tests & Benchmarks
+
+- **New reflection unit coverage** -- dedicated tests now validate reflection
+  metadata for core public structs and reflection-backed registry queries.
+  (`tests/reflection_test.cpp`, `tests/registry_query_test.cpp`,
+  `tests/CMakeLists.txt`)
+
+- **New reflection registry benchmark** -- `reflection_registry_benchmarks`
+  compares classic `filter/map/find_if` usage against the new field-oriented
+  query helpers on synthetic registry snapshots. (`benchmarks/CMakeLists.txt`,
+  `benchmarks/reflection_registry_benchmarks.cpp`)
+
+### CI / Infrastructure
+
+- **Dedicated GCC 16 reflection CI jobs** -- the main test workflow now
+  includes explicit `ubuntu-24.04` jobs for reflection-enabled GCC 16/C++26
+  validation: one job builds and runs the reflection-focused test cases, and a
+  second job verifies the reflection-enabled module build path. This makes the
+  new `THREADSCHEDULE_ENABLE_REFLECTION` surface visible in CI instead of
+  relying only on the generic C++26 matrix entry. (`.github/workflows/tests.yml`)
+
 ## v2.2.0
 
 > **No intended API/ABI breaking changes.** This release extends thread-control
