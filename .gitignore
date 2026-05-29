@@ -46,5 +46,6 @@ compile_commands.json
 .cache/
 build/
 build_*/
+build-*/
 install/
 build_runtime/
