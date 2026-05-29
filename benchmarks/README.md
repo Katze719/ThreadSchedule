@@ -59,6 +59,10 @@ cmake --build build --target run_quick_benchmarks
 # Run all core benchmarks (2s per test, 3 repetitions) - use the run_benchmarks.sh script
 ./run_benchmarks.sh
 
+# Generate an HTML report with graphs + speedups for comparison benchmarks
+./run_benchmark_graphs.sh
+./run_benchmark_graphs.sh --quick
+
 # Or run specific benchmark suites with custom settings
 ./build/benchmarks/threadpool_basic_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3
 ./build/benchmarks/web_server_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3
@@ -228,6 +232,111 @@ This shows:
 
 # Generate JSON for analysis
 ./database_benchmarks --benchmark_format=json --benchmark_out=results.json
+
+# Turn one or more Google Benchmark JSON files into a local HTML report
+python3 benchmarks/generate_benchmark_report.py \
+  --output build/benchmark-report.html \
+  --title "Local benchmark comparison" \
+  build/benchmarks/threadpool_comparisons.json \
+  build/benchmarks/reflection_registry.json
+```
+
+## Graphs and Speedups
+
+The repository now includes a local report generator that turns Google
+Benchmark JSON output into a standalone HTML report with:
+
+- Absolute timing bar charts
+- Relative speedup annotations (for known comparison families)
+- Automatically collected machine information
+- Side-by-side tables for comparison-oriented benchmark groups
+
+The current heuristics explicitly understand:
+
+- `BM_ComparePoolTypes_LightWorkload`
+- `BM_PostVsSubmit`
+- `BM_QueryView_FilterMapName`
+- `BM_QueryView_ReflectionWhereProjectName`
+- `BM_QueryView_FindIf`
+- `BM_QueryView_ReflectionFindBy`
+
+This is enough to visualize both classic pool comparisons and the new
+reflection registry speedups without extra dependencies such as matplotlib.
+
+### Standalone SVG charts for the README
+
+`generate_readme_graphs.py` turns the same Google Benchmark JSON into a few
+self-contained SVG files (light background, dark text) that embed cleanly into
+Markdown and render in both light and dark GitHub themes:
+
+```bash
+# Produce JSON from the comparison benchmarks
+./build/benchmarks/threadpool_basic_benchmarks \
+  --benchmark_filter="BM_ComparePoolTypes_LightWorkload|BM_ComparePoolWorkload|BM_PostVsSubmit" \
+  --benchmark_format=json \
+  --benchmark_out=build/threadpool_comparisons.json
+
+# Optional: reflection query benchmarks (needs a C++26 + reflection build)
+./build-reflection/benchmarks/reflection_registry_benchmarks \
+  --benchmark_filter="BM_QueryView_.*" \
+  --benchmark_format=json \
+  --benchmark_out=build/reflection_registry.json
+
+# Render the README charts (no matplotlib required)
+python3 benchmarks/generate_readme_graphs.py \
+  --output-dir docs/benchmarks \
+  build/threadpool_comparisons.json \
+  build/reflection_registry.json
+```
+
+The generator accepts any number of JSON files and emits the charts it can build
+from the data it finds:
+
+| SVG file                          | Source benchmark                                   |
+| --------------------------------- | -------------------------------------------------- |
+| `pool_throughput.svg`             | `BM_ComparePoolTypes_LightWorkload`                |
+| `pool_comparison.svg`             | `BM_ComparePoolTypes_LightWorkload`                |
+| `pool_workload.svg`               | `BM_ComparePoolWorkload`                           |
+| `post_vs_submit.svg`              | `BM_PostVsSubmit`                                  |
+| `reflection_query.svg`            | `BM_QueryView_FilterMapName` vs `...WhereProject`  |
+| `reflection_lookup.svg`           | `BM_QueryView_FindIf` vs `BM_QueryView_ReflectionFindBy` |
+| `callable_standards.svg`          | `callable_std_benchmarks` (`BM_MoveCallable_*`, one JSON per standard) |
+| `callable_sbo.svg`                | `callable_std_benchmarks` (`BM_MoveCallable_*` vs `BM_Sbo_*`) |
+
+All files are written into `docs/benchmarks/` and referenced from the top-level
+`README.md`. The reflection charts require building `reflection_registry_benchmarks`,
+which is only available on GCC 16.1+ with `-DCMAKE_CXX_STANDARD=26 -DTHREADSCHEDULE_ENABLE_REFLECTION=ON`:
+
+```bash
+cmake -S . -B build-reflection -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_CXX_STANDARD=26 -DTHREADSCHEDULE_BUILD_BENCHMARKS=ON \
+  -DTHREADSCHEDULE_ENABLE_REFLECTION=ON
+cmake --build build-reflection --target reflection_registry_benchmarks
+```
+
+#### Cross-standard callable charts
+
+`callable_std_benchmarks` isolates the cost of ThreadSchedule's task storage
+(`detail::move_callable`, which is `std::function` on C++17/20 and
+`std::move_only_function` on C++23+, versus the `SboCallable` small-buffer
+callable used by `LightweightPool`). To compare standards, build the same source
+under each one and feed the per-standard JSON (named `callable_cxx<NN>.json`, the
+generator reads the standard from the file name) to the generator:
+
+```bash
+for std in 17 20 23 26; do
+  g++ -std=c++$std -O3 -DNDEBUG -march=native -ffast-math -fno-omit-frame-pointer \
+    -Iinclude -Ibuild/_deps/benchmark-src/include \
+    benchmarks/callable_std_benchmarks.cpp \
+    build/_deps/benchmark-build/src/libbenchmark.a -lpthread -o /tmp/callable_c$std
+  /tmp/callable_c$std --benchmark_min_time=0.5s --benchmark_repetitions=3 \
+    --benchmark_report_aggregates_only=true --benchmark_format=json \
+    --benchmark_out=build/callable_cxx$std.json
+done
+
+python3 benchmarks/generate_readme_graphs.py --output-dir docs/benchmarks \
+  build/callable_cxx17.json build/callable_cxx20.json \
+  build/callable_cxx23.json build/callable_cxx26.json
 ```
 
 ### Performance Regression Testing
