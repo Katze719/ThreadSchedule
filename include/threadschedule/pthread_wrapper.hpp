@@ -5,6 +5,7 @@
  * @brief RAII wrapper around POSIX threads (Linux only).
  */
 
+#include "callable.hpp"
 #include "concepts.hpp"
 #include "expected.hpp"
 #include "scheduler_policy.hpp"
@@ -28,6 +29,8 @@ namespace threadschedule
 {
 
 #ifndef _WIN32
+using PThreadEntryPoint = detail::move_callable<void()>;
+
 /**
  * @brief RAII wrapper around POSIX threads with a modern C++ interface.
  *
@@ -66,10 +69,10 @@ class PThreadWrapper
     {
 
         auto callable =
-            std::make_unique<std::function<void()>>([fn = std::forward<F>(func),
-                                                     tup = std::make_tuple(std::forward<Args>(args)...)]() mutable {
-                std::apply(std::move(fn), std::move(tup));
-            });
+            std::make_unique<PThreadEntryPoint>(detail::make_move_callable<void()>(
+                [fn = std::forward<F>(func), tup = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+                    std::apply(std::move(fn), std::move(tup));
+                }));
 
         int const result = pthread_create(&thread_, nullptr, thread_function, callable.release());
 
@@ -229,10 +232,10 @@ class PThreadWrapper
 
         PThreadWrapper wrapper;
         auto callable =
-            std::make_unique<std::function<void()>>([fn = std::forward<F>(func),
-                                                     tup = std::make_tuple(std::forward<Args>(args)...)]() mutable {
-                std::apply(std::move(fn), std::move(tup));
-            });
+            std::make_unique<PThreadEntryPoint>(detail::make_move_callable<void()>(
+                [fn = std::forward<F>(func), tup = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+                    std::apply(std::move(fn), std::move(tup));
+                }));
 
         int const result = pthread_create(&wrapper.thread_, &attr, thread_function, callable.release());
 
@@ -250,7 +253,7 @@ class PThreadWrapper
 
     static auto thread_function(void* arg) -> void*
     {
-        std::unique_ptr<std::function<void()>> func(static_cast<std::function<void()>*>(arg));
+        std::unique_ptr<PThreadEntryPoint> func(static_cast<PThreadEntryPoint*>(arg));
 
         try
         {

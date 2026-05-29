@@ -88,8 +88,10 @@ using ts::PollingWait;
 using ts::PoolWithErrors;
 using ts::TaskEndCallback;
 using ts::TaskStartCallback;
+using ts::ThreadInfo;
 using ts::ThreadPriority;
 using ts::ThreadProfile;
+using ts::Tid;
 using ts::ThreadWrapper;
 using ts::ThreadWrapperView;
 
