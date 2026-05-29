@@ -7,6 +7,7 @@ add_executable(threadpool_throughput_benchmarks throughput_benchmarks.cpp)
 add_executable(threadpool_memory_benchmarks memory_benchmarks.cpp)
 add_executable(threadpool_resampling_benchmarks resampling_benchmarks.cpp)
 add_executable(callable_benchmarks callable_benchmarks.cpp)
+add_executable(callable_std_benchmarks callable_std_benchmarks.cpp)
 if(THREADSCHEDULE_HAS_REFLECTION)
     add_executable(reflection_registry_benchmarks reflection_registry_benchmarks.cpp)
 endif()
@@ -23,6 +24,7 @@ set(ALL_BENCHMARK_TARGETS
     threadpool_memory_benchmarks
     threadpool_resampling_benchmarks
     callable_benchmarks
+    callable_std_benchmarks
     web_server_benchmarks
     database_benchmarks
     audio_video_benchmarks

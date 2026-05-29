@@ -457,6 +457,103 @@ static void BM_ComparePoolTypes_LightWorkload(benchmark::State& state)
 }
 
 // =============================================================================
+// Pool comparison across workload weights (pool constructed once, not per-iter)
+// =============================================================================
+// Unlike BM_ComparePoolTypes_LightWorkload (which rebuilds the pool every
+// iteration and only runs a light task), this benchmark builds the pool once and
+// sweeps the per-task work. It shows how the best pool changes with workload:
+//   - tiny     : submission overhead dominates -> LightweightPool wins
+//   - heavy    : execution dominates -> the field converges
+//   - imbalanced: a few tasks are far heavier than the rest -> the work-stealing
+//                 HighPerformancePool balances the load and pulls ahead
+static void bench_busy_work(int iters)
+{
+    volatile long sum = 0;
+    for (int i = 0; i < iters; ++i)
+        sum += static_cast<long>(i) * i;
+}
+
+// Per-task work (in busy-loop iterations) for a given workload and task index.
+static int bench_work_iters(int workload, size_t task_index)
+{
+    switch (workload)
+    {
+    case 0: // tiny: pure scheduling overhead
+        return 50;
+    case 1: // medium: a few microseconds of work each
+        return 2000;
+    case 2: // heavy: uniform, execution-bound
+        return 30000;
+    default: // imbalanced: every 16th task is very heavy, the rest are tiny
+        return (task_index % 16 == 0) ? 120000 : 50;
+    }
+}
+
+static void BM_ComparePoolWorkload(benchmark::State& state)
+{
+    size_t const num_threads = 4;
+    size_t const num_tasks = 4000;
+    int const pool_type = static_cast<int>(state.range(0));
+    int const workload = static_cast<int>(state.range(1));
+
+    char const* const workload_names[] = {"tiny", "medium", "heavy", "imbalanced"};
+    char const* const pool_names[] = {"ThreadPool", "FastThreadPool", "HighPerformancePool", "LightweightPool"};
+
+    auto submit_loop = [&](auto& pool) {
+        for (auto _ : state)
+        {
+            std::vector<std::future<void>> futures;
+            futures.reserve(num_tasks);
+            for (size_t i = 0; i < num_tasks; ++i)
+                futures.push_back(pool.submit([workload, i]() { bench_busy_work(bench_work_iters(workload, i)); }));
+            for (auto& f : futures)
+                f.wait();
+        }
+    };
+
+    if (pool_type == 0)
+    {
+        ThreadPool pool(num_threads);
+        pool.configure_threads("bench");
+        submit_loop(pool);
+    }
+    else if (pool_type == 1)
+    {
+        FastThreadPool pool(num_threads);
+        pool.configure_threads("bench");
+        submit_loop(pool);
+    }
+    else if (pool_type == 2)
+    {
+        HighPerformancePool pool(num_threads);
+        pool.configure_threads("bench");
+        pool.distribute_across_cpus();
+        submit_loop(pool);
+    }
+    else
+    {
+        LightweightPool pool(num_threads);
+        pool.configure_threads("bench");
+        for (auto _ : state)
+        {
+            std::atomic<size_t> counter{0};
+            for (size_t i = 0; i < num_tasks; ++i)
+            {
+                pool.post([&counter, workload, i]() {
+                    bench_busy_work(bench_work_iters(workload, i));
+                    counter.fetch_add(1, std::memory_order_relaxed);
+                });
+            }
+            while (counter.load(std::memory_order_acquire) < num_tasks)
+                std::this_thread::yield();
+        }
+    }
+
+    state.SetItemsProcessed(state.iterations() * num_tasks);
+    state.SetLabel(std::string(pool_names[pool_type]) + " " + workload_names[workload]);
+}
+
+// =============================================================================
 // Post vs Submit comparison (fire-and-forget overhead on pools that support both)
 // =============================================================================
 
@@ -661,6 +758,27 @@ BENCHMARK(BM_ComparePoolTypes_LightWorkload)
     ->Args({100000, 1})
     ->Args({100000, 2})
     ->Args({100000, 3})
+    ->Unit(benchmark::kMillisecond);
+
+// Pool comparison across workload weights (pool built once)
+// Args: {pool_type 0..3, workload 0=minimal 1=light 2=medium 3=heavy}
+BENCHMARK(BM_ComparePoolWorkload)
+    ->Args({0, 0})
+    ->Args({1, 0})
+    ->Args({2, 0})
+    ->Args({3, 0})
+    ->Args({0, 1})
+    ->Args({1, 1})
+    ->Args({2, 1})
+    ->Args({3, 1})
+    ->Args({0, 2})
+    ->Args({1, 2})
+    ->Args({2, 2})
+    ->Args({3, 2})
+    ->Args({0, 3})
+    ->Args({1, 3})
+    ->Args({2, 3})
+    ->Args({3, 3})
     ->Unit(benchmark::kMillisecond);
 
 // Post vs Submit overhead comparison
