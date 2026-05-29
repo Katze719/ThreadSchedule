@@ -25,6 +25,8 @@ or with optional **shared runtime** for multi-DSO applications.
   with powerful features
 - **Non-owning Views**: Zero-overhead views to configure existing threads or
   find by name (Linux)
+- **`ThreadInfo` Handles**: Lightweight bound thread handles for the current
+  thread or any known `Tid`
 - **Thread Naming**: Human-readable thread names for debugging
 - **Priority & Scheduling**: Fine-grained control over thread priorities and
   scheduling policies
@@ -38,6 +40,9 @@ or with optional **shared runtime** for multi-DSO applications.
   box - no boilerplate promise types needed
 - **High-Performance Pools**: Work-stealing pool, `post()` / `try_post()`, and
   optional `LightweightPool` for fire-and-forget workloads with minimal overhead
+- **Modern Callable Paths**: Newer standard libraries can use
+  `std::move_only_function` / `std::copyable_function` internally for lower
+  adaptation overhead while keeping the public API source-compatible
 - **Scheduled Tasks**: Run tasks at specific times, after delays, or
   periodically
 - **Error Handling**: Comprehensive exception handling with error callbacks and
@@ -45,6 +50,21 @@ or with optional **shared runtime** for multi-DSO applications.
 - **Performance Metrics**: Built-in statistics and monitoring
 - **RAII & Exception Safety**: Automatic resource management
 - **Multiple Integration Methods**: CMake, CPM, Conan, FetchContent
+
+## What's new in v2.2
+
+Version 2.2 focuses on **broader thread-control coverage**, **more modern
+callable handling on newer standards**, and **wider C++26 CI coverage**.
+Highlights:
+
+| Area                         | What changed                                                                                                                                                                                                 |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **`ThreadInfo`**             | `ThreadInfo` can now bind a specific `Tid`, not just the current thread. Use it to query or configure name, priority, policy, and affinity for library-owned background threads or other known thread IDs. |
+| **Background thread control**| `ScheduledThreadPoolT` exposes `scheduler_thread_info()` / `configure_scheduler_thread(...)`, and `ChaosController` exposes `thread_info()` / `configure_thread(...)`.                                      |
+| **Callable modernization**   | Internal task/callback storage is feature-gated: move-only hot paths can use `std::move_only_function`, reusable hooks can use `std::copyable_function`, and older toolchains keep the `std::function` path. |
+| **Move-only task support**   | `post`/`try_post`, one-shot scheduled tasks, pthread entry trampolines, and error-handling wrappers now accept more move-only payloads cleanly on newer standard libraries.                                 |
+| **Tests & benchmarks**       | New regression tests cover move-only tasks/callbacks and invalid `ThreadInfo(Tid)` targets. A new `callable_benchmarks` target compares small, large, and move-only task capture overhead.                |
+| **CI**                       | Linux C++26 coverage now includes `gcc-16` and `clang-22` in addition to the existing modern compiler jobs.                                                                                                |
 
 ## What's new in v2.0
 
@@ -111,10 +131,12 @@ on:
 | Ubuntu 24.04        | GCC 13             |  yes   |  yes   |  yes   |   -   |
 | Ubuntu 24.04        | GCC 14             |  yes   |  yes   |  yes   |  yes   |
 | Ubuntu 24.04        | GCC 15             |   -   |  yes   |  yes   |  yes   |
+| Ubuntu 24.04        | GCC 16             |   -   |   -   |   -   |  yes   |
 | Ubuntu 24.04        | Clang 16           |  yes   |  yes   |   -   |   -   |
 | Ubuntu 24.04        | Clang 18           |  yes   |  yes   |   -   |   -   |
 | Ubuntu 24.04        | Clang 19           |   -   |  yes   |  yes   |  yes   |
 | Ubuntu 24.04        | Clang 21           |   -   |  yes   |  yes   |  yes   |
+| Ubuntu 24.04        | Clang 22           |   -   |   -   |   -   |  yes   |
 | **Linux (ARM64)**   |                    |       |       |       |       |
 | Ubuntu 24.04 ARM64  | GCC 13 (system)    |  yes   |  yes   |  yes   |   -   |
 | Ubuntu 24.04 ARM64  | GCC 14             |   -   |  yes   |  yes   |  yes   |
@@ -138,7 +160,12 @@ are not regularly tested in CI.
 >
 > **GCC 15**: Installed via `ppa:ubuntu-toolchain-r/test` on Ubuntu 24.04.
 >
+> **GCC 16**: Installed via `ppa:ubuntu-toolchain-r/test` on Ubuntu 24.04.
+>
 > **Clang 21**: Installed via the official LLVM apt repository (`apt.llvm.org`)
+> on Ubuntu 24.04.
+>
+> **Clang 22**: Installed via the official LLVM apt repository (`apt.llvm.org`)
 > on Ubuntu 24.04.
 >
 > **Windows ARM64**: Not currently covered by GitHub-hosted runners, requires
@@ -236,11 +263,23 @@ int main() {
     auto handle = scheduler.schedule_periodic(std::chrono::seconds(5), []() {
         std::cout << "Periodic task executed!" << std::endl;
     });
+    scheduler.configure_scheduler_thread("sched_main");
     
     // Or use high-performance pool for frequent tasks
     ScheduledHighPerformancePool scheduler_hp(4);
     auto handle_hp = scheduler_hp.schedule_periodic(std::chrono::milliseconds(100), []() {
         std::cout << "Frequent task!" << std::endl;
+    });
+
+    // Bound thread handle for library-owned threads
+    if (auto info = scheduler.scheduler_thread_info()) {
+        (void)info->set_priority(ThreadPriority::normal());
+    }
+
+    // Move-only payloads on modern standard libraries
+    auto payload = std::make_unique<int>(7);
+    pool.post([value = std::move(payload)]() mutable {
+        std::cout << "Move-only payload: " << *value << std::endl;
     });
 
     // v2: ScheduledLightweightPool - same API, LightweightPool backend (post-based dispatch)
@@ -304,6 +343,25 @@ JThreadWrapperView jv(jt);
 jv.set_name("jworker");
 jv.request_stop();
 jv.join();
+```
+
+### `ThreadInfo` for Bound Thread IDs
+
+Use `ThreadInfo` when you already know a `Tid` and want a lightweight control
+handle without wrapping ownership.
+
+```cpp
+#include <threadschedule/threadschedule.hpp>
+using namespace threadschedule;
+
+ScheduledThreadPool scheduler(2);
+
+if (auto info = scheduler.scheduler_thread_info()) {
+    auto tid = info->thread_id();
+    ThreadInfo bound(tid);
+    (void)bound.set_name("scheduler_main");
+    auto current_name = bound.get_name();
+}
 ```
 
 ### Global Thread Registry
@@ -494,7 +552,9 @@ Zero-overhead helpers to operate on existing threads without taking ownership.
 
 All of the above support `shutdown(ShutdownPolicy)` and `shutdown_for(timeout)`
 where applicable. Use **`post()`** when you do not need a `std::future` (lower
-overhead than `submit()`).
+overhead than `submit()`). On newer standard libraries, internal queueing and
+hook/error-callback storage can transparently use standard move-only/copyable
+call wrappers.
 
 ### Configuration
 

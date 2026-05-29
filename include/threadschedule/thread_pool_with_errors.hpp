@@ -90,6 +90,13 @@ class PoolWithErrors
         return error_handler_->add_callback(std::move(callback));
     }
 
+    template <typename Callback,
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, ErrorCallback>, int> = 0>
+    auto add_error_callback(Callback&& callback) -> size_t
+    {
+        return error_handler_->add_callback(std::forward<Callback>(callback));
+    }
+
     auto remove_error_callback(size_t id) -> bool
     {
         return error_handler_->remove_callback(id);
@@ -161,12 +168,22 @@ class PoolWithErrors
     auto submit_impl(std::string description, F&& f, Args&&... args)
         -> FutureWithErrorHandler<std::invoke_result_t<F, Args...>>
     {
+        using return_type = std::invoke_result_t<F, Args...>;
         auto handler = error_handler_;
-        auto wrapped_task = [f = std::forward<F>(f), args = std::make_tuple(std::forward<Args>(args)...), handler,
-                             desc = std::move(description)]() {
+        auto wrapped_task =
+            [bound = detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...), handler,
+             desc = std::move(description)]() mutable -> return_type {
             try
             {
-                return std::apply(f, args);
+                if constexpr (std::is_void_v<return_type>)
+                {
+                    bound();
+                    return;
+                }
+                else
+                {
+                    return bound();
+                }
             }
             catch (...)
             {
@@ -182,12 +199,22 @@ class PoolWithErrors
     auto try_submit_impl(std::string description, F&& f, Args&&... args)
         -> expected<FutureWithErrorHandler<std::invoke_result_t<F, Args...>>, std::error_code>
     {
+        using return_type = std::invoke_result_t<F, Args...>;
         auto handler = error_handler_;
-        auto wrapped_task = [f = std::forward<F>(f), args = std::make_tuple(std::forward<Args>(args)...), handler,
-                             desc = std::move(description)]() {
+        auto wrapped_task =
+            [bound = detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...), handler,
+             desc = std::move(description)]() mutable -> return_type {
             try
             {
-                return std::apply(f, args);
+                if constexpr (std::is_void_v<return_type>)
+                {
+                    bound();
+                    return;
+                }
+                else
+                {
+                    return bound();
+                }
             }
             catch (...)
             {

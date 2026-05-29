@@ -16,6 +16,7 @@
 #include "topology.hpp"
 #include <atomic>
 #include <chrono>
+#include <future>
 #include <random>
 #include <thread>
 
@@ -51,7 +52,7 @@ struct ChaosConfig
  * @brief RAII controller that periodically perturbs scheduling attributes
  *        of registered threads for chaos/fuzz testing.
  *
- * On construction, `ChaosController` spawns a background `std::thread`
+ * On construction, `ChaosController` spawns a background control thread
  * that wakes every `ChaosConfig::interval` and applies perturbations
  * (affinity shuffling, priority jitter) to threads in the global
  * `registry()` that match the user-supplied predicate.
@@ -86,9 +87,18 @@ class ChaosController
 {
   public:
     template <typename Predicate>
-    ChaosController(ChaosConfig cfg, Predicate pred)
-        : config_(cfg), stop_(false), worker_([this, pred]() { run_loop(pred); })
+    ChaosController(ChaosConfig cfg, Predicate pred) : config_(cfg), stop_(false)
     {
+        std::promise<Tid> worker_started;
+        auto worker_ready = worker_started.get_future();
+
+        worker_ = ThreadWrapper([this, pred, started = std::move(worker_started)]() mutable {
+            started.set_value(ThreadInfo::get_thread_id());
+            run_loop(pred);
+        });
+
+        worker_tid_ = worker_ready.get();
+        (void)ThreadInfo(worker_tid_).set_name("ts_chaos_ctl");
     }
 
     ~ChaosController()
@@ -100,6 +110,22 @@ class ChaosController
 
     ChaosController(ChaosController const&) = delete;
     auto operator=(ChaosController const&) -> ChaosController& = delete;
+
+    [[nodiscard]] auto thread_info() const -> std::optional<ThreadInfo>
+    {
+        if (!worker_.joinable() || worker_tid_ == Tid{})
+            return std::nullopt;
+        return ThreadInfo(worker_tid_);
+    }
+
+    auto configure_thread(std::string const& name, SchedulingPolicy policy = SchedulingPolicy::OTHER,
+                          ThreadPriority priority = ThreadPriority::normal()) -> expected<void, std::error_code>
+    {
+        auto info = thread_info();
+        if (!info.has_value())
+            return unexpected(std::make_error_code(std::errc::no_such_process));
+        return detail::configure_thread(info.value(), name, policy, priority);
+    }
 
   private:
     template <typename Predicate>
@@ -148,7 +174,8 @@ class ChaosController
 
     ChaosConfig config_;
     std::atomic<bool> stop_;
-    std::thread worker_;
+    ThreadWrapper worker_;
+    Tid worker_tid_{};
 };
 
 } // namespace threadschedule
