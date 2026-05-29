@@ -5,6 +5,7 @@
  * @brief Error handling primitives: TaskError, ErrorHandler, and ErrorHandledTask.
  */
 
+#include "callable.hpp"
 #include <chrono>
 #include <exception>
 #include <functional>
@@ -115,6 +116,9 @@ struct TaskError
  */
 using ErrorCallback = std::function<void(TaskError const&)>;
 
+using ErrorCallbackStorage = detail::copyable_callable<void(TaskError const&)>;
+using FutureErrorCallback = detail::move_callable<void(std::exception_ptr)>;
+
 /**
  * @brief Central registry and dispatcher for task-error callbacks.
  *
@@ -150,10 +154,16 @@ class ErrorHandler
      */
     auto add_callback(ErrorCallback callback) -> size_t
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        size_t const id = next_callback_id_++;
-        callbacks_.emplace(id, std::move(callback));
-        return id;
+        return emplace_callback(ErrorCallbackStorage(std::move(callback)));
+    }
+
+    template <typename Callback,
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, ErrorCallback>, int> = 0>
+    auto add_callback(Callback&& callback) -> size_t
+    {
+        static_assert(std::is_invocable_r_v<void, Callback&, TaskError const&>,
+                      "Error callback must be invocable with TaskError const&");
+        return emplace_callback(detail::make_copyable_callable<void(TaskError const&)>(std::forward<Callback>(callback)));
     }
 
     /**
@@ -200,7 +210,7 @@ class ErrorHandler
      */
     void handle_error(TaskError const& error)
     {
-        std::vector<ErrorCallback> snapshot;
+        std::vector<ErrorCallbackStorage> snapshot;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             error_count_++;
@@ -209,7 +219,7 @@ class ErrorHandler
                 snapshot.push_back(callback);
         }
 
-        for (auto const& callback : snapshot)
+        for (auto& callback : snapshot)
         {
             try
             {
@@ -245,8 +255,16 @@ class ErrorHandler
     }
 
   private:
+    auto emplace_callback(ErrorCallbackStorage callback) -> size_t
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        size_t const id = next_callback_id_++;
+        callbacks_.emplace(id, std::move(callback));
+        return id;
+    }
+
     mutable std::mutex mutex_;
-    std::map<size_t, ErrorCallback> callbacks_;
+    std::map<size_t, ErrorCallbackStorage> callbacks_;
     size_t next_callback_id_{0};
     size_t error_count_{0};
 };
@@ -357,7 +375,19 @@ class FutureWithErrorHandler
      */
     auto on_error(std::function<void(std::exception_ptr)> callback) -> FutureWithErrorHandler&
     {
-        error_callback_ = std::move(callback);
+        error_callback_ = FutureErrorCallback(std::move(callback));
+        has_callback_ = true;
+        return *this;
+    }
+
+    template <typename Callback,
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, std::function<void(std::exception_ptr)>>,
+                               int> = 0>
+    auto on_error(Callback&& callback) -> FutureWithErrorHandler&
+    {
+        static_assert(std::is_invocable_r_v<void, Callback&, std::exception_ptr>,
+                      "Error callback must be invocable with std::exception_ptr");
+        error_callback_ = detail::make_move_callable<void(std::exception_ptr)>(std::forward<Callback>(callback));
         has_callback_ = true;
         return *this;
     }
@@ -438,7 +468,7 @@ class FutureWithErrorHandler
 
   private:
     std::future<T> future_;
-    std::function<void(std::exception_ptr)> error_callback_;
+    FutureErrorCallback error_callback_;
     bool has_callback_{false};
 };
 

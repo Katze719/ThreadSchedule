@@ -5,6 +5,7 @@
  * @brief Thread pools: HighPerformancePool, ThreadPoolBase, LightweightPoolT, and GlobalPool.
  */
 
+#include "callable.hpp"
 #include "expected.hpp"
 #include "scheduler_policy.hpp"
 #include "thread_registry.hpp"
@@ -20,6 +21,7 @@
 #include <optional>
 #include <queue>
 #include <random>
+#include <type_traits>
 #include <tuple>
 #include <vector>
 
@@ -323,6 +325,11 @@ using TaskStartCallback = std::function<void(std::chrono::steady_clock::time_poi
 using TaskEndCallback =
     std::function<void(std::chrono::steady_clock::time_point, std::thread::id, std::chrono::microseconds elapsed)>;
 
+using TaskStartCallbackStorage =
+    detail::copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id)>;
+using TaskEndCallbackStorage =
+    detail::copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id, std::chrono::microseconds)>;
+
 template <typename T>
 class WorkStealingDeque
 {
@@ -338,6 +345,7 @@ class WorkStealingDeque
         AlignedItem(T&& t) : item(std::move(t))
         {
         }
+        template <typename U = T, std::enable_if_t<std::is_copy_constructible_v<U>, int> = 0>
         AlignedItem(T const& t) : item(t)
         {
         }
@@ -372,6 +380,7 @@ class WorkStealingDeque
         return true;
     }
 
+    template <typename U = T, std::enable_if_t<std::is_copy_constructible_v<U>, int> = 0>
     [[nodiscard]] auto push(T const& item) -> bool
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -556,6 +565,7 @@ class HighPerformancePool
 {
   public:
     using Task = std::function<void()>;
+    using QueuedTask = detail::move_callable<void()>;
 
     struct Statistics
     {
@@ -569,7 +579,7 @@ class HighPerformancePool
     };
 
     explicit HighPerformancePool(size_t num_threads = std::thread::hardware_concurrency(),
-                                 size_t deque_capacity = WorkStealingDeque<Task>::DEFAULT_CAPACITY,
+                                 size_t deque_capacity = WorkStealingDeque<QueuedTask>::DEFAULT_CAPACITY,
                                  bool register_workers = false)
         : num_threads_(num_threads == 0 ? 1 : num_threads), register_workers_(register_workers), stop_(false),
           next_victim_(0), start_time_(std::chrono::steady_clock::now())
@@ -577,7 +587,7 @@ class HighPerformancePool
         worker_queues_.resize(num_threads_);
         for (size_t i = 0; i < num_threads_; ++i)
         {
-            worker_queues_[i] = std::make_unique<WorkStealingDeque<Task>>(deque_capacity);
+            worker_queues_[i] = std::make_unique<WorkStealingDeque<QueuedTask>>(deque_capacity);
         }
 
         workers_.reserve(num_threads_);
@@ -613,7 +623,7 @@ class HighPerformancePool
             if (policy == ShutdownPolicy::drop_pending)
             {
                 dropped_tasks += overflow_tasks_.size();
-                std::queue<Task> empty;
+                std::queue<QueuedTask> empty;
                 overflow_tasks_.swap(empty);
                 for (auto& q : worker_queues_)
                     dropped_tasks += q->clear_and_count();
@@ -771,7 +781,8 @@ class HighPerformancePool
     template <typename F, typename... Args>
     auto try_post(F&& f, Args&&... args) -> expected<void, std::error_code>
     {
-        Task bound(detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
+        QueuedTask bound(detail::make_move_callable<void()>(
+            detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...)));
 
         if (stop_.load(std::memory_order_acquire))
             return unexpected(std::make_error_code(std::errc::operation_canceled));
@@ -1056,7 +1067,18 @@ class HighPerformancePool
     void set_on_task_start(TaskStartCallback cb)
     {
         std::lock_guard<std::mutex> lock(trace_mutex_);
-        on_task_start_ = std::move(cb);
+        on_task_start_ = TaskStartCallbackStorage(std::move(cb));
+    }
+
+    template <typename Callback,
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, TaskStartCallback>, int> = 0>
+    void set_on_task_start(Callback&& cb)
+    {
+        static_assert(std::is_invocable_r_v<void, Callback&, std::chrono::steady_clock::time_point, std::thread::id>,
+                      "Task start callback must accept (time_point, std::thread::id)");
+        std::lock_guard<std::mutex> lock(trace_mutex_);
+        on_task_start_ = detail::make_copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id)>(
+            std::forward<Callback>(cb));
     }
 
     /**
@@ -1067,7 +1089,21 @@ class HighPerformancePool
     void set_on_task_end(TaskEndCallback cb)
     {
         std::lock_guard<std::mutex> lock(trace_mutex_);
-        on_task_end_ = std::move(cb);
+        on_task_end_ = TaskEndCallbackStorage(std::move(cb));
+    }
+
+    template <typename Callback,
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, TaskEndCallback>, int> = 0>
+    void set_on_task_end(Callback&& cb)
+    {
+        static_assert(
+            std::is_invocable_r_v<void, Callback&, std::chrono::steady_clock::time_point, std::thread::id,
+                                  std::chrono::microseconds>,
+            "Task end callback must accept (time_point, std::thread::id, std::chrono::microseconds)");
+        std::lock_guard<std::mutex> lock(trace_mutex_);
+        on_task_end_ =
+            detail::make_copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id,
+                                                std::chrono::microseconds)>(std::forward<Callback>(cb));
     }
 
     /// @}
@@ -1076,9 +1112,9 @@ class HighPerformancePool
     size_t num_threads_;
     bool register_workers_;
     std::vector<ThreadWrapper> workers_;
-    std::vector<std::unique_ptr<WorkStealingDeque<Task>>> worker_queues_;
+    std::vector<std::unique_ptr<WorkStealingDeque<QueuedTask>>> worker_queues_;
 
-    std::queue<Task> overflow_tasks_;
+    std::queue<QueuedTask> overflow_tasks_;
     mutable std::mutex overflow_mutex_;
 
     std::atomic<bool> stop_;
@@ -1096,8 +1132,8 @@ class HighPerformancePool
     std::atomic<uint64_t> total_task_time_{0};
 
     std::mutex trace_mutex_;
-    TaskStartCallback on_task_start_;
-    TaskEndCallback on_task_end_;
+    TaskStartCallbackStorage on_task_start_;
+    TaskEndCallbackStorage on_task_end_;
 
     std::chrono::steady_clock::time_point start_time_;
 
@@ -1113,7 +1149,7 @@ class HighPerformancePool
             return std::mt19937(device());
         }();
 
-        Task task;
+        QueuedTask task;
         std::uniform_int_distribution<size_t> dist(0, num_threads_ - 1);
 
         while (true)
@@ -1157,7 +1193,7 @@ class HighPerformancePool
                 auto const start_time = std::chrono::steady_clock::now();
                 auto const tid = std::this_thread::get_id();
 
-                TaskStartCallback on_task_start;
+                TaskStartCallbackStorage on_task_start;
                 {
                     std::lock_guard<std::mutex> tl(trace_mutex_);
                     on_task_start = on_task_start_;
@@ -1182,7 +1218,7 @@ class HighPerformancePool
                 auto const task_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
                 total_task_time_.fetch_add(task_duration.count(), std::memory_order_relaxed);
 
-                TaskEndCallback on_task_end;
+                TaskEndCallbackStorage on_task_end;
                 {
                     std::lock_guard<std::mutex> tl(trace_mutex_);
                     on_task_end = on_task_end_;
@@ -1315,6 +1351,7 @@ class ThreadPoolBase
 {
   public:
     using Task = std::function<void()>;
+    using QueuedTask = detail::move_callable<void()>;
 
     struct Statistics
     {
@@ -1593,7 +1630,7 @@ class ThreadPoolBase
             stop_ = true;
             if (policy == ShutdownPolicy::drop_pending)
             {
-                std::queue<Task> empty;
+                std::queue<QueuedTask> empty;
                 tasks_.swap(empty);
             }
         }
@@ -1686,7 +1723,18 @@ class ThreadPoolBase
     void set_on_task_start(TaskStartCallback cb)
     {
         std::lock_guard<std::mutex> lock(trace_mutex_);
-        on_task_start_ = std::move(cb);
+        on_task_start_ = TaskStartCallbackStorage(std::move(cb));
+    }
+
+    template <typename Callback,
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, TaskStartCallback>, int> = 0>
+    void set_on_task_start(Callback&& cb)
+    {
+        static_assert(std::is_invocable_r_v<void, Callback&, std::chrono::steady_clock::time_point, std::thread::id>,
+                      "Task start callback must accept (time_point, std::thread::id)");
+        std::lock_guard<std::mutex> lock(trace_mutex_);
+        on_task_start_ = detail::make_copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id)>(
+            std::forward<Callback>(cb));
     }
 
     /**
@@ -1697,7 +1745,21 @@ class ThreadPoolBase
     void set_on_task_end(TaskEndCallback cb)
     {
         std::lock_guard<std::mutex> lock(trace_mutex_);
-        on_task_end_ = std::move(cb);
+        on_task_end_ = TaskEndCallbackStorage(std::move(cb));
+    }
+
+    template <typename Callback,
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, TaskEndCallback>, int> = 0>
+    void set_on_task_end(Callback&& cb)
+    {
+        static_assert(
+            std::is_invocable_r_v<void, Callback&, std::chrono::steady_clock::time_point, std::thread::id,
+                                  std::chrono::microseconds>,
+            "Task end callback must accept (time_point, std::thread::id, std::chrono::microseconds)");
+        std::lock_guard<std::mutex> lock(trace_mutex_);
+        on_task_end_ =
+            detail::make_copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id,
+                                                std::chrono::microseconds)>(std::forward<Callback>(cb));
     }
 
     /// @}
@@ -1706,7 +1768,7 @@ class ThreadPoolBase
     size_t num_threads_;
     bool register_workers_;
     std::vector<ThreadWrapper> workers_;
-    std::queue<Task> tasks_;
+    std::queue<QueuedTask> tasks_;
 
     mutable std::mutex queue_mutex_;
     std::condition_variable condition_;
@@ -1717,8 +1779,8 @@ class ThreadPoolBase
     std::atomic<uint64_t> total_task_time_{0};
 
     std::mutex trace_mutex_;
-    TaskStartCallback on_task_start_;
-    TaskEndCallback on_task_end_;
+    TaskStartCallbackStorage on_task_start_;
+    TaskEndCallbackStorage on_task_end_;
 
     std::chrono::steady_clock::time_point start_time_;
 
@@ -1730,7 +1792,7 @@ class ThreadPoolBase
 
         while (true)
         {
-            Task task;
+            QueuedTask task;
             bool found_task = false;
 
             {
@@ -1762,7 +1824,7 @@ class ThreadPoolBase
                 auto const start_time = std::chrono::steady_clock::now();
                 auto const tid = std::this_thread::get_id();
 
-                TaskStartCallback on_task_start;
+                TaskStartCallbackStorage on_task_start;
                 {
                     std::lock_guard<std::mutex> tl(trace_mutex_);
                     on_task_start = on_task_start_;
@@ -1783,7 +1845,7 @@ class ThreadPoolBase
                 auto const task_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
                 total_task_time_.fetch_add(task_duration.count(), std::memory_order_relaxed);
 
-                TaskEndCallback on_task_end;
+                TaskEndCallbackStorage on_task_end;
                 {
                     std::lock_guard<std::mutex> tl(trace_mutex_);
                     on_task_end = on_task_end_;

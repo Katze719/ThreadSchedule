@@ -304,6 +304,21 @@ TEST_F(ThreadConfigTest, ThreadInfoExplicitConstructorCanControlTargetThread)
     thread.join();
 }
 
+TEST_F(ThreadConfigTest, ThreadInfoInvalidTargetReturnsNoProcess)
+{
+#ifdef _WIN32
+    ThreadInfo info(Tid{0});
+#else
+    ThreadInfo info(static_cast<Tid>(-1));
+#endif
+
+    EXPECT_FALSE(info.get_name().has_value());
+    EXPECT_FALSE(info.get_affinity().has_value());
+    EXPECT_FALSE(info.get_policy().has_value());
+    EXPECT_FALSE(info.get_priority().has_value());
+    EXPECT_FALSE(info.set_name("invalid_tid").has_value());
+}
+
 // ==================== Nice Value Tests ====================
 
 TEST_F(ThreadConfigTest, NiceValue)
