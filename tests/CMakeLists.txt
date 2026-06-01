@@ -90,6 +90,42 @@ if(TARGET gtest)
         PROPERTIES TIMEOUT 120
     )
 
+    # Thread pool v2 API tests
+    add_executable(thread_pool_v2_test thread_pool_v2_test.cpp)
+    target_link_libraries(thread_pool_v2_test
+        ThreadSchedule::ThreadSchedule
+        gtest
+        gtest_main
+    )
+    gtest_discover_tests(thread_pool_v2_test
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES TIMEOUT 120
+    )
+
+    # Future combinator tests
+    add_executable(futures_test futures_test.cpp)
+    target_link_libraries(futures_test
+        ThreadSchedule::ThreadSchedule
+        gtest
+        gtest_main
+    )
+    gtest_discover_tests(futures_test
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES TIMEOUT 120
+    )
+
+    # Registry query API tests
+    add_executable(registry_query_test registry_query_test.cpp)
+    target_link_libraries(registry_query_test
+        ThreadSchedule::ThreadSchedule
+        gtest
+        gtest_main
+    )
+    gtest_discover_tests(registry_query_test
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES TIMEOUT 120
+    )
+
     if(THREADSCHEDULE_RUNTIME)
         add_executable(runtime_registry_test runtime_registry_test.cpp)
         target_link_libraries(runtime_registry_test 
@@ -135,6 +171,17 @@ if(TARGET gtest)
             gtest_main
         )
         gtest_discover_tests(coroutine_test
+            DISCOVERY_TIMEOUT 60
+            PROPERTIES TIMEOUT 120
+        )
+
+        add_executable(coroutine_pool_test coroutine_pool_test.cpp)
+        target_link_libraries(coroutine_pool_test
+            ThreadSchedule::ThreadSchedule
+            gtest
+            gtest_main
+        )
+        gtest_discover_tests(coroutine_pool_test
             DISCOVERY_TIMEOUT 60
             PROPERTIES TIMEOUT 120
         )

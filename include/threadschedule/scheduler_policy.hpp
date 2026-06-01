@@ -8,6 +8,7 @@
 #include "expected.hpp"
 #include <algorithm>
 #include <cstdint>
+#include <fstream>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -20,11 +21,18 @@
 #include <pthread.h>
 #include <sched.h>
 #include <sys/resource.h>
+#include <sys/types.h>
 #endif
 
 namespace threadschedule
 {
 // expected/result are provided by expected.hpp
+
+#ifdef _WIN32
+using Tid = unsigned long; // DWORD thread id
+#else
+using Tid = pid_t; // Linux TID via gettid()
+#endif
 
 /**
  * @brief Enumeration of available thread scheduling policies.
@@ -632,6 +640,112 @@ inline auto read_affinity(HANDLE handle) -> std::optional<ThreadAffinity>
     return std::nullopt;
 }
 
+inline auto read_priority(HANDLE handle) -> std::optional<int>
+{
+    if (!handle)
+        return std::nullopt;
+    int const priority = GetThreadPriority(handle);
+    if (priority == THREAD_PRIORITY_ERROR_RETURN)
+        return std::nullopt;
+    return priority;
+}
+
+inline auto read_scheduling_policy(HANDLE handle) -> std::optional<SchedulingPolicy>
+{
+    if (!handle)
+        return std::nullopt;
+    return SchedulingPolicy::OTHER;
+}
+
+inline auto apply_priority(Tid tid, ThreadPriority priority) -> expected<void, std::error_code>
+{
+    HANDLE handle = OpenThread(THREAD_SET_INFORMATION, FALSE, tid);
+    if (!handle)
+        return unexpected(std::make_error_code(std::errc::no_such_process));
+
+    auto result = apply_priority(handle, priority);
+    CloseHandle(handle);
+    return result;
+}
+
+inline auto apply_scheduling_policy(Tid tid, SchedulingPolicy policy, ThreadPriority priority)
+    -> expected<void, std::error_code>
+{
+    HANDLE handle = OpenThread(THREAD_SET_INFORMATION, FALSE, tid);
+    if (!handle)
+        return unexpected(std::make_error_code(std::errc::no_such_process));
+
+    auto result = apply_scheduling_policy(handle, policy, priority);
+    CloseHandle(handle);
+    return result;
+}
+
+inline auto apply_affinity(Tid tid, ThreadAffinity const& affinity) -> expected<void, std::error_code>
+{
+    HANDLE handle = OpenThread(THREAD_SET_INFORMATION, FALSE, tid);
+    if (!handle)
+        return unexpected(std::make_error_code(std::errc::no_such_process));
+
+    auto result = apply_affinity(handle, affinity);
+    CloseHandle(handle);
+    return result;
+}
+
+inline auto apply_name(Tid tid, std::string const& name) -> expected<void, std::error_code>
+{
+    HANDLE handle = OpenThread(THREAD_SET_LIMITED_INFORMATION, FALSE, tid);
+    if (!handle)
+        return unexpected(std::make_error_code(std::errc::no_such_process));
+
+    auto result = apply_name(handle, name);
+    CloseHandle(handle);
+    return result;
+}
+
+inline auto read_name(Tid tid) -> std::optional<std::string>
+{
+    HANDLE handle = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, tid);
+    if (!handle)
+        return std::nullopt;
+
+    auto result = read_name(handle);
+    CloseHandle(handle);
+    return result;
+}
+
+inline auto read_affinity(Tid tid) -> std::optional<ThreadAffinity>
+{
+    HANDLE handle = OpenThread(THREAD_QUERY_INFORMATION, FALSE, tid);
+    if (!handle)
+        return std::nullopt;
+
+    auto result = read_affinity(handle);
+    CloseHandle(handle);
+    return result;
+}
+
+inline auto read_priority(Tid tid) -> std::optional<int>
+{
+    HANDLE handle = OpenThread(THREAD_QUERY_INFORMATION, FALSE, tid);
+    if (!handle)
+        return std::nullopt;
+
+    auto result = read_priority(handle);
+    CloseHandle(handle);
+    return result;
+}
+
+inline auto read_scheduling_policy(Tid tid) -> std::optional<SchedulingPolicy>
+{
+    HANDLE handle = OpenThread(THREAD_QUERY_INFORMATION, FALSE, tid);
+    if (!handle)
+        return std::nullopt;
+
+    auto result = read_scheduling_policy(handle);
+    CloseHandle(handle);
+    return result;
+}
+
 #else // POSIX
 
 // --- shared implementation for pthread_t and pid_t scheduling ---
@@ -723,6 +837,69 @@ inline auto apply_affinity(pid_t tid, ThreadAffinity const& affinity) -> expecte
     if (sched_setaffinity(tid, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
         return {};
     return unexpected(std::error_code(errno, std::generic_category()));
+}
+
+inline auto apply_name(pid_t tid, std::string const& name) -> expected<void, std::error_code>
+{
+    if (name.length() > 15)
+        return unexpected(std::make_error_code(std::errc::invalid_argument));
+
+    std::string const path = std::string("/proc/self/task/") + std::to_string(tid) + "/comm";
+    std::ofstream out(path);
+    if (!out)
+        return unexpected(std::error_code(errno, std::generic_category()));
+
+    out << name;
+    out.flush();
+    if (!out)
+        return unexpected(std::error_code(errno, std::generic_category()));
+    return {};
+}
+
+inline auto read_name(pid_t tid) -> std::optional<std::string>
+{
+    std::string const path = std::string("/proc/self/task/") + std::to_string(tid) + "/comm";
+    std::ifstream in(path);
+    if (!in)
+        return std::nullopt;
+
+    std::string current;
+    std::getline(in, current);
+    if (!current.empty() && current.back() == '\n')
+        current.pop_back();
+    return current;
+}
+
+inline auto read_affinity(pid_t tid) -> std::optional<ThreadAffinity>
+{
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    if (sched_getaffinity(tid, sizeof(cpu_set_t), &cpuset) != 0)
+        return std::nullopt;
+
+    std::vector<int> cpus;
+    for (int i = 0; i < CPU_SETSIZE; ++i)
+    {
+        if (CPU_ISSET(i, &cpuset))
+            cpus.push_back(i);
+    }
+    return ThreadAffinity(cpus);
+}
+
+inline auto read_priority(pid_t tid) -> std::optional<int>
+{
+    sched_param param{};
+    if (sched_getparam(tid, &param) == 0)
+        return param.sched_priority;
+    return std::nullopt;
+}
+
+inline auto read_scheduling_policy(pid_t tid) -> std::optional<SchedulingPolicy>
+{
+    int const policy = sched_getscheduler(tid);
+    if (policy == -1)
+        return std::nullopt;
+    return static_cast<SchedulingPolicy>(policy);
 }
 
 #endif
