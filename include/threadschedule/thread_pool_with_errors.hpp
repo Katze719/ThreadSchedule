@@ -15,7 +15,8 @@ namespace threadschedule
 /**
  * @brief Thread pool wrapper that combines any pool type with an @ref ErrorHandler.
  *
- * Non-copyable, non-movable. Thread-safe (delegates to the underlying pool).
+ * Non-copyable; implicitly movable (default move operations).
+ * Thread-safe (delegates to the underlying pool).
  *
  * submit() wraps every task so that exceptions are both reported to
  * the @ref ErrorHandler (via registered callbacks) **and** re-thrown, making
@@ -34,6 +35,24 @@ class PoolWithErrors
   public:
     explicit PoolWithErrors(size_t num_threads = std::thread::hardware_concurrency())
         : pool_(num_threads), error_handler_(std::make_shared<ErrorHandler>())
+    {
+    }
+
+    /**
+     * @brief Construct with forwarded pool arguments.
+     *
+     * Enables passing pool-specific constructor arguments (e.g.
+     * @c deque_capacity for @ref HighPerformancePool) while still
+     * attaching the error handler.
+     *
+     * @code
+     * PoolWithErrors<HighPerformancePool> pool(4, 2048, true);
+     * @endcode
+     */
+    template <typename Arg1, typename Arg2, typename... Args>
+    explicit PoolWithErrors(Arg1&& arg1, Arg2&& arg2, Args&&... args)
+        : pool_(std::forward<Arg1>(arg1), std::forward<Arg2>(arg2), std::forward<Args>(args)...),
+          error_handler_(std::make_shared<ErrorHandler>())
     {
     }
 
@@ -69,6 +88,13 @@ class PoolWithErrors
     auto add_error_callback(ErrorCallback callback) -> size_t
     {
         return error_handler_->add_callback(std::move(callback));
+    }
+
+    template <typename Callback,
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, ErrorCallback>, int> = 0>
+    auto add_error_callback(Callback&& callback) -> size_t
+    {
+        return error_handler_->add_callback(std::forward<Callback>(callback));
     }
 
     auto remove_error_callback(size_t id) -> bool
@@ -142,12 +168,22 @@ class PoolWithErrors
     auto submit_impl(std::string description, F&& f, Args&&... args)
         -> FutureWithErrorHandler<std::invoke_result_t<F, Args...>>
     {
+        using return_type = std::invoke_result_t<F, Args...>;
         auto handler = error_handler_;
-        auto wrapped_task = [f = std::forward<F>(f), args = std::make_tuple(std::forward<Args>(args)...), handler,
-                             desc = std::move(description)]() {
+        auto wrapped_task =
+            [bound = detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...), handler,
+             desc = std::move(description)]() mutable -> return_type {
             try
             {
-                return std::apply(f, args);
+                if constexpr (std::is_void_v<return_type>)
+                {
+                    bound();
+                    return;
+                }
+                else
+                {
+                    return bound();
+                }
             }
             catch (...)
             {
@@ -163,12 +199,22 @@ class PoolWithErrors
     auto try_submit_impl(std::string description, F&& f, Args&&... args)
         -> expected<FutureWithErrorHandler<std::invoke_result_t<F, Args...>>, std::error_code>
     {
+        using return_type = std::invoke_result_t<F, Args...>;
         auto handler = error_handler_;
-        auto wrapped_task = [f = std::forward<F>(f), args = std::make_tuple(std::forward<Args>(args)...), handler,
-                             desc = std::move(description)]() {
+        auto wrapped_task =
+            [bound = detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...), handler,
+             desc = std::move(description)]() mutable -> return_type {
             try
             {
-                return std::apply(f, args);
+                if constexpr (std::is_void_v<return_type>)
+                {
+                    bound();
+                    return;
+                }
+                else
+                {
+                    return bound();
+                }
             }
             catch (...)
             {

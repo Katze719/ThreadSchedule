@@ -5,6 +5,7 @@
  * @brief Process-wide thread registry, control blocks, and composite registry.
  */
 
+#include "callable.hpp"
 #include "expected.hpp"
 #include "scheduler_policy.hpp"
 #include "thread_wrapper.hpp" // for ThreadInfo, ThreadAffinity
@@ -40,12 +41,6 @@ namespace threadschedule
     #endif
 #else
     #define THREADSCHEDULE_API __attribute__((visibility("default")))
-#endif
-
-#ifdef _WIN32
-using Tid = unsigned long; // DWORD thread id
-#else
-using Tid = pid_t; // Linux TID via gettid()
 #endif
 
 /**
@@ -92,6 +87,8 @@ struct RegisteredThreadInfo
     bool alive{true};
     std::shared_ptr<class ThreadControlBlock> control;
 };
+
+using RegistryCallback = detail::copyable_callable<void(RegisteredThreadInfo const&)>;
 
 /**
  * @brief Per-thread control handle for OS-level scheduling operations.
@@ -608,13 +605,37 @@ class ThreadRegistry : public detail::QueryFacadeMixin<ThreadRegistry>
     void set_on_register(std::function<void(RegisteredThreadInfo const&)> cb)
     {
         std::unique_lock<std::shared_mutex> lock(mutex_);
-        onRegister_ = std::move(cb);
+        onRegister_ = RegistryCallback(std::move(cb));
+    }
+
+    template <typename Callback,
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>,
+                                               std::function<void(RegisteredThreadInfo const&)>>,
+                               int> = 0>
+    void set_on_register(Callback&& cb)
+    {
+        static_assert(std::is_invocable_r_v<void, Callback&, RegisteredThreadInfo const&>,
+                      "Register callback must be invocable with RegisteredThreadInfo const&");
+        std::unique_lock<std::shared_mutex> lock(mutex_);
+        onRegister_ = detail::make_copyable_callable<void(RegisteredThreadInfo const&)>(std::forward<Callback>(cb));
     }
 
     void set_on_unregister(std::function<void(RegisteredThreadInfo const&)> cb)
     {
         std::unique_lock<std::shared_mutex> lock(mutex_);
-        onUnregister_ = std::move(cb);
+        onUnregister_ = RegistryCallback(std::move(cb));
+    }
+
+    template <typename Callback,
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>,
+                                               std::function<void(RegisteredThreadInfo const&)>>,
+                               int> = 0>
+    void set_on_unregister(Callback&& cb)
+    {
+        static_assert(std::is_invocable_r_v<void, Callback&, RegisteredThreadInfo const&>,
+                      "Unregister callback must be invocable with RegisteredThreadInfo const&");
+        std::unique_lock<std::shared_mutex> lock(mutex_);
+        onUnregister_ = detail::make_copyable_callable<void(RegisteredThreadInfo const&)>(std::forward<Callback>(cb));
     }
 
   private:
@@ -645,8 +666,8 @@ class ThreadRegistry : public detail::QueryFacadeMixin<ThreadRegistry>
     mutable std::shared_mutex mutex_;
     std::unordered_map<Tid, RegisteredThreadInfo> threads_;
 
-    std::function<void(RegisteredThreadInfo const&)> onRegister_;
-    std::function<void(RegisteredThreadInfo const&)> onUnregister_;
+    RegistryCallback onRegister_;
+    RegistryCallback onUnregister_;
 };
 
 /**

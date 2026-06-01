@@ -110,6 +110,20 @@ class ThreadStorage<ThreadType, NonOwningTag>
 
     ThreadType* external_thread_ = nullptr; // non-owning
 };
+
+template <typename ThreadLike>
+inline auto configure_thread(ThreadLike& thread, std::string const& name, SchedulingPolicy policy,
+                             ThreadPriority priority) -> expected<void, std::error_code>
+{
+    bool success = true;
+    if (!thread.set_name(name).has_value())
+        success = false;
+    if (!thread.set_scheduling_policy(policy, priority).has_value())
+        success = false;
+    if (success)
+        return {};
+    return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+}
 } // namespace detail
 
 /**
@@ -671,7 +685,7 @@ class ThreadByNameView
 #ifdef _WIN32
     using native_handle_type = void*; // unsupported placeholder
 #else
-    using native_handle_type = pid_t; // Linux TID
+    using native_handle_type = Tid; // Linux TID
 #endif
 
     explicit ThreadByNameView(const std::string& name)
@@ -723,17 +737,7 @@ class ThreadByNameView
 #else
         if (!found())
             return unexpected(std::make_error_code(std::errc::no_such_process));
-        if (name.length() > 15)
-            return unexpected(std::make_error_code(std::errc::invalid_argument));
-        std::string path = std::string("/proc/self/task/") + std::to_string(handle_) + "/comm";
-        std::ofstream out(path);
-        if (!out)
-            return unexpected(std::error_code(errno, std::generic_category()));
-        out << name;
-        out.flush();
-        if (!out)
-            return unexpected(std::error_code(errno, std::generic_category()));
-        return {};
+        return detail::apply_name(handle_, name);
 #endif
     }
 
@@ -744,15 +748,7 @@ class ThreadByNameView
 #else
         if (!found())
             return std::nullopt;
-        std::string path = std::string("/proc/self/task/") + std::to_string(handle_) + "/comm";
-        std::ifstream in(path);
-        if (!in)
-            return std::nullopt;
-        std::string current;
-        std::getline(in, current);
-        if (!current.empty() && current.back() == '\n')
-            current.pop_back();
-        return current;
+        return detail::read_name(handle_);
 #endif
     }
 
@@ -804,30 +800,89 @@ class ThreadByNameView
 };
 
 /**
- * @brief Static utility class providing hardware and scheduling introspection.
+ * @brief Lightweight handle for querying and controlling a specific OS thread.
  *
- * All methods are static; the class holds no state and should not be instantiated.
+ * The default constructor binds to the current thread. The explicit constructor
+ * binds to a caller-provided OS thread ID (@ref Tid), allowing callers to act
+ * on library-owned background threads or any other live thread in the process.
  *
- * @par Provided Queries
+ * @par Provided Queries / Operations
  * - @c hardware_concurrency() - delegates to @c std::thread::hardware_concurrency().
  * - @c get_thread_id() - returns the OS-level thread ID (Linux TID via
  *   @c syscall(SYS_gettid), Windows thread ID via @c GetCurrentThreadId()).
- * - @c get_current_policy() - returns the calling thread's scheduling policy.
- *   On Windows this always returns @c SchedulingPolicy::OTHER.
- * - @c get_current_priority() - returns the calling thread's scheduling priority.
+ * - instance methods provide @c set_name, @c get_name, @c set_priority,
+ *   @c set_scheduling_policy, @c set_affinity, @c get_affinity,
+ *   @c get_policy, and @c get_priority for the bound thread ID.
+ * - static @c get_current_policy() / @c get_current_priority() remain as
+ *   compatibility conveniences for the current thread.
  *
  * @par Thread Safety
- * All methods are thread-safe (they query per-thread or immutable system state).
+ * Individual operations are thread-safe and delegate to OS syscalls for the
+ * bound thread ID.
  */
 class ThreadInfo
 {
   public:
+    ThreadInfo() : tid_(get_thread_id())
+    {
+    }
+
+    explicit ThreadInfo(Tid tid) : tid_(tid)
+    {
+    }
+
+    [[nodiscard]] auto thread_id() const noexcept -> Tid
+    {
+        return tid_;
+    }
+
+    [[nodiscard]] auto set_name(std::string const& name) const -> expected<void, std::error_code>
+    {
+        return detail::apply_name(tid_, name);
+    }
+
+    [[nodiscard]] auto get_name() const -> std::optional<std::string>
+    {
+        return detail::read_name(tid_);
+    }
+
+    [[nodiscard]] auto set_priority(ThreadPriority priority) const -> expected<void, std::error_code>
+    {
+        return detail::apply_priority(tid_, priority);
+    }
+
+    [[nodiscard]] auto set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority) const
+        -> expected<void, std::error_code>
+    {
+        return detail::apply_scheduling_policy(tid_, policy, priority);
+    }
+
+    [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) const -> expected<void, std::error_code>
+    {
+        return detail::apply_affinity(tid_, affinity);
+    }
+
+    [[nodiscard]] auto get_affinity() const -> std::optional<ThreadAffinity>
+    {
+        return detail::read_affinity(tid_);
+    }
+
+    [[nodiscard]] auto get_policy() const -> std::optional<SchedulingPolicy>
+    {
+        return detail::read_scheduling_policy(tid_);
+    }
+
+    [[nodiscard]] auto get_priority() const -> std::optional<int>
+    {
+        return detail::read_priority(tid_);
+    }
+
     static auto hardware_concurrency() -> unsigned int
     {
         return std::thread::hardware_concurrency();
     }
 
-    static auto get_thread_id()
+    static auto get_thread_id() -> Tid
     {
 #ifdef _WIN32
         return GetCurrentThreadId();
@@ -838,39 +893,16 @@ class ThreadInfo
 
     static auto get_current_policy() -> std::optional<SchedulingPolicy>
     {
-#ifdef _WIN32
-        // Windows doesn't have Linux-style scheduling policies
-        // Return OTHER as a default
-        return SchedulingPolicy::OTHER;
-#else
-        const int policy = sched_getscheduler(0);
-        if (policy == -1)
-        {
-            return std::nullopt;
-        }
-        return static_cast<SchedulingPolicy>(policy);
-#endif
+        return ThreadInfo().get_policy();
     }
 
     static auto get_current_priority() -> std::optional<int>
     {
-#ifdef _WIN32
-        HANDLE thread = GetCurrentThread();
-        int priority = GetThreadPriority(thread);
-        if (priority == THREAD_PRIORITY_ERROR_RETURN)
-        {
-            return std::nullopt;
-        }
-        return priority;
-#else
-        sched_param param;
-        if (sched_getparam(0, &param) == 0)
-        {
-            return param.sched_priority;
-        }
-        return std::nullopt;
-#endif
+        return ThreadInfo().get_priority();
     }
+
+  private:
+    Tid tid_{};
 };
 
 } // namespace threadschedule
