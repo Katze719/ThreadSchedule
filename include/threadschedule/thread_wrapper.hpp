@@ -826,7 +826,11 @@ class ThreadByNameView
 class ThreadInfo
 {
   public:
-    using native_handle_type = std::thread::native_handle_type;
+#ifdef _WIN32
+    using native_handle_type = HANDLE;
+#else
+    using native_handle_type = pthread_t;
+#endif
 
     ThreadInfo() : tid_(get_thread_id())
     {
