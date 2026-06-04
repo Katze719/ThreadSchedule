@@ -319,16 +319,14 @@ class SboCallable
  */
 
 /// Callback invoked when a pool worker begins executing a task.
-using TaskStartCallback = std::function<void(std::chrono::steady_clock::time_point, std::thread::id)>;
+using TaskStartCallback = detail::copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id)>;
 
 /// Callback invoked when a pool worker finishes executing a task.
-using TaskEndCallback =
-    std::function<void(std::chrono::steady_clock::time_point, std::thread::id, std::chrono::microseconds elapsed)>;
+using TaskEndCallback = detail::copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id,
+                                                        std::chrono::microseconds elapsed)>;
 
-using TaskStartCallbackStorage =
-    detail::copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id)>;
-using TaskEndCallbackStorage =
-    detail::copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id, std::chrono::microseconds)>;
+using TaskStartCallbackStorage = TaskStartCallback;
+using TaskEndCallbackStorage = TaskEndCallback;
 
 template <typename T>
 class WorkStealingDeque

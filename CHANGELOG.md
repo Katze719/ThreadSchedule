@@ -1,5 +1,117 @@
 # Changelog
 
+## v2.3.0
+
+> This release adds an opt-in GCC 16/C++26 reflection surface, modernizes
+> callable/callback storage paths for newer standard libraries, expands the
+> benchmark and reporting tooling, and improves current-thread `ThreadInfo`
+> handling for more direct native-thread operations.
+
+### New Features
+
+- **Optional GCC 16+ reflection API** -- when building with C++26,
+  `THREADSCHEDULE_ENABLE_REFLECTION=ON`, and working `-freflection` support,
+  the library now exports `threadschedule::reflect::*` helpers for field
+  metadata, field visitation, compile-time projection, and type/field naming.
+  Reflection support is now **disabled by default** and only activates on
+  supported toolchains when explicitly requested. (`reflection.hpp`,
+  `threadschedule.cppm`, `threadschedule.hpp`, `CMakeLists.txt`)
+
+- **Reflection-backed registry selectors** -- `ThreadRegistry` and
+  `QueryView` now expose field-oriented helpers such as
+  `where<registered_thread_fields::componentTag()>(...)`,
+  `where_if<registered_thread_fields::alive()>(...)`,
+  `find_by<registered_thread_fields::name()>(...)`,
+  `contains<...>(...)`, and `project<...>()` when reflection is enabled.
+  (`thread_registry.hpp`)
+
+- **Feature-gated callable helpers** -- `callable.hpp` now centralizes
+  modern callable selection with fallback aliases for
+  `std::move_only_function`, `std::copyable_function`, and `std::function_ref`,
+  while preserving compatibility on older standard libraries. (`callable.hpp`)
+
+- **Current-thread `ThreadInfo` now prefers the native handle** --
+  default-constructed `ThreadInfo` binds the current thread's native handle and
+  uses the more direct pthread/HANDLE-based paths for current-thread name,
+  affinity, policy, and priority operations, while `ThreadInfo(Tid)` remains
+  available for explicit TID-bound access. (`thread_wrapper.hpp`,
+  `scheduler_policy.hpp`)
+
+### Performance
+
+- **Lower-overhead registry projections on reflection builds** -- direct
+  field-projection and field-filter paths now run under the registry's shared
+  lock and can skip the older `filter(...).map(...)` layering when callers opt
+  into the new reflection APIs. This reduces intermediate traversal and avoids
+  some full-entry transformation work for hot query paths. (`thread_registry.hpp`)
+
+- **More metadata is now promoted at compile time** -- reflection field names
+  and type display names are now stabilized via `std::define_static_string(...)`
+  and reused through `consteval` helpers such as `field_names<T>()`, reducing
+  repeated compile-time reconstruction of the same metadata. (`reflection.hpp`)
+
+- **Improved callback/task-path flexibility on newer standard libraries** --
+  reusable callback storage can use copyable callable wrappers where available,
+  and the library now exposes a consistent internal callable abstraction across
+  pools, registries, and error handling. (`callable.hpp`, `thread_pool.hpp`,
+  `thread_registry.hpp`, `error_handler.hpp`)
+
+### Benchmarks
+
+- **Expanded callable benchmark coverage** -- new benchmark targets compare
+  callable overhead across standard-library feature levels, storage sizes, and
+  workload shapes, including cross-standard callable measurements and
+  reflection-query comparisons. (`benchmarks/callable_std_benchmarks.cpp`,
+  `benchmarks/reflection_registry_benchmarks.cpp`,
+  `benchmarks/threadpool_benchmarks.cpp`, `benchmarks/CMakeLists.txt`)
+
+- **Benchmark report generation and charts** -- new Python/reporting tooling
+  generates SVG benchmark charts and README-ready summaries for callable,
+  throughput, workload, and reflection query comparisons. (`run_benchmark_graphs.sh`,
+  `benchmarks/generate_benchmark_report.py`,
+  `benchmarks/generate_readme_graphs.py`, `docs/benchmarks/*.svg`,
+  `benchmarks/README.md`)
+
+### Documentation
+
+- **README updates for reflection and benchmark guidance** -- the top-level
+  README now documents the reflection opt-in flow, reflection-backed registry
+  queries, and the newer benchmark surfaces. (`README.md`)
+
+- **New CMake reference entry for reflection** -- the reference now documents
+  `THREADSCHEDULE_ENABLE_REFLECTION`, its default-off behavior, and the
+  GCC 16+/C++26 activation path. (`docs/CMAKE_REFERENCE.md`)
+
+### Tests & Benchmarks
+
+- **New reflection unit coverage** -- dedicated tests now validate reflection
+  metadata for core public structs and reflection-backed registry queries.
+  (`tests/reflection_test.cpp`, `tests/registry_query_test.cpp`,
+  `tests/CMakeLists.txt`)
+
+- **New callable regression coverage** -- dedicated tests now validate
+  `function_ref` behavior and public callback alias usage on the new callable
+  abstraction paths. (`tests/callable_test.cpp`, `tests/CMakeLists.txt`)
+
+- **Updated `ThreadInfo` regression coverage** -- tests now verify the
+  default-construction path can still resolve current-thread identity and read
+  current-thread metadata while the explicit `Tid` constructor continues to
+  control a remote target thread. (`tests/thread_config_test.cpp`)
+
+### CI / Infrastructure
+
+- **Dedicated GCC 16 reflection CI jobs** -- the main test workflow now
+  includes explicit `ubuntu-24.04` jobs for reflection-enabled GCC 16/C++26
+  validation: one job builds and runs the reflection-focused test cases, and a
+  second job verifies the reflection-enabled module build path. This makes the
+  new `THREADSCHEDULE_ENABLE_REFLECTION` surface visible in CI instead of
+  relying only on the generic C++26 matrix entry. (`.github/workflows/tests.yml`)
+
+- **Reflection CI test execution is now hardened** -- the reflection-focused
+  CTest invocation now errors out if no matching tests are registered, so
+  accidental discovery/configuration regressions cannot silently pass with
+  zero executed reflection tests. (`.github/workflows/tests.yml`)
+
 ## v2.2.0
 
 > **No intended API/ABI breaking changes.** This release extends thread-control

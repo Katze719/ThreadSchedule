@@ -18,6 +18,10 @@
 #include "thread_wrapper.hpp"
 #include "topology.hpp"
 
+#if defined(THREADSCHEDULE_HAS_REFLECTION) && THREADSCHEDULE_HAS_REFLECTION
+#include "reflection.hpp"
+#endif
+
 /**
  * @file threadschedule.hpp
  * @brief Modern C++17/20/23/26 Thread Scheduling Library
