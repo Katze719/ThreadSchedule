@@ -301,6 +301,7 @@ from the data it finds:
 | `reflection_query.svg`            | `BM_QueryView_FilterMapName` vs `...WhereProject`  |
 | `reflection_lookup.svg`           | `BM_QueryView_FindIf` vs `BM_QueryView_ReflectionFindBy` |
 | `callable_standards.svg`          | `callable_std_benchmarks` (`BM_MoveCallable_*`, one JSON per standard) |
+| `callable_copyable_standards.svg` | `callable_std_benchmarks` (`BM_CopyableCallable_*`, one JSON per standard) |
 | `callable_sbo.svg`                | `callable_std_benchmarks` (`BM_MoveCallable_*` vs `BM_Sbo_*`) |
 
 All files are written into `docs/benchmarks/` and referenced from the top-level
@@ -318,10 +319,12 @@ cmake --build build-reflection --target reflection_registry_benchmarks
 
 `callable_std_benchmarks` isolates the cost of ThreadSchedule's task storage
 (`detail::move_callable`, which is `std::function` on C++17/20 and
-`std::move_only_function` on C++23+, versus the `SboCallable` small-buffer
-callable used by `LightweightPool`). To compare standards, build the same source
-under each one and feed the per-standard JSON (named `callable_cxx<NN>.json`, the
-generator reads the standard from the file name) to the generator:
+`std::move_only_function` on C++23+, `detail::copyable_callable`, which is
+`std::function` before C++26 and `std::copyable_function` on C++26, versus the
+`SboCallable` small-buffer callable used by `LightweightPool`). To compare
+standards, build the same source under each one and feed the per-standard JSON
+(named `callable_cxx<NN>.json`, the generator reads the standard from the file
+name) to the generator:
 
 ```bash
 for std in 17 20 23 26; do

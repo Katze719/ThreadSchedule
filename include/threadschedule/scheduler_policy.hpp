@@ -818,6 +818,24 @@ inline auto read_affinity(pthread_t handle) -> std::optional<ThreadAffinity>
     return std::nullopt;
 }
 
+inline auto read_priority(pthread_t handle) -> std::optional<int>
+{
+    int policy = 0;
+    sched_param param{};
+    if (pthread_getschedparam(handle, &policy, &param) == 0)
+        return param.sched_priority;
+    return std::nullopt;
+}
+
+inline auto read_scheduling_policy(pthread_t handle) -> std::optional<SchedulingPolicy>
+{
+    int policy = 0;
+    sched_param param{};
+    if (pthread_getschedparam(handle, &policy, &param) == 0)
+        return static_cast<SchedulingPolicy>(policy);
+    return std::nullopt;
+}
+
 // --- pid_t / TID overloads (ThreadByNameView) ---
 
 inline auto apply_scheduling_policy(pid_t tid, SchedulingPolicy policy, ThreadPriority priority)

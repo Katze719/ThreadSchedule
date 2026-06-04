@@ -264,17 +264,35 @@ TEST_F(ThreadConfigTest, ThreadConfigWithSchedulingPolicy)
 
 TEST_F(ThreadConfigTest, ThreadInfoDefaultConstructorTargetsCurrentThread)
 {
-    std::promise<std::pair<Tid, Tid>> ids;
+    struct Result
+    {
+        Tid fromConstructor{};
+        Tid fromStatic{};
+        std::optional<std::string> name;
+        std::optional<SchedulingPolicy> policy;
+        std::optional<int> priority;
+    };
 
-    std::thread thread([&ids]() {
+    std::promise<Result> result;
+
+    std::thread thread([&result]() {
         ThreadInfo info;
-        ids.set_value({info.thread_id(), ThreadInfo::get_thread_id()});
+        Result payload;
+        payload.fromConstructor = info.thread_id();
+        payload.fromStatic = ThreadInfo::get_thread_id();
+        payload.name = info.get_name();
+        payload.policy = info.get_policy();
+        payload.priority = info.get_priority();
+        result.set_value(std::move(payload));
     });
 
-    auto const [from_constructor, from_static] = ids.get_future().get();
+    auto const payload = result.get_future().get();
     thread.join();
 
-    EXPECT_EQ(from_constructor, from_static);
+    EXPECT_EQ(payload.fromConstructor, payload.fromStatic);
+    EXPECT_TRUE(payload.name.has_value());
+    EXPECT_TRUE(payload.policy.has_value());
+    EXPECT_TRUE(payload.priority.has_value());
 }
 
 TEST_F(ThreadConfigTest, ThreadInfoExplicitConstructorCanControlTargetThread)
