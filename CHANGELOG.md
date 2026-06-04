@@ -9,7 +9,7 @@
 
 ### New Features
 
-- **Optional GCC 16.1+ reflection API** -- when building with C++26,
+- **Optional GCC 16+ reflection API** -- when building with C++26,
   `THREADSCHEDULE_ENABLE_REFLECTION=ON`, and working `-freflection` support,
   the library now exports `threadschedule::reflect::*` helpers for field
   metadata, field visitation, compile-time projection, and type/field naming.
@@ -80,7 +80,7 @@
 
 - **New CMake reference entry for reflection** -- the reference now documents
   `THREADSCHEDULE_ENABLE_REFLECTION`, its default-off behavior, and the
-  GCC 16.1+/C++26 activation path. (`docs/CMAKE_REFERENCE.md`)
+  GCC 16+/C++26 activation path. (`docs/CMAKE_REFERENCE.md`)
 
 ### Tests & Benchmarks
 

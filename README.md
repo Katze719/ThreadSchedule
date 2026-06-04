@@ -44,7 +44,7 @@ or with optional **shared runtime** for multi-DSO applications.
   `std::move_only_function` / `std::copyable_function` internally for lower
   adaptation overhead while keeping the public API source-compatible
 - **GCC 16 Reflection APIs**: Optional C++26 reflection utilities and
-  reflection-backed registry queries when building with GCC 16.1+ and
+  reflection-backed registry queries when building with GCC 16+ and
   `-freflection`
 - **Scheduled Tasks**: Run tasks at specific times, after delays, or
   periodically
@@ -162,7 +162,7 @@ are not regularly tested in CI.
 > `cxx_std_26` to CMake; C++26 on Windows is not tested.
 >
 > **Reflection APIs**: The optional `threadschedule::reflect` API and
-> reflection-backed registry queries require GCC 16.1+ with
+> reflection-backed registry queries require GCC 16+ with
 > `THREADSCHEDULE_ENABLE_REFLECTION=ON`. These APIs are not built on other
 > toolchains or standards.
 >
@@ -427,9 +427,9 @@ Notes:
 - Use `*Reg` wrappers (e.g., `ThreadWrapperReg`) or `AutoRegisterCurrentThread`
   for automatic control block creation and registration.
 
-### Reflection-powered registry queries (GCC 16.1+ / C++26)
+### Reflection-powered registry queries (GCC 16+ / C++26)
 
-When `THREADSCHEDULE_ENABLE_REFLECTION=ON` is active on GCC 16.1+ with
+When `THREADSCHEDULE_ENABLE_REFLECTION=ON` is active on GCC 16+ with
 `-std=c++26`, ThreadSchedule exposes field metadata and faster field-oriented
 registry queries.
 
@@ -701,7 +701,7 @@ dramatic for very short tasks:
 > shows, real workloads with heavier per-task work narrow these gaps
 > considerably.
 
-#### Reflection-backed registry queries (GCC 16.1+ / C++26)
+#### Reflection-backed registry queries (GCC 16+ / C++26)
 
 With `THREADSCHEDULE_ENABLE_REFLECTION=ON` the registry exposes ergonomic,
 field-oriented queries (`where` / `project` / `find_by`). These trade a little
