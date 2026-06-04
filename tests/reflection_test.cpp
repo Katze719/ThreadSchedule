@@ -17,7 +17,7 @@ TEST(ReflectionApiTest, ExposesMetadataForLibraryTypes)
     static_assert(reflect::field_count<ThreadProfile>() == 4);
     static_assert(reflect::field_count<ChaosConfig>() == 3);
     static_assert(reflect::field_count<HighPerformancePool::Statistics>() == 7);
-    static_assert(reflect::field_count<ThreadPoolBase::Statistics>() == 6);
+    static_assert(reflect::field_count<ThreadPool::Statistics>() == 6);
     static_assert(reflect::field_name<RegisteredThreadInfo, 0>() == "tid");
     static_assert(reflect::field_name<RegisteredThreadInfo, 3>() == "componentTag");
     static_assert(reflect::field_name<ThreadProfile, 1>() == "policy");
@@ -41,7 +41,7 @@ TEST(ReflectionApiTest, VisitFieldsAndGetWorkForPublicStructs)
     });
 
     EXPECT_EQ(index, expected.size());
-    EXPECT_EQ(reflect::get<reflect::field_info<ThreadProfile, 0>()>(profile), "latency");
+    EXPECT_EQ((reflect::get<reflect::field_info<ThreadProfile, 0>()>(profile)), "latency");
 }
 
 TEST(ReflectionApiTest, ProjectValueBuildsCompactResults)
@@ -57,5 +57,5 @@ TEST(ReflectionApiTest, ProjectValueBuildsCompactResults)
 
     EXPECT_EQ(std::get<0>(tuple), "alpha");
     EXPECT_EQ(std::get<1>(tuple), "io");
-    EXPECT_TRUE(reflect::is_field_of_v<registered_thread_fields::alive(), RegisteredThreadInfo>);
+    EXPECT_TRUE((reflect::is_field_of_v<registered_thread_fields::alive(), RegisteredThreadInfo>));
 }

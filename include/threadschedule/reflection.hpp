@@ -62,7 +62,7 @@ using field_type_t = [: std::meta::type_of(Field) :];
 template <info Field, typename T>
 constexpr decltype(auto) get(T&& obj)
 {
-    return std::forward<T>(obj).[:Field:];
+    return (std::forward<T>(obj).[:Field:]);
 }
 
 template <info Field, typename Owner>
