@@ -730,6 +730,14 @@ wrapper choice barely matters:
 
 ![move_callable cost across C++ standards](docs/benchmarks/callable_standards.svg)
 
+**Do C++26 copyable callbacks help?** Yes, for the callback-heavy APIs that
+still need copyable type erasure (`set_on_task_start`, `set_on_task_end`,
+registry hooks, and error callbacks). On this GCC 16.1 / libstdc++ setup,
+switching from `std::function` to `std::copyable_function` cuts wrapper cost by
+about 29% for small captures, 11% for medium captures, and 5% for large ones:
+
+![copyable_callable cost across C++ standards](docs/benchmarks/callable_copyable_standards.svg)
+
 **Do the SBO callables help?** Yes — and this is the bigger effect. A 48-byte
 capture fits `LightweightPool`'s 56-byte inline buffer but overflows the
 standard-library callables' small buffer, so the latter heap-allocate. The SBO

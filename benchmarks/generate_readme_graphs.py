@@ -469,13 +469,32 @@ def build_callable_charts(std_medians: dict[str, dict[str, float]], out_dir: Pat
         path.write_text(svg, encoding="utf-8")
         paths.append(path)
 
-    # Chart B: SBO callable vs std-library callable at the newest available standard.
+    # Chart B: copyable_callable cost across standards (std::function vs copyable_function).
+    series_b: list[tuple[str, list[float], str]] = []
+    for std in std_order:
+        vals = [std_medians[std].get(f"BM_CopyableCallable_{key}", 0.0) for key, _ in CALLABLE_CAPTURES]
+        if any(v > 0 for v in vals):
+            series_b.append((std, vals, CXX_COLORS[std]))
+    if series_b:
+        svg = grouped_bar_chart(
+            "Do C++26 copyable callbacks help?",
+            "Build + invoke cost per task for detail::copyable_callable "
+            "(std::function before C++26, std::copyable_function on C++26); lower is better",
+            group_labels,
+            series_b,
+            "ns per task",
+        )
+        path = out_dir / "callable_copyable_standards.svg"
+        path.write_text(svg, encoding="utf-8")
+        paths.append(path)
+
+    # Chart C: SBO callable vs std-library callable at the newest available standard.
     newest = std_order[-1]
     medians = std_medians[newest]
     move_vals = [medians.get(f"BM_MoveCallable_{key}", 0.0) for key, _ in CALLABLE_CAPTURES]
     sbo_vals = [medians.get(f"BM_Sbo_{key}", 0.0) for key, _ in CALLABLE_CAPTURES]
     if any(v > 0 for v in move_vals) and any(v > 0 for v in sbo_vals):
-        series_b = [
+        series_c = [
             ("move_callable (ThreadPool / std lib)", move_vals, "#2a7fff"),
             ("SboCallable (LightweightPool)", sbo_vals, "#db2777"),
         ]
@@ -484,7 +503,7 @@ def build_callable_charts(std_medians: dict[str, dict[str, float]], out_dir: Pat
             "Per-task cost; the 48 B capture fits the SBO buffer but spills the std-library "
             "callable to the heap (lower is better)",
             group_labels,
-            series_b,
+            series_c,
             "ns per task",
         )
         path = out_dir / "callable_sbo.svg"

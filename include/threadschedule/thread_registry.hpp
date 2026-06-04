@@ -803,16 +803,14 @@ class ThreadRegistry : public detail::QueryFacadeMixin<ThreadRegistry>
     }
 
     // Register/unregister hooks (system integration)
-    void set_on_register(std::function<void(RegisteredThreadInfo const&)> cb)
+    void set_on_register(RegistryCallback cb)
     {
         std::unique_lock<std::shared_mutex> lock(mutex_);
-        onRegister_ = RegistryCallback(std::move(cb));
+        onRegister_ = std::move(cb);
     }
 
     template <typename Callback,
-              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>,
-                                               std::function<void(RegisteredThreadInfo const&)>>,
-                               int> = 0>
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, RegistryCallback>, int> = 0>
     void set_on_register(Callback&& cb)
     {
         static_assert(std::is_invocable_r_v<void, Callback&, RegisteredThreadInfo const&>,
@@ -821,16 +819,14 @@ class ThreadRegistry : public detail::QueryFacadeMixin<ThreadRegistry>
         onRegister_ = detail::make_copyable_callable<void(RegisteredThreadInfo const&)>(std::forward<Callback>(cb));
     }
 
-    void set_on_unregister(std::function<void(RegisteredThreadInfo const&)> cb)
+    void set_on_unregister(RegistryCallback cb)
     {
         std::unique_lock<std::shared_mutex> lock(mutex_);
-        onUnregister_ = RegistryCallback(std::move(cb));
+        onUnregister_ = std::move(cb);
     }
 
     template <typename Callback,
-              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>,
-                                               std::function<void(RegisteredThreadInfo const&)>>,
-                               int> = 0>
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, RegistryCallback>, int> = 0>
     void set_on_unregister(Callback&& cb)
     {
         static_assert(std::is_invocable_r_v<void, Callback&, RegisteredThreadInfo const&>,

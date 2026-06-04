@@ -5,6 +5,9 @@
 //   - detail::move_callable<Signature>  -- the hot-path storage used by
 //     ThreadPool / FastThreadPool / HighPerformancePool. It is an alias for
 //     std::function on C++17/20 and for std::move_only_function on C++23+.
+//   - detail::copyable_callable<Signature> -- the copyable callback storage
+//     used by tracing, registry, and error hooks. It is an alias for
+//     std::function before C++26 and for std::copyable_function on C++26.
 //   - detail::SboCallable<TaskSize>     -- the small-buffer callable used by
 //     LightweightPool. It stores callables up to TaskSize-8 bytes inline and is
 //     identical across every C++ standard.
@@ -16,7 +19,9 @@
 //
 //   1. Does replacing std::function with std::move_only_function help?
 //      -> compare BM_MoveCallable_* across standards.
-//   2. Do the SBO callables help?
+//   2. Does replacing std::function with std::copyable_function help?
+//      -> compare BM_CopyableCallable_* across standards.
+//   3. Do the SBO callables help?
 //      -> compare BM_Sbo_* against BM_MoveCallable_* for the same capture.
 //
 // Written to compile as C++17 (no concepts / requires).
@@ -77,6 +82,20 @@ static void BM_MoveCallable_Large(benchmark::State& state)
     bench_storage<detail::move_callable<void()>, 16>(state); // 128 B capture (heap everywhere)
 }
 
+// copyable_callable == std::function (pre-C++26) or std::copyable_function (C++26)
+static void BM_CopyableCallable_Small(benchmark::State& state)
+{
+    bench_storage<detail::copyable_callable<void()>, 1>(state); // 8 B capture (fits all)
+}
+static void BM_CopyableCallable_Medium(benchmark::State& state)
+{
+    bench_storage<detail::copyable_callable<void()>, 6>(state); // 48 B capture
+}
+static void BM_CopyableCallable_Large(benchmark::State& state)
+{
+    bench_storage<detail::copyable_callable<void()>, 16>(state); // 128 B capture
+}
+
 // SboCallable<64> == LightweightPool storage (56 B inline buffer)
 static void BM_Sbo_Small(benchmark::State& state)
 {
@@ -94,6 +113,9 @@ static void BM_Sbo_Large(benchmark::State& state)
 BENCHMARK(BM_MoveCallable_Small)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_MoveCallable_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_MoveCallable_Large)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CopyableCallable_Small)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CopyableCallable_Medium)->Unit(benchmark::kNanosecond);
+BENCHMARK(BM_CopyableCallable_Large)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_Sbo_Small)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_Sbo_Medium)->Unit(benchmark::kNanosecond);
 BENCHMARK(BM_Sbo_Large)->Unit(benchmark::kNanosecond);

@@ -9,6 +9,17 @@ add_test(NAME CompileTest COMMAND compile_test)
 if(TARGET gtest)
     include(GoogleTest)
     # ThreadWrapper tests
+    add_executable(callable_test callable_test.cpp)
+    target_link_libraries(callable_test
+        ThreadSchedule::ThreadSchedule
+        gtest
+        gtest_main
+    )
+    gtest_discover_tests(callable_test
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES TIMEOUT 120
+    )
+
     add_executable(thread_wrapper_test thread_wrapper_test.cpp)
     target_link_libraries(thread_wrapper_test 
         ThreadSchedule::ThreadSchedule 
