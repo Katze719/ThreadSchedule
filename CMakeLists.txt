@@ -64,7 +64,7 @@ option(THREADSCHEDULE_INSTALL "Generate install target" ${THREADSCHEDULE_IS_TOPL
 option(THREADSCHEDULE_RUNTIME "Build shared runtime for global registry (non header-only)" OFF)
 option(THREADSCHEDULE_MODULE "Build C++20 module target (requires CMake >= 3.28 and C++20+)" OFF)
 option(THREADSCHEDULE_BUILD_DOCS "Build API documentation with Doxygen" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
-option(THREADSCHEDULE_ENABLE_REFLECTION "Enable GCC 16 C++26 reflection APIs when supported" ON)
+option(THREADSCHEDULE_ENABLE_REFLECTION "Enable GCC 16 C++26 reflection APIs when supported" OFF)
 
 # CPM support (optional, download if building tests or benchmarks)
 if(THREADSCHEDULE_BUILD_TESTS OR THREADSCHEDULE_BUILD_BENCHMARKS)

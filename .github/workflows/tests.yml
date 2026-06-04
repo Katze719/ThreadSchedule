@@ -246,6 +246,7 @@ jobs:
     - name: Run reflection-focused tests
       run: |
         ctest --test-dir build \
+          --no-tests=error \
           --output-on-failure \
           --tests-regex 'ReflectionApiTest|RegistryQueryTest\.Reflection'
 

@@ -8,7 +8,7 @@
 | `THREADSCHEDULE_BUILD_TESTS` | BOOL | OFF | Build unit tests |
 | `THREADSCHEDULE_BUILD_BENCHMARKS` | BOOL | OFF | Build benchmarks (downloads Google Benchmark) |
 | `THREADSCHEDULE_RUNTIME` | BOOL | OFF | Build shared runtime library for process-wide registry |
-| `THREADSCHEDULE_ENABLE_REFLECTION` | BOOL | ON | Enable GCC 16.1+ C++26 reflection APIs and reflection-backed registry queries when supported |
+| `THREADSCHEDULE_ENABLE_REFLECTION` | BOOL | OFF | Enable GCC 16.1+ C++26 reflection APIs and reflection-backed registry queries when supported |
 | `THREADSCHEDULE_INSTALL` | BOOL | ON (main project)<br>OFF (subdirectory) | Generate install targets |
 
 ## CMake Variables
