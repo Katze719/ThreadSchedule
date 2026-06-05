@@ -114,9 +114,9 @@ struct TaskError
  *
  * Callbacks receive a const reference to the TaskError describing the failure.
  */
-using ErrorCallback = std::function<void(TaskError const&)>;
+using ErrorCallback = detail::copyable_callable<void(TaskError const&)>;
 
-using ErrorCallbackStorage = detail::copyable_callable<void(TaskError const&)>;
+using ErrorCallbackStorage = ErrorCallback;
 using FutureErrorCallback = detail::move_callable<void(std::exception_ptr)>;
 
 /**

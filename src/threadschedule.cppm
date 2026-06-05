@@ -166,6 +166,35 @@ using ::threadschedule::cgroup_attach_tid;
 
 } // export namespace threadschedule
 
+#if defined(THREADSCHEDULE_HAS_REFLECTION) && THREADSCHEDULE_HAS_REFLECTION
+export namespace threadschedule::reflect {
+using ::threadschedule::reflect::enabled;
+using ::threadschedule::reflect::info;
+using ::threadschedule::reflect::fields;
+using ::threadschedule::reflect::field_count;
+using ::threadschedule::reflect::field_info;
+using ::threadschedule::reflect::field_name;
+using ::threadschedule::reflect::field_names;
+using ::threadschedule::reflect::type_name;
+using ::threadschedule::reflect::get;
+using ::threadschedule::reflect::visit_fields;
+using ::threadschedule::reflect::project_value;
+using ::threadschedule::reflect::require_field_owner;
+using ::threadschedule::reflect::is_field_of_v;
+using ::threadschedule::reflect::field_type_t;
+using ::threadschedule::reflect::projection_t;
+}
+
+export namespace threadschedule::registered_thread_fields {
+using ::threadschedule::registered_thread_fields::tid;
+using ::threadschedule::registered_thread_fields::stdId;
+using ::threadschedule::registered_thread_fields::name;
+using ::threadschedule::registered_thread_fields::componentTag;
+using ::threadschedule::registered_thread_fields::alive;
+using ::threadschedule::registered_thread_fields::control;
+}
+#endif
+
 // Re-export profiles sub-namespace
 export namespace threadschedule::profiles {
     using ::threadschedule::profiles::realtime;
