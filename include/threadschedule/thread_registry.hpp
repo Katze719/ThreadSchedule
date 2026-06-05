@@ -7,6 +7,9 @@
 
 #include "callable.hpp"
 #include "expected.hpp"
+#if defined(THREADSCHEDULE_HAS_REFLECTION) && THREADSCHEDULE_HAS_REFLECTION
+#include "reflection.hpp"
+#endif
 #include "scheduler_policy.hpp"
 #include "thread_wrapper.hpp" // for ThreadInfo, ThreadAffinity
 #include <functional>
@@ -87,6 +90,18 @@ struct RegisteredThreadInfo
     bool alive{true};
     std::shared_ptr<class ThreadControlBlock> control;
 };
+
+#if defined(THREADSCHEDULE_HAS_REFLECTION) && THREADSCHEDULE_HAS_REFLECTION
+namespace registered_thread_fields
+{
+consteval auto tid() -> reflect::info { return reflect::field_info<RegisteredThreadInfo, 0>(); }
+consteval auto stdId() -> reflect::info { return reflect::field_info<RegisteredThreadInfo, 1>(); }
+consteval auto name() -> reflect::info { return reflect::field_info<RegisteredThreadInfo, 2>(); }
+consteval auto componentTag() -> reflect::info { return reflect::field_info<RegisteredThreadInfo, 3>(); }
+consteval auto alive() -> reflect::info { return reflect::field_info<RegisteredThreadInfo, 4>(); }
+consteval auto control() -> reflect::info { return reflect::field_info<RegisteredThreadInfo, 5>(); }
+} // namespace registered_thread_fields
+#endif
 
 using RegistryCallback = detail::copyable_callable<void(RegisteredThreadInfo const&)>;
 
@@ -217,6 +232,14 @@ class ThreadControlBlock
 namespace detail
 {
 
+#if defined(THREADSCHEDULE_HAS_REFLECTION) && THREADSCHEDULE_HAS_REFLECTION
+template <reflect::info Field, typename Owner>
+consteval void validate_reflected_field()
+{
+    reflect::require_field_owner<Field, Owner>();
+}
+#endif
+
 /**
  * @brief CRTP mixin that provides functional-style query facade methods.
  *
@@ -290,6 +313,38 @@ class QueryFacadeMixin
     [[nodiscard]] auto take(size_t n) const { return self().query().take(n); }
 
     [[nodiscard]] auto skip(size_t n) const { return self().query().skip(n); }
+
+#if defined(THREADSCHEDULE_HAS_REFLECTION) && THREADSCHEDULE_HAS_REFLECTION
+    template <reflect::info Field, typename Value>
+    [[nodiscard]] auto where(Value const& value) const
+    {
+        return self().query().template where<Field>(value);
+    }
+
+    template <reflect::info Field, typename Predicate>
+    [[nodiscard]] auto where_if(Predicate&& pred) const
+    {
+        return self().query().template where_if<Field>(std::forward<Predicate>(pred));
+    }
+
+    template <reflect::info Field, typename Value>
+    [[nodiscard]] auto find_by(Value const& value) const
+    {
+        return self().query().template find_by<Field>(value);
+    }
+
+    template <reflect::info Field, typename Value>
+    [[nodiscard]] auto contains(Value const& value) const -> bool
+    {
+        return self().query().template contains<Field>(value);
+    }
+
+    template <reflect::info... Fields>
+    [[nodiscard]] auto project() const
+    {
+        return self().query().template project<Fields...>();
+    }
+#endif
 };
 
 } // namespace detail
@@ -551,6 +606,71 @@ class ThreadRegistry : public detail::QueryFacadeMixin<ThreadRegistry>
             return QueryView(std::move(result));
         }
 
+#if defined(THREADSCHEDULE_HAS_REFLECTION) && THREADSCHEDULE_HAS_REFLECTION
+        template <reflect::info Field, typename Value>
+        [[nodiscard]] auto where(Value const& value) const -> QueryView
+        {
+            detail::validate_reflected_field<Field, RegisteredThreadInfo>();
+            std::vector<RegisteredThreadInfo> filtered;
+            filtered.reserve(entries_.size());
+            for (auto const& entry : entries_)
+            {
+                if (reflect::get<Field>(entry) == value)
+                    filtered.push_back(entry);
+            }
+            return QueryView(std::move(filtered));
+        }
+
+        template <reflect::info Field, typename Predicate>
+        [[nodiscard]] auto where_if(Predicate&& pred) const -> QueryView
+        {
+            detail::validate_reflected_field<Field, RegisteredThreadInfo>();
+            static_assert(std::is_invocable_r_v<bool, Predicate&, reflect::field_type_t<Field> const&>,
+                          "Reflection predicate must accept the selected field type");
+            std::vector<RegisteredThreadInfo> filtered;
+            filtered.reserve(entries_.size());
+            for (auto const& entry : entries_)
+            {
+                if (pred(reflect::get<Field>(entry)))
+                    filtered.push_back(entry);
+            }
+            return QueryView(std::move(filtered));
+        }
+
+        template <reflect::info Field, typename Value>
+        [[nodiscard]] auto find_by(Value const& value) const -> std::optional<RegisteredThreadInfo>
+        {
+            detail::validate_reflected_field<Field, RegisteredThreadInfo>();
+            for (auto const& entry : entries_)
+            {
+                if (reflect::get<Field>(entry) == value)
+                    return entry;
+            }
+            return std::nullopt;
+        }
+
+        template <reflect::info Field, typename Value>
+        [[nodiscard]] auto contains(Value const& value) const -> bool
+        {
+            return find_by<Field>(value).has_value();
+        }
+
+        template <reflect::info... Fields>
+        [[nodiscard]] auto project() const -> std::vector<reflect::projection_t<Fields...>>
+        {
+            static_assert(sizeof...(Fields) > 0, "project requires at least one field");
+            (detail::validate_reflected_field<Fields, RegisteredThreadInfo>(), ...);
+
+            std::vector<reflect::projection_t<Fields...>> result;
+            result.reserve(entries_.size());
+            for (auto const& entry : entries_)
+            {
+                result.push_back(reflect::project_value<Fields...>(entry));
+            }
+            return result;
+        }
+#endif
+
       private:
         std::vector<RegisteredThreadInfo> entries_;
     };
@@ -567,6 +687,87 @@ class ThreadRegistry : public detail::QueryFacadeMixin<ThreadRegistry>
         }
         return QueryView(std::move(snapshot));
     }
+
+#if defined(THREADSCHEDULE_HAS_REFLECTION) && THREADSCHEDULE_HAS_REFLECTION
+    template <reflect::info Field, typename Value>
+    [[nodiscard]] auto where(Value const& value) const -> QueryView
+    {
+        detail::validate_reflected_field<Field, RegisteredThreadInfo>();
+        std::vector<RegisteredThreadInfo> filtered;
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        filtered.reserve(threads_.size());
+        for (auto const& [tid, entry] : threads_)
+        {
+            (void)tid;
+            if (reflect::get<Field>(entry) == value)
+                filtered.push_back(entry);
+        }
+        return QueryView(std::move(filtered));
+    }
+
+    template <reflect::info Field, typename Predicate>
+    [[nodiscard]] auto where_if(Predicate&& pred) const -> QueryView
+    {
+        detail::validate_reflected_field<Field, RegisteredThreadInfo>();
+        static_assert(std::is_invocable_r_v<bool, Predicate&, reflect::field_type_t<Field> const&>,
+                      "Reflection predicate must accept the selected field type");
+        std::vector<RegisteredThreadInfo> filtered;
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        filtered.reserve(threads_.size());
+        for (auto const& [tid, entry] : threads_)
+        {
+            (void)tid;
+            if (pred(reflect::get<Field>(entry)))
+                filtered.push_back(entry);
+        }
+        return QueryView(std::move(filtered));
+    }
+
+    template <reflect::info Field, typename Value>
+    [[nodiscard]] auto find_by(Value const& value) const -> std::optional<RegisteredThreadInfo>
+    {
+        detail::validate_reflected_field<Field, RegisteredThreadInfo>();
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        for (auto const& [tid, entry] : threads_)
+        {
+            (void)tid;
+            if (reflect::get<Field>(entry) == value)
+                return entry;
+        }
+        return std::nullopt;
+    }
+
+    template <reflect::info Field, typename Value>
+    [[nodiscard]] auto contains(Value const& value) const -> bool
+    {
+        detail::validate_reflected_field<Field, RegisteredThreadInfo>();
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        for (auto const& [tid, entry] : threads_)
+        {
+            (void)tid;
+            if (reflect::get<Field>(entry) == value)
+                return true;
+        }
+        return false;
+    }
+
+    template <reflect::info... Fields>
+    [[nodiscard]] auto project() const -> std::vector<reflect::projection_t<Fields...>>
+    {
+        static_assert(sizeof...(Fields) > 0, "project requires at least one field");
+        (detail::validate_reflected_field<Fields, RegisteredThreadInfo>(), ...);
+
+        std::vector<reflect::projection_t<Fields...>> result;
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        result.reserve(threads_.size());
+        for (auto const& [tid, entry] : threads_)
+        {
+            (void)tid;
+            result.push_back(reflect::project_value<Fields...>(entry));
+        }
+        return result;
+    }
+#endif
 
     [[nodiscard]] auto set_affinity(Tid tid, ThreadAffinity const& affinity) const -> expected<void, std::error_code>
     {
@@ -602,16 +803,14 @@ class ThreadRegistry : public detail::QueryFacadeMixin<ThreadRegistry>
     }
 
     // Register/unregister hooks (system integration)
-    void set_on_register(std::function<void(RegisteredThreadInfo const&)> cb)
+    void set_on_register(RegistryCallback cb)
     {
         std::unique_lock<std::shared_mutex> lock(mutex_);
-        onRegister_ = RegistryCallback(std::move(cb));
+        onRegister_ = std::move(cb);
     }
 
     template <typename Callback,
-              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>,
-                                               std::function<void(RegisteredThreadInfo const&)>>,
-                               int> = 0>
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, RegistryCallback>, int> = 0>
     void set_on_register(Callback&& cb)
     {
         static_assert(std::is_invocable_r_v<void, Callback&, RegisteredThreadInfo const&>,
@@ -620,16 +819,14 @@ class ThreadRegistry : public detail::QueryFacadeMixin<ThreadRegistry>
         onRegister_ = detail::make_copyable_callable<void(RegisteredThreadInfo const&)>(std::forward<Callback>(cb));
     }
 
-    void set_on_unregister(std::function<void(RegisteredThreadInfo const&)> cb)
+    void set_on_unregister(RegistryCallback cb)
     {
         std::unique_lock<std::shared_mutex> lock(mutex_);
-        onUnregister_ = RegistryCallback(std::move(cb));
+        onUnregister_ = std::move(cb);
     }
 
     template <typename Callback,
-              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>,
-                                               std::function<void(RegisteredThreadInfo const&)>>,
-                               int> = 0>
+              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, RegistryCallback>, int> = 0>
     void set_on_unregister(Callback&& cb)
     {
         static_assert(std::is_invocable_r_v<void, Callback&, RegisteredThreadInfo const&>,

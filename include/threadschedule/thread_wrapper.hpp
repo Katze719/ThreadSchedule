@@ -7,6 +7,7 @@
 
 #include "expected.hpp"
 #include "scheduler_policy.hpp"
+#include <memory>
 #include <optional>
 #include <string>
 #include <thread>
@@ -818,13 +819,22 @@ class ThreadByNameView
  *
  * @par Thread Safety
  * Individual operations are thread-safe and delegate to OS syscalls for the
- * bound thread ID.
+ * bound thread. Default-constructed instances prefer the captured native
+ * thread handle when available; @ref ThreadInfo(Tid) continues to use the
+ * caller-provided OS thread ID.
  */
 class ThreadInfo
 {
   public:
+#ifdef _WIN32
+    using native_handle_type = HANDLE;
+#else
+    using native_handle_type = pthread_t;
+#endif
+
     ThreadInfo() : tid_(get_thread_id())
     {
+        bind_current_thread_handle();
     }
 
     explicit ThreadInfo(Tid tid) : tid_(tid)
@@ -838,42 +848,58 @@ class ThreadInfo
 
     [[nodiscard]] auto set_name(std::string const& name) const -> expected<void, std::error_code>
     {
+        if (has_native_handle())
+            return detail::apply_name(native_handle(), name);
         return detail::apply_name(tid_, name);
     }
 
     [[nodiscard]] auto get_name() const -> std::optional<std::string>
     {
+        if (has_native_handle())
+            return detail::read_name(native_handle());
         return detail::read_name(tid_);
     }
 
     [[nodiscard]] auto set_priority(ThreadPriority priority) const -> expected<void, std::error_code>
     {
+        if (has_native_handle())
+            return detail::apply_priority(native_handle(), priority);
         return detail::apply_priority(tid_, priority);
     }
 
     [[nodiscard]] auto set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority) const
         -> expected<void, std::error_code>
     {
+        if (has_native_handle())
+            return detail::apply_scheduling_policy(native_handle(), policy, priority);
         return detail::apply_scheduling_policy(tid_, policy, priority);
     }
 
     [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) const -> expected<void, std::error_code>
     {
+        if (has_native_handle())
+            return detail::apply_affinity(native_handle(), affinity);
         return detail::apply_affinity(tid_, affinity);
     }
 
     [[nodiscard]] auto get_affinity() const -> std::optional<ThreadAffinity>
     {
+        if (has_native_handle())
+            return detail::read_affinity(native_handle());
         return detail::read_affinity(tid_);
     }
 
     [[nodiscard]] auto get_policy() const -> std::optional<SchedulingPolicy>
     {
+        if (has_native_handle())
+            return detail::read_scheduling_policy(native_handle());
         return detail::read_scheduling_policy(tid_);
     }
 
     [[nodiscard]] auto get_priority() const -> std::optional<int>
     {
+        if (has_native_handle())
+            return detail::read_priority(native_handle());
         return detail::read_priority(tid_);
     }
 
@@ -902,7 +928,44 @@ class ThreadInfo
     }
 
   private:
+    void bind_current_thread_handle()
+    {
+#ifdef _WIN32
+        HANDLE real_handle = nullptr;
+        if (DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &real_handle,
+                            THREAD_SET_INFORMATION | THREAD_QUERY_INFORMATION, FALSE, 0) != 0)
+        {
+            nativeHandle_ = real_handle;
+            nativeHandleOwner_ = std::shared_ptr<void>(real_handle, [](void* handle) {
+                if (handle)
+                    CloseHandle(static_cast<HANDLE>(handle));
+            });
+            hasNativeHandle_ = true;
+        }
+#else
+        nativeHandle_ = pthread_self();
+        hasNativeHandle_ = true;
+#endif
+    }
+
+    [[nodiscard]] auto has_native_handle() const noexcept -> bool
+    {
+        return hasNativeHandle_;
+    }
+
+    [[nodiscard]] auto native_handle() const noexcept -> native_handle_type
+    {
+        return nativeHandle_;
+    }
+
     Tid tid_{};
+#ifdef _WIN32
+    native_handle_type nativeHandle_ = nullptr;
+    std::shared_ptr<void> nativeHandleOwner_;
+#else
+    native_handle_type nativeHandle_{};
+#endif
+    bool hasNativeHandle_{false};
 };
 
 } // namespace threadschedule

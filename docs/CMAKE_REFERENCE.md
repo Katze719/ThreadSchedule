@@ -8,6 +8,7 @@
 | `THREADSCHEDULE_BUILD_TESTS` | BOOL | OFF | Build unit tests |
 | `THREADSCHEDULE_BUILD_BENCHMARKS` | BOOL | OFF | Build benchmarks (downloads Google Benchmark) |
 | `THREADSCHEDULE_RUNTIME` | BOOL | OFF | Build shared runtime library for process-wide registry |
+| `THREADSCHEDULE_ENABLE_REFLECTION` | BOOL | OFF | Enable GCC 16+ C++26 reflection APIs and reflection-backed registry queries when supported |
 | `THREADSCHEDULE_INSTALL` | BOOL | ON (main project)<br>OFF (subdirectory) | Generate install targets |
 
 ## CMake Variables
@@ -42,6 +43,16 @@ set(CMAKE_CXX_STANDARD 23)
 add_subdirectory(ThreadSchedule)
 ```
 Features: All features + latest language enhancements
+
+### C++26 + GCC Reflection
+```cmake
+set(CMAKE_CXX_STANDARD 26)
+set(THREADSCHEDULE_ENABLE_REFLECTION ON)
+add_subdirectory(ThreadSchedule)
+```
+Features: All regular C++26 features plus `threadschedule::reflect` and
+reflection-backed registry APIs when using GCC 16+ with working
+`-freflection` support.
 
 ## Usage Examples
 

@@ -64,6 +64,7 @@ option(THREADSCHEDULE_INSTALL "Generate install target" ${THREADSCHEDULE_IS_TOPL
 option(THREADSCHEDULE_RUNTIME "Build shared runtime for global registry (non header-only)" ON)
 option(THREADSCHEDULE_MODULE "Build C++20 module target (requires CMake >= 3.28 and C++20+)" OFF)
 option(THREADSCHEDULE_BUILD_DOCS "Build API documentation with Doxygen" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
+option(THREADSCHEDULE_ENABLE_REFLECTION "Enable GCC 16 C++26 reflection APIs when supported" OFF)
 
 # CPM support (optional, download if building tests or benchmarks)
 if(THREADSCHEDULE_BUILD_TESTS OR THREADSCHEDULE_BUILD_BENCHMARKS)
@@ -119,6 +120,33 @@ endif()
 # Platform-specific requirements
 find_package(Threads REQUIRED)
 
+set(THREADSCHEDULE_HAS_REFLECTION OFF)
+if(THREADSCHEDULE_ENABLE_REFLECTION
+   AND CMAKE_CXX_STANDARD GREATER_EQUAL 26
+   AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    include(CheckCXXSourceCompiles)
+    set(_threadschedule_saved_required_flags "${CMAKE_REQUIRED_FLAGS}")
+    set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -std=c++26 -freflection")
+    check_cxx_source_compiles(
+        "
+        #include <meta>
+        using namespace std::meta;
+        struct probe_type { int value; bool ready; };
+        consteval bool probe() {
+            auto fields = std::define_static_array(nonstatic_data_members_of(^^probe_type, access_context::current()));
+            return fields.size() == 2 && identifier_of(fields[0]) == \"value\";
+        }
+        static_assert(probe());
+        int main() { return 0; }
+        "
+        THREADSCHEDULE_REFLECTION_PROBE_OK
+    )
+    set(CMAKE_REQUIRED_FLAGS "${_threadschedule_saved_required_flags}")
+    if(THREADSCHEDULE_REFLECTION_PROBE_OK)
+        set(THREADSCHEDULE_HAS_REFLECTION ON)
+    endif()
+endif()
+
 # Create the interface library target (header-only API)
 add_library(ThreadSchedule INTERFACE)
 add_library(ThreadSchedule::ThreadSchedule ALIAS ThreadSchedule)
@@ -150,6 +178,11 @@ target_include_directories(ThreadSchedule INTERFACE
 
 # Link libraries
 target_link_libraries(ThreadSchedule INTERFACE Threads::Threads)
+
+if(THREADSCHEDULE_HAS_REFLECTION)
+    target_compile_definitions(ThreadSchedule INTERFACE THREADSCHEDULE_HAS_REFLECTION=1)
+    target_compile_options(ThreadSchedule INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-freflection>)
+endif()
 
 # Windows: ensure modern API availability macros
 if(WIN32)
@@ -217,6 +250,10 @@ if(THREADSCHEDULE_RUNTIME)
         src/runtime_registry.cpp
     )
     target_compile_definitions(ThreadScheduleRuntime PRIVATE THREADSCHEDULE_EXPORTS THREADSCHEDULE_RUNTIME)
+    if(THREADSCHEDULE_HAS_REFLECTION)
+        target_compile_definitions(ThreadScheduleRuntime PUBLIC THREADSCHEDULE_HAS_REFLECTION=1)
+        target_compile_options(ThreadScheduleRuntime PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-freflection>)
+    endif()
     # Propagate the THREADSCHEDULE_RUNTIME define to consumers so headers call into the DLL
     target_compile_definitions(ThreadScheduleRuntime INTERFACE THREADSCHEDULE_RUNTIME)
     target_include_directories(ThreadScheduleRuntime
@@ -270,6 +307,11 @@ if(THREADSCHEDULE_MODULE)
         target_compile_features(ThreadScheduleModule PUBLIC cxx_std_23)
     else()
         target_compile_features(ThreadScheduleModule PUBLIC cxx_std_20)
+    endif()
+
+    if(THREADSCHEDULE_HAS_REFLECTION)
+        target_compile_definitions(ThreadScheduleModule PUBLIC THREADSCHEDULE_HAS_REFLECTION=1)
+        target_compile_options(ThreadScheduleModule PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-freflection>)
     endif()
 endif()
 
