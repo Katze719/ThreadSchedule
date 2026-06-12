@@ -2,12 +2,18 @@
 
 /**
  * @file expected.hpp
- * @brief Polyfill for @c std::expected (C++23) for pre-C++23 compilers.
+ * @brief Stable @c expected implementation for ThreadSchedule public APIs.
  *
- * When the standard library already provides @c std::expected (detected via
- * the @c __cpp_lib_expected feature-test macro or a C++23-or-later language
- * mode), every type in this header is a simple alias to its @c std::
- * counterpart.  Otherwise a from-scratch implementation is supplied.
+ * ThreadSchedule intentionally keeps @c threadschedule::expected as a single
+ * library-defined type across all supported language standards. Even when the
+ * standard library provides @c std::expected in C++23 and later, public
+ * ThreadSchedule APIs keep returning the same @c threadschedule::expected
+ * specialization to avoid ABI drift between consumers built with different
+ * language modes.
+ *
+ * When @c std::expected is available, this header may still include
+ * `<expected>` for interoperability helpers, but it does not alias the public
+ * ThreadSchedule types to the standard library implementation.
  *
  * @par Exception handling
  * The polyfill respects @c -fno-exceptions builds.  When exceptions are
@@ -63,18 +69,6 @@
 
 namespace threadschedule
 {
-
-#if THREADSCHEDULE_HAS_STD_EXPECTED
-template <typename E>
-using unexpected = std::unexpected<E>;
-using unexpect_t = std::unexpect_t;
-inline constexpr unexpect_t unexpect{};
-template <typename E>
-using bad_expected_access = std::bad_expected_access<E>;
-template <typename T, typename E = std::error_code>
-using expected = std::expected<T, E>;
-
-#else
 
 /**
  * @brief Tag type used to construct an expected in the error state.
@@ -1027,8 +1021,6 @@ class expected<void, E>
     bool has_;
     E error_{};
 };
-
-#endif // std::expected fallback
 
 // swap for expected
 template <typename T, typename E>
