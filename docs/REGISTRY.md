@@ -411,6 +411,79 @@ Mental model:
 - once the boundary is reduced to opaque handles and plain views, the runtime
   can do the complex C++ work behind that seam safely
 
+#### Concrete mixed-standard Conan scenario
+
+This is the kind of failure that motivated the stable ABI work:
+
+- there is only one shared `ThreadSchedule::Runtime` in the process
+- `libA` is consumed as a Conan package and was built earlier as C++17
+- your application is built as C++23
+- `libA` exposes richer ThreadSchedule-adjacent C++ types in public headers,
+  for example a struct that contains `ThreadWrapper` or APIs that surface
+  ThreadSchedule result types directly
+- inside `libA`, `ThreadWrapper::set_name(...)` is called
+
+On Linux, thread names longer than 15 characters fail with
+`invalid_argument`. That means the bug may stay hidden for a long time and only
+become visible when the code takes the error path.
+
+```mermaid
+sequenceDiagram
+    participant App as App<br/>built as C++23
+    participant LibA as Conan package / DSO<br/>built as C++17
+    participant RT as Shared ThreadSchedule::Runtime
+    participant TS as ThreadSchedule API in libA
+    participant OS as OS thread naming
+
+    App->>LibA: call exported API from public header
+    Note over App,LibA: Header boundary exposes rich C++ ThreadSchedule types
+    LibA->>TS: wrapper.set_name("name-longer-than-15")
+    TS->>OS: pthread_setname_np(...)
+    OS-->>TS: invalid_argument
+    TS-->>LibA: expected<void, error_code> in error state
+    TS->>RT: same shared runtime as the app uses
+    LibA-->>App: error-bearing C++ object crosses DSO boundary
+    Note over App: Problem is not two runtimes.<br/>Problem is the C++ ABI seam between LibA and App.
+    Note over App: Consumer interprets returned bytes using its own build assumptions
+```
+
+Why this was so confusing in practice:
+
+- short names often stayed on the success path, so nothing obviously broke
+- the failure only appeared once the long-name validation forced an error value
+- because the boundary was a rich C++ ABI, the visible symptom appeared far
+  away from the real design mistake
+
+The stable ABI version of the same flow looks like this:
+
+```mermaid
+sequenceDiagram
+    participant App2 as App<br/>built as C++23
+    participant LibA2 as Conan package / DSO<br/>built as C++17
+    participant RT2 as Shared ThreadSchedule::Runtime
+    participant ABI as threadschedule::abi::*
+    participant Impl as Internal ThreadWrapper use
+    participant OS2 as OS thread naming
+
+    App2->>LibA2: call exported API with stable ABI boundary
+    Note over App2,LibA2: Boundary uses handle/view/status types only
+    LibA2->>Impl: wrapper.set_name("name-longer-than-15")
+    Impl->>OS2: pthread_setname_np(...)
+    OS2-->>Impl: invalid_argument
+    Impl->>RT2: same shared runtime as the app uses
+    Impl-->>ABI: convert failure to abi::status{invalid_argument}
+    ABI-->>App2: small stable status crosses DSO boundary
+    Note over App2: Consumer sees a fixed binary shape, independent of C++17/C++23 mode
+```
+
+Important nuance:
+
+- the recent `threadschedule::expected` hardening removes one concrete source
+  of standard-mode drift
+- the stable ABI subset is still needed because types like `ThreadWrapper`,
+  `ThreadRegistry`, and STL-heavy exported structs remain poor DSO boundary
+  types even after `expected` is fixed
+
 ### Header-only builds and multiple DSOs
 
 Because ThreadSchedule is header-only, each DSO that includes it may get its own internal `registry()` singleton. To obtain a unified process-wide view, use one of these patterns:
