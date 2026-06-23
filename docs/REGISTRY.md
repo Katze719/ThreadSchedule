@@ -335,6 +335,82 @@ extern "C" void plugin_start_worker()
 This keeps the boundary on opaque handles, views, and callbacks while the
 implementation still uses the full C++ API internally.
 
+### Why this matters visually
+
+For C++ newcomers: ABI means the binary-level contract between separately built
+parts of a program. If one DSO thinks a type looks one way and another DSO
+thinks it looks slightly differently, the code may still compile but can break
+at runtime.
+
+#### Without the stable ABI subset
+
+Here the library boundary exports ThreadSchedule C++ types directly. That is
+fragile when the middle library and the final executable are built with
+different standards, standard library versions, or compiler settings.
+
+```mermaid
+flowchart LR
+    App["App / Consumer<br>C++23"]
+    Mid["Intermediate DSO<br>C++17"]
+    Runtime["ThreadSchedule Runtime"]
+    ABI["Exported C++ ABI:<br>ThreadRegistry / expected / STL-rich types"]
+    Drift["Different binary layout or calling assumptions"]
+    Result["Compiles, but runtime misbehavior is possible<br>wrong object layout, invalid calls, subtle crashes"]
+
+    App --> ABI
+    Mid --> ABI
+    Mid --> Runtime
+    App --> Runtime
+    ABI --> Drift
+    Drift --> Result
+
+    classDef bad fill:#8b1e1e,color:#ffffff,stroke:#5c1010
+    class ABI,Drift,Result bad
+```
+
+Typical failure mode:
+
+- the intermediate DSO exports a type like `threadschedule::expected` or
+  `ThreadRegistry*` in its own ABI
+- another component was built under a different language mode and interprets
+  that exported type with different binary assumptions
+- the handoff crosses the shared-library boundary and undefined behavior starts
+
+#### With `threadschedule::abi::*`
+
+Here the boundary stays on simple handles, views, callbacks, and status codes.
+Those are intentionally small and stable so each side agrees on the binary
+shape even if they were built differently.
+
+```mermaid
+flowchart LR
+    App2["App / Consumer<br>C++23"]
+    Mid2["Intermediate DSO<br>C++17"]
+    Runtime2["ThreadSchedule Runtime"]
+    Stable["Stable ABI boundary:<br>registry_handle / thread_info_view / status"]
+    Internal["Each side may still use the full C++ API internally"]
+    Safe["Shared-library boundary stays predictable and portable"]
+
+    App2 --> Stable
+    Mid2 --> Stable
+    Stable --> Runtime2
+    Mid2 --> Internal
+    App2 --> Internal
+    Stable --> Safe
+
+    classDef good fill:#1f6f3d,color:#ffffff,stroke:#124628
+    class Stable,Safe good
+```
+
+Mental model:
+
+- use the full ThreadSchedule C++ API inside one binary that you build
+  together
+- use `threadschedule::abi::*` only at the seam between separately built
+  binaries
+- once the boundary is reduced to opaque handles and plain views, the runtime
+  can do the complex C++ work behind that seam safely
+
 ### Header-only builds and multiple DSOs
 
 Because ThreadSchedule is header-only, each DSO that includes it may get its own internal `registry()` singleton. To obtain a unified process-wide view, use one of these patterns:
