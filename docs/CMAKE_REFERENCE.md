@@ -354,11 +354,9 @@ FetchContent_MakeAvailable(ThreadSchedule)
 ```
 
 ### Conan
-See [conanfile.py](../conanfile.py) for Conan package definition.
-
-```bash
-conan create . --build=missing
-```
+ThreadSchedule does not currently ship a maintained in-tree Conan recipe.
+Use FetchContent/CPM directly, or keep a project-local Conan recipe that pulls
+the tagged Git release you want to consume.
 
 ## Best Practices
 

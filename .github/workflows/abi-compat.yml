@@ -30,6 +30,14 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Setup MSVC (Developer Command Prompt)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Ninja [Windows]
+        if: runner.os == 'Windows'
+        run: choco install ninja --no-progress --yes
+
       - name: Fetch tags (ensure up-to-date)
         run: git fetch --tags --force
 
@@ -78,7 +86,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cmake -B build -G "Visual Studio 17 2022" -A x64 -DTHREADSCHEDULE_RUNTIME=ON -DCMAKE_INSTALL_PREFIX="$env:RUNNER_TEMP/ts-install"
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTHREADSCHEDULE_RUNTIME=ON -DCMAKE_INSTALL_PREFIX="$env:RUNNER_TEMP/ts-install"
       - name: Build (current) [Windows]
         if: runner.os == 'Windows'
         shell: pwsh
@@ -110,7 +118,7 @@ jobs:
         shell: pwsh
         working-directory: integration_tests/runtime_abi_compat
         run: |
-          cmake -B build -G "Visual Studio 17 2022" -A x64 -DTHREADSCHEDULE_RUNTIME=ON -DRUNTIME_ABI_OLD_OFFSET=${{ matrix.offset }} -DCMAKE_PREFIX_PATH="$env:RUNNER_TEMP/ts-install"
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTHREADSCHEDULE_RUNTIME=ON -DRUNTIME_ABI_OLD_OFFSET=${{ matrix.offset }} -DCMAKE_PREFIX_PATH="$env:RUNNER_TEMP/ts-install"
       - name: Build integration test [Windows]
         if: runner.os == 'Windows'
         shell: pwsh
@@ -122,5 +130,4 @@ jobs:
         working-directory: integration_tests/runtime_abi_compat
         run: ctest --test-dir build -C Release --output-on-failure
         continue-on-error: ${{ inputs.expected_abi_break == true || steps.major_flag.outputs.changed == 'true' }}
-
 
