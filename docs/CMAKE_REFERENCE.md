@@ -8,6 +8,8 @@
 | `THREADSCHEDULE_BUILD_TESTS` | BOOL | OFF | Build unit tests |
 | `THREADSCHEDULE_BUILD_BENCHMARKS` | BOOL | OFF | Build benchmarks (downloads Google Benchmark) |
 | `THREADSCHEDULE_RUNTIME` | BOOL | OFF | Build shared runtime library for process-wide registry |
+| `THREADSCHEDULE_STABLE_ABI` | BOOL | OFF | Expose the stable ABI subset and deprecate runtime-backed APIs that are unsafe across DSO boundaries |
+| `THREADSCHEDULE_STABLE_ABI_STRICT` | BOOL | OFF | Reject ABI-unsafe runtime API usage at compile time; implies `THREADSCHEDULE_STABLE_ABI` |
 | `THREADSCHEDULE_ENABLE_REFLECTION` | BOOL | OFF | Enable GCC 16+ C++26 reflection APIs and reflection-backed registry queries when supported |
 | `THREADSCHEDULE_INSTALL` | BOOL | ON (main project)<br>OFF (subdirectory) | Generate install targets |
 
@@ -115,6 +117,20 @@ target_link_libraries(my_app PRIVATE
 
 **Result**: A shared runtime library (`libthreadschedule.so` / `threadschedule.dll`) is built. All components share a single process-wide registry instance.
 
+### With Shared Runtime and Stable ABI Checks
+```cmake
+set(THREADSCHEDULE_RUNTIME ON)
+set(THREADSCHEDULE_STABLE_ABI ON)
+# or: set(THREADSCHEDULE_STABLE_ABI_STRICT ON)
+add_subdirectory(external/ThreadSchedule)
+```
+
+**Result**: The shared runtime exports the `threadschedule::abi::*` helper
+surface for DSO boundaries. In migration mode, legacy runtime APIs such as
+`registry()` and `AutoRegisterCurrentThread` emit deprecation warnings. In
+strict mode, those runtime-backed APIs become compile-time errors outside the
+runtime implementation itself.
+
 ### Development Build (All Features)
 ```cmake
 set(THREADSCHEDULE_BUILD_EXAMPLES ON)
@@ -167,7 +183,8 @@ Optional shared runtime target for process-wide registry. Properties:
 - **Type**: SHARED library (DLL/SO)
 - **Availability**: Only when `THREADSCHEDULE_RUNTIME=ON`
 - **Include directories**: `include/`
-- **Exports**: `registry()` and `set_external_registry()` functions
+- **Exports**: `registry()` / `set_external_registry()` plus the
+  `threadschedule::abi::*` runtime helpers
 - **Use case**: Multi-DSO applications requiring single registry instance
 
 ### Usage
@@ -183,6 +200,15 @@ target_link_libraries(your_target PRIVATE
 ```
 
 **Note**: When using the runtime library, all DSOs (libraries and executables) in your application must link against `ThreadSchedule::Runtime` to share the same registry instance.
+
+**ABI guidance**:
+
+- Use `threadschedule::abi::*` for plugin/DSO ABI boundaries.
+- Treat `registry()`, `set_external_registry(ThreadRegistry*)`, and
+  `AutoRegisterCurrentThread` as migration-only runtime APIs once
+  `THREADSCHEDULE_STABLE_ABI` is enabled.
+- Use `THREADSCHEDULE_VALIDATE_STABLE_ABI_EXPORT(...)` in exported headers to
+  static-assert that boundary signatures only use stable ABI types.
 
 ## Platform-Specific Behavior
 
@@ -301,6 +327,19 @@ endif()
 1. Use `THREADSCHEDULE_RUNTIME=ON` to build a shared runtime (recommended for multi-DSO)
 2. Explicitly inject the registry into each DSO via `set_external_registry()`
 
+### Deprecation Warnings for `registry()` in Runtime Mode
+**Symptom**: Enabling `THREADSCHEDULE_STABLE_ABI=ON` produces deprecation
+warnings for `registry()`, `set_external_registry(ThreadRegistry*)`, or
+`AutoRegisterCurrentThread`.
+
+**Cause**: Those C++ runtime entrypoints are still usable inside a single build,
+but they are not part of the stable ThreadSchedule ABI subset for exported
+shared-library boundaries.
+
+**Solution**: Keep them for internal-only code during migration, but move any
+exported plugin/DSO boundary to `threadschedule::abi::*`. When the migration is
+complete, switch to `THREADSCHEDULE_STABLE_ABI_STRICT=ON`.
+
 ## Advanced Configuration
 
 ### Custom Compiler Flags (Top-Level Project Only)
@@ -367,7 +406,9 @@ the tagged Git release you want to consume.
 5. **Pin to specific version** (tag) in production
 6. **Test with your target C++ standard** before deploying
 7. **For multi-DSO applications**: Use `THREADSCHEDULE_RUNTIME=ON` to ensure single registry
-8. **On Windows with runtime**: Copy DLLs to executable directory or use install(RUNTIME_DEPENDENCY_SET)
+8. **For exported plugin/DSO ABIs**: Enable `THREADSCHEDULE_STABLE_ABI=ON` early, and move public registry-facing boundaries to `threadschedule::abi::*`
+9. **Validate exported signatures**: Use `THREADSCHEDULE_VALIDATE_STABLE_ABI_EXPORT(...)` in public headers for registry-related ABI boundaries
+10. **On Windows with runtime**: Copy DLLs to executable directory or use install(RUNTIME_DEPENDENCY_SET)
 
 ## Example Project Structure
 
