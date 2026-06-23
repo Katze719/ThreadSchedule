@@ -19,7 +19,7 @@ target_link_libraries(runtime_abi_libA
         ThreadSchedule::Runtime
 )
 
-target_compile_features(runtime_abi_libA PUBLIC cxx_std_17)
+target_compile_features(runtime_abi_libA PUBLIC cxx_std_23)
 
 if(WIN32)
     target_compile_definitions(runtime_abi_libA PRIVATE BUILD_RUNTIME_LIBA_SHARED)
@@ -46,5 +46,4 @@ install(EXPORT RuntimeAbiLibATargets
     NAMESPACE RuntimeAbi::
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/RuntimeAbiLibA
 )
-
 

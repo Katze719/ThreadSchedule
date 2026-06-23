@@ -6,10 +6,12 @@
  */
 
 #include "callable.hpp"
+#include "export.hpp"
 #include "expected.hpp"
 #if defined(THREADSCHEDULE_HAS_REFLECTION) && THREADSCHEDULE_HAS_REFLECTION
 #include "reflection.hpp"
 #endif
+#include "abi.hpp"
 #include "scheduler_policy.hpp"
 #include "thread_wrapper.hpp" // for ThreadInfo, ThreadAffinity
 #include <functional>
@@ -34,17 +36,6 @@
 
 namespace threadschedule
 {
-
-// Optional export macro for building a runtime (shared/dll) variant
-#if defined(_WIN32) || defined(_WIN64)
-    #if defined(THREADSCHEDULE_EXPORTS)
-        #define THREADSCHEDULE_API __declspec(dllexport)
-    #else
-        #define THREADSCHEDULE_API __declspec(dllimport)
-    #endif
-#else
-    #define THREADSCHEDULE_API __attribute__((visibility("default")))
-#endif
 
 /**
  * @brief Snapshot of metadata for a single registered thread.
@@ -888,9 +879,11 @@ class ThreadRegistry : public detail::QueryFacadeMixin<ThreadRegistry>
  * @{
  */
 
+namespace detail
+{
 #if defined(THREADSCHEDULE_RUNTIME)
-THREADSCHEDULE_API auto registry() -> ThreadRegistry&;
-THREADSCHEDULE_API void set_external_registry(ThreadRegistry* reg);
+THREADSCHEDULE_API auto runtime_registry() -> ThreadRegistry&;
+THREADSCHEDULE_API void runtime_set_external_registry(ThreadRegistry* reg);
 #else
 /** @cond INTERNAL */
 inline auto registry_storage() -> ThreadRegistry*&
@@ -899,6 +892,52 @@ inline auto registry_storage() -> ThreadRegistry*&
     return external;
 }
 /** @endcond */
+
+inline auto runtime_registry() -> ThreadRegistry&
+{
+    ThreadRegistry*& ext = registry_storage();
+    if (ext != nullptr)
+        return *ext;
+    static ThreadRegistry local;
+    return local;
+}
+
+inline void runtime_set_external_registry(ThreadRegistry* reg)
+{
+    registry_storage() = reg;
+}
+#endif
+} // namespace detail
+
+#if defined(THREADSCHEDULE_RUNTIME) && defined(THREADSCHEDULE_STABLE_ABI_STRICT) && \
+    !defined(THREADSCHEDULE_INTERNAL_RUNTIME_BUILD)
+template <typename T = void>
+auto registry() -> ThreadRegistry&
+{
+    static_assert(!std::is_same_v<T, T>,
+                  "threadschedule::registry() is not part of the stable ABI subset. "
+                  "Use threadschedule::abi::current_registry() and related helpers instead.");
+    return detail::runtime_registry();
+}
+
+template <typename T = void>
+void set_external_registry(ThreadRegistry*)
+{
+    static_assert(!std::is_same_v<T, T>,
+                  "threadschedule::set_external_registry(ThreadRegistry*) is not part of the stable ABI subset. "
+                  "Use threadschedule::abi::set_external_registry(threadschedule::abi::registry_handle) instead.");
+}
+#elif defined(THREADSCHEDULE_RUNTIME)
+THREADSCHEDULE_RUNTIME_ABI_UNSAFE_DEPRECATED(
+    "threadschedule::registry() is not part of the stable ABI subset; use threadschedule::abi::current_registry() "
+    "and related helpers for DSO boundaries")
+THREADSCHEDULE_API auto registry() -> ThreadRegistry&;
+
+THREADSCHEDULE_RUNTIME_ABI_UNSAFE_DEPRECATED(
+    "threadschedule::set_external_registry(ThreadRegistry*) is not part of the stable ABI subset; use "
+    "threadschedule::abi::set_external_registry(registry_handle) for DSO boundaries")
+THREADSCHEDULE_API void set_external_registry(ThreadRegistry* reg);
+#else
 
 /**
  * @brief Returns a reference to the process-wide @ref ThreadRegistry.
@@ -911,11 +950,7 @@ inline auto registry_storage() -> ThreadRegistry*&
  */
 inline auto registry() -> ThreadRegistry&
 {
-    ThreadRegistry*& ext = registry_storage();
-    if (ext != nullptr)
-        return *ext;
-    static ThreadRegistry local;
-    return local;
+    return detail::runtime_registry();
 }
 
 /**
@@ -936,7 +971,7 @@ inline auto registry() -> ThreadRegistry&
  */
 inline void set_external_registry(ThreadRegistry* reg)
 {
-    registry_storage() = reg;
+    detail::runtime_set_external_registry(reg);
 }
 /** @} */
 #endif
@@ -955,6 +990,19 @@ enum class BuildMode : std::uint8_t
     HEADER_ONLY, ///< All symbols are inline / header-only.
     RUNTIME      ///< Core symbols are compiled into a shared library.
 };
+
+} // namespace threadschedule
+
+namespace threadschedule::abi
+{
+template <>
+struct is_abi_stable<::threadschedule::BuildMode> : std::true_type
+{
+};
+} // namespace threadschedule::abi
+
+namespace threadschedule
+{
 
 #if defined(THREADSCHEDULE_RUNTIME)
 inline constexpr bool is_runtime_build = true; ///< @c true when compiled with @c THREADSCHEDULE_RUNTIME.
@@ -1093,15 +1141,33 @@ class CompositeThreadRegistry : public detail::QueryFacadeMixin<CompositeThreadR
 class AutoRegisterCurrentThread
 {
   public:
+#if defined(THREADSCHEDULE_RUNTIME) && defined(THREADSCHEDULE_STABLE_ABI_STRICT) && \
+    !defined(THREADSCHEDULE_INTERNAL_RUNTIME_BUILD)
+    explicit AutoRegisterCurrentThread(std::string const& = std::string(),
+                                       std::string const& = std::string()) = delete;
+    explicit AutoRegisterCurrentThread(ThreadRegistry&, std::string const& = std::string(),
+                                       std::string const& = std::string()) = delete;
+    ~AutoRegisterCurrentThread() = default;
+    AutoRegisterCurrentThread(AutoRegisterCurrentThread const&) = delete;
+    auto operator=(AutoRegisterCurrentThread const&) -> AutoRegisterCurrentThread& = delete;
+    AutoRegisterCurrentThread(AutoRegisterCurrentThread&&) noexcept = delete;
+    auto operator=(AutoRegisterCurrentThread&&) noexcept -> AutoRegisterCurrentThread& = delete;
+#else
+    THREADSCHEDULE_RUNTIME_ABI_UNSAFE_DEPRECATED(
+        "threadschedule::AutoRegisterCurrentThread is not part of the stable ABI subset; use "
+        "threadschedule::abi::AutoRegisterCurrentThread for DSO boundaries")
     explicit AutoRegisterCurrentThread(std::string const& name = std::string(),
                                        std::string const& componentTag = std::string())
         : active_(true), externalReg_(nullptr)
     {
         auto block = ThreadControlBlock::create_for_current_thread();
         (void)block->set_name(name);
-        registry().register_current_thread(block, name, componentTag);
+        detail::runtime_registry().register_current_thread(block, name, componentTag);
     }
 
+    THREADSCHEDULE_RUNTIME_ABI_UNSAFE_DEPRECATED(
+        "threadschedule::AutoRegisterCurrentThread(ThreadRegistry&) is not part of the stable ABI subset; use "
+        "threadschedule::abi::AutoRegisterCurrentThread for DSO boundaries")
     explicit AutoRegisterCurrentThread(ThreadRegistry& reg, std::string const& name = std::string(),
                                        std::string const& componentTag = std::string())
         : active_(true), externalReg_(&reg)
@@ -1117,7 +1183,7 @@ class AutoRegisterCurrentThread
             if (externalReg_ != nullptr)
                 externalReg_->unregister_current_thread();
             else
-                registry().unregister_current_thread();
+                detail::runtime_registry().unregister_current_thread();
         }
     }
     AutoRegisterCurrentThread(AutoRegisterCurrentThread const&) = delete;
@@ -1137,7 +1203,7 @@ class AutoRegisterCurrentThread
                 if (externalReg_ != nullptr)
                     externalReg_->unregister_current_thread();
                 else
-                    registry().unregister_current_thread();
+                    detail::runtime_registry().unregister_current_thread();
             }
             active_ = other.active_;
             externalReg_ = other.externalReg_;
@@ -1146,10 +1212,11 @@ class AutoRegisterCurrentThread
         }
         return *this;
     }
+#endif
 
   private:
-    bool active_;
-    ThreadRegistry* externalReg_;
+    bool active_{false};
+    ThreadRegistry* externalReg_{nullptr};
 };
 
 } // namespace threadschedule

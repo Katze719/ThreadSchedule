@@ -134,8 +134,8 @@ class ChaosController
         std::mt19937 rng(std::random_device{}());
         while (!stop_)
         {
-            registry().apply(pred, [&](RegisteredThreadInfo const& info) {
-                auto blk = registry().get(info.tid);
+            detail::runtime_registry().apply(pred, [&](RegisteredThreadInfo const& info) {
+                auto blk = detail::runtime_registry().get(info.tid);
                 (void)blk;
             });
 
@@ -144,10 +144,10 @@ class ChaosController
             {
                 auto topo = read_topology();
                 size_t idx = 0;
-                registry().apply(pred, [&](RegisteredThreadInfo const& info) {
+                detail::runtime_registry().apply(pred, [&](RegisteredThreadInfo const& info) {
                     ThreadAffinity aff = affinity_for_node(
                         static_cast<int>(idx % (topo.numa_nodes > 0 ? topo.numa_nodes : 1)), static_cast<int>(idx));
-                    (void)registry().set_affinity(info.tid, aff);
+                    (void)detail::runtime_registry().set_affinity(info.tid, aff);
                     ++idx;
                 });
             }
@@ -156,7 +156,7 @@ class ChaosController
             if (config_.priority_jitter != 0)
             {
                 std::uniform_int_distribution<int> dist(-config_.priority_jitter, config_.priority_jitter);
-                registry().apply(pred, [&](RegisteredThreadInfo const& info) {
+                detail::runtime_registry().apply(pred, [&](RegisteredThreadInfo const& info) {
                     int delta = dist(rng);
                     int baseline = ThreadPriority::normal().value();
 #ifndef _WIN32
@@ -164,7 +164,7 @@ class ChaosController
                     if (sched_getparam(info.tid, &sp) == 0)
                         baseline = sp.sched_priority;
 #endif
-                    (void)registry().set_priority(info.tid, ThreadPriority{baseline + delta});
+                    (void)detail::runtime_registry().set_priority(info.tid, ThreadPriority{baseline + delta});
                 });
             }
 
