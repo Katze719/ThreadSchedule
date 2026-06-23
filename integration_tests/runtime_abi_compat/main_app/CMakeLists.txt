@@ -10,7 +10,7 @@ target_link_libraries(runtime_abi_main PRIVATE
     runtime_abi_libA
     runtime_abi_libB
 )
-target_compile_features(runtime_abi_main PRIVATE cxx_std_17)
+target_compile_features(runtime_abi_main PRIVATE cxx_std_23)
 
 add_custom_command(TARGET runtime_abi_main POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -36,5 +36,4 @@ if(UNIX AND NOT APPLE)
     set_tests_properties(RuntimeAbiCompatibilityTest PROPERTIES
         ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:runtime_abi_main>")
 endif()
-
 
