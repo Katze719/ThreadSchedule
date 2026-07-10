@@ -281,6 +281,41 @@ TEST_F(ThreadConfigTest, SchedulerParamsFIFOAcceptsNativeRealtimePriorityRange)
 }
 #endif
 
+TEST_F(ThreadConfigTest, SchedulingFactoriesResolveToUnifiedSemantics)
+{
+    auto const background = detail::resolve_scheduling_config(schedule::background());
+    EXPECT_EQ(background.policy, SchedulingPolicy::IDLE);
+    EXPECT_EQ(background.priority.value(), ThreadPriority::lowest().value());
+
+    auto const low_latency = detail::resolve_scheduling_config(schedule::low_latency());
+    EXPECT_EQ(low_latency.policy, SchedulingPolicy::OTHER);
+    EXPECT_EQ(low_latency.priority.value(), ThreadPriority::highest().value());
+
+    auto const realtime = detail::resolve_scheduling_config(schedule::realtime_rr(99));
+    EXPECT_EQ(realtime.policy, SchedulingPolicy::RR);
+    EXPECT_EQ(realtime.priority.value(), ThreadPriority::realtime_highest().value());
+
+    auto const nice = detail::resolve_scheduling_config(schedule::posix_nice(19));
+    EXPECT_EQ(nice.policy, SchedulingPolicy::OTHER);
+    EXPECT_EQ(nice.priority.value(), ThreadPriority::lowest().value());
+}
+
+TEST_F(ThreadConfigTest, ThreadConfigAppliesThroughWrapperAndPool)
+{
+    ThreadConfig config{};
+    config.scheduling = schedule::normal();
+
+    ThreadWrapper thread([] { std::this_thread::sleep_for(std::chrono::milliseconds(10)); });
+    auto thread_result = thread.configure(config);
+    EXPECT_TRUE(thread_result.has_value()) << thread_result.error().message();
+    thread.join();
+
+    ThreadPool pool(2);
+    auto pool_result = pool.configure_threads(config);
+    EXPECT_TRUE(pool_result.has_value()) << pool_result.error().message();
+    pool.shutdown(ShutdownPolicy::drain);
+}
+
 // ==================== Integration Tests ====================
 
 TEST_F(ThreadConfigTest, ApplyConfigToThread)

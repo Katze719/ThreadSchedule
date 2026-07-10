@@ -100,6 +100,19 @@ if(TARGET gtest)
         PROPERTIES TIMEOUT 120
     )
 
+    if(THREADSCHEDULE_RUNTIME)
+        add_executable(stable_abi_target_test stable_abi_target_test.cpp)
+        target_link_libraries(stable_abi_target_test ThreadSchedule::StableAbi)
+        add_test(NAME StableAbiTargetTest COMMAND stable_abi_target_test)
+        if(WIN32)
+            add_custom_command(TARGET stable_abi_target_test POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    $<TARGET_FILE:ThreadScheduleRuntime>
+                    $<TARGET_FILE_DIR:stable_abi_target_test>
+            )
+        endif()
+    endif()
+
     add_executable(thread_registry_stress_test thread_registry_stress_test.cpp)
     target_link_libraries(thread_registry_stress_test 
         ThreadSchedule::ThreadSchedule 

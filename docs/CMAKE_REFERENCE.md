@@ -4,12 +4,13 @@
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `THREADSCHEDULE_BUILD_EXAMPLES` | BOOL | ON (main project)<br>OFF (subdirectory) | Build example programs |
+| `THREADSCHEDULE_BUILD_EXAMPLES` | BOOL | OFF | Build example programs |
 | `THREADSCHEDULE_BUILD_TESTS` | BOOL | OFF | Build unit tests |
 | `THREADSCHEDULE_BUILD_BENCHMARKS` | BOOL | OFF | Build benchmarks (downloads Google Benchmark) |
-| `THREADSCHEDULE_RUNTIME` | BOOL | OFF | Build shared runtime library for process-wide registry |
+| `THREADSCHEDULE_RUNTIME` | BOOL | ON | Build shared runtime library for process-wide registry |
 | `THREADSCHEDULE_STABLE_ABI` | BOOL | OFF | Expose the stable ABI subset and deprecate runtime-backed APIs that are unsafe across DSO boundaries |
 | `THREADSCHEDULE_STABLE_ABI_STRICT` | BOOL | OFF | Reject ABI-unsafe runtime API usage at compile time; implies `THREADSCHEDULE_STABLE_ABI` |
+| `THREADSCHEDULE_MODULE` | BOOL | OFF | Build the optional C++20 module target |
 | `THREADSCHEDULE_ENABLE_REFLECTION` | BOOL | OFF | Enable GCC 16+ C++26 reflection APIs and reflection-backed registry queries when supported |
 | `THREADSCHEDULE_INSTALL` | BOOL | ON (main project)<br>OFF (subdirectory) | Generate install targets |
 
@@ -131,6 +132,21 @@ surface for DSO boundaries. In migration mode, legacy runtime APIs such as
 strict mode, those runtime-backed APIs become compile-time errors outside the
 runtime implementation itself.
 
+### Stable ABI Consumer Target
+```cmake
+set(THREADSCHEDULE_RUNTIME ON)
+add_subdirectory(external/ThreadSchedule)
+
+add_library(plugin SHARED plugin.cpp)
+target_link_libraries(plugin PRIVATE ThreadSchedule::StableAbi)
+```
+
+**Result**: `plugin` is compiled against the C++17 stable ABI contract, links the
+shared runtime, and receives `THREADSCHEDULE_RUNTIME`,
+`THREADSCHEDULE_STABLE_ABI`, and `THREADSCHEDULE_STABLE_ABI_STRICT`. Use this
+target for libraries or plugins that expose ThreadSchedule-related capabilities
+across C++17/C++23 or other mixed-standard DSO boundaries.
+
 ### Development Build (All Features)
 ```cmake
 set(THREADSCHEDULE_BUILD_EXAMPLES ON)
@@ -182,10 +198,22 @@ Optional shared runtime target for process-wide registry. Properties:
 
 - **Type**: SHARED library (DLL/SO)
 - **Availability**: Only when `THREADSCHEDULE_RUNTIME=ON`
+
+### ThreadSchedule::StableAbi
+
+The strict stable-ABI consumer target. Properties:
+
+- **Type**: INTERFACE library
+- **Availability**: Only when `THREADSCHEDULE_RUNTIME=ON`
+- **Compile features**: `cxx_std_17`
+- **Compile definitions**: `THREADSCHEDULE_RUNTIME=1`,
+  `THREADSCHEDULE_STABLE_ABI=1`, `THREADSCHEDULE_STABLE_ABI_STRICT=1`
+- **Links**: `ThreadSchedule::Runtime`
 - **Include directories**: `include/`
-- **Exports**: `registry()` / `set_external_registry()` plus the
-  `threadschedule::abi::*` runtime helpers
-- **Use case**: Multi-DSO applications requiring single registry instance
+- **Surface**: `threadschedule::abi::*` runtime helpers, opaque handles,
+  versioned POD records, and strict rejection of unsafe runtime C++ APIs
+- **Use case**: Multi-DSO or plugin boundaries, especially mixed C++17/C++23
+  components
 
 ### Usage
 ```cmake

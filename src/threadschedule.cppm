@@ -47,7 +47,11 @@ using ::threadschedule::CPUSetType;
 
 // -- scheduler_policy.hpp ---------------------------------------------------
 using ::threadschedule::SchedulingPolicy;
+using ::threadschedule::SchedulingIntent;
 using ::threadschedule::ThreadPriority;
+using ::threadschedule::ThreadSchedulingConfig;
+using ::threadschedule::ThreadConfig;
+using ::threadschedule::PriorityModel;
 using ::threadschedule::ThreadAffinity;
 using ::threadschedule::SchedulerParams;
 using ::threadschedule::to_string;
@@ -73,9 +77,6 @@ using ::threadschedule::CompositeThreadRegistry;
 using ::threadschedule::AutoRegisterCurrentThread;
 using ::threadschedule::registry;
 using ::threadschedule::set_external_registry;
-#ifndef THREADSCHEDULE_RUNTIME
-using ::threadschedule::detail::registry_storage;
-#endif
 
 // -- error_handler.hpp ------------------------------------------------------
 using ::threadschedule::TaskError;
@@ -201,6 +202,50 @@ export namespace threadschedule::profiles {
     using ::threadschedule::profiles::low_latency;
     using ::threadschedule::profiles::throughput;
     using ::threadschedule::profiles::background;
+}
+
+export namespace threadschedule::schedule {
+    using ::threadschedule::schedule::background;
+    using ::threadschedule::schedule::interactive;
+    using ::threadschedule::schedule::low_latency;
+    using ::threadschedule::schedule::native;
+    using ::threadschedule::schedule::native_windows_priority;
+    using ::threadschedule::schedule::normal;
+    using ::threadschedule::schedule::posix_nice;
+    using ::threadschedule::schedule::realtime_fifo;
+    using ::threadschedule::schedule::realtime_rr;
+}
+
+export namespace threadschedule::abi {
+using ::threadschedule::abi::abi_duration_ns;
+using ::threadschedule::abi::abi_size;
+using ::threadschedule::abi::abi_tid;
+using ::threadschedule::abi::abi_version;
+using ::threadschedule::abi::abi_version_major;
+using ::threadschedule::abi::abi_version_minor;
+using ::threadschedule::abi::abi_version_patch;
+using ::threadschedule::abi::affinity_view;
+using ::threadschedule::abi::duration;
+using ::threadschedule::abi::error_callback;
+using ::threadschedule::abi::pool_config;
+using ::threadschedule::abi::pool_handle;
+using ::threadschedule::abi::pool_stats_view;
+using ::threadschedule::abi::priority_kind;
+using ::threadschedule::abi::registry_handle;
+using ::threadschedule::abi::scheduled_pool_handle;
+using ::threadschedule::abi::scheduled_task_handle;
+using ::threadschedule::abi::scheduling_intent;
+using ::threadschedule::abi::scheduling_policy;
+using ::threadschedule::abi::scheduling_request;
+using ::threadschedule::abi::shutdown_policy;
+using ::threadschedule::abi::status;
+using ::threadschedule::abi::status_code;
+using ::threadschedule::abi::string_ref;
+using ::threadschedule::abi::task_callback;
+using ::threadschedule::abi::task_completion_callback;
+using ::threadschedule::abi::thread_handle;
+using ::threadschedule::abi::thread_info_callback;
+using ::threadschedule::abi::thread_info_view;
 }
 
 // Convenience namespace alias
