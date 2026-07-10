@@ -19,6 +19,8 @@ Notes:
 - The documentation includes headers under `include/` and uses the repository `README.md` as the landing page.
 
 Additional guides:
+- [ThreadSchedule v3 API Design](API_DESIGN_V3.md)
+- [Migrating to v3.0](MIGRATION_V3.md)
 - [Migrating to v2.0](MIGRATION_V2.md)
 - [Integration Guide](INTEGRATION.md)
 - [Thread Registry](REGISTRY.md)
@@ -28,4 +30,3 @@ Additional guides:
 - [Profiles](PROFILES.md)
 - [Topology & NUMA](TOPOLOGY_NUMA.md)
 - [Chaos Testing](CHAOS_TESTING.md)
-

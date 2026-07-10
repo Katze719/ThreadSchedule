@@ -6,7 +6,35 @@ This directory contains real integration tests for the global thread registry fe
 
 These scenarios validate the different registry patterns documented in `docs/REGISTRY.md` in real-world multi-library setups.
 
+For ThreadSchedule 3.0, new cross-DSO tests should prioritize the stable ABI
+path (`ThreadSchedule::StableAbi` and `threadschedule::abi::*`). The older
+`registry()`-based runtime scenarios remain useful compatibility coverage, but
+they are no longer the preferred plugin boundary.
+
 ## Scenarios
+
+### stable_abi_runtime/
+
+**Pattern:** C++17 producer and C++23 consumer communicate through stable ABI
+handles only.
+
+**Setup:**
+- Producer DSO links `ThreadSchedule::StableAbi`
+- Consumer executable links `ThreadSchedule::StableAbi`
+- DSO exports app/plugin functions that accept or return ABI handles, not
+  `ThreadRegistry*` or other C++ implementation types
+
+**What it should test:**
+- registry handle passing, registration, enumeration, and cleanup
+- callback string views copied by the consumer when needed
+- invalid-handle status behavior
+- pool handle passing, callback task execution, stats, wait, shutdown, cleanup
+- installed `ThreadSchedule::StableAbi` consumption from mixed C++ standards
+- no exported DSO headers require ThreadSchedule C++ implementation classes
+
+**Build requirement:** `THREADSCHEDULE_RUNTIME=ON`
+
+---
 
 ### 1. runtime_single/
 

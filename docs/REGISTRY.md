@@ -4,7 +4,7 @@ This guide explains how to use the process-wide thread registry in common scenar
 
 ### What is the registry?
 
-The registry provides a process-wide view of running threads and APIs to control them (affinity, priority, scheduling policy, name). It is header-only by default (with an optional shared runtime), opt-in, and compatible with both Linux and Windows.
+The registry provides a process-wide view of running threads and APIs to control them (affinity, priority, scheduling policy, name). For ThreadSchedule 3.0 and later, plugin and cross-DSO boundaries should use the stable `threadschedule::abi::*` handle API instead of exporting registry C++ types.
 
 ### Registry Architecture Overview
 
@@ -299,6 +299,9 @@ Build-time migration helpers:
   `AutoRegisterCurrentThread` as deprecated for DSO boundaries.
 - `THREADSCHEDULE_STABLE_ABI_STRICT=ON` rejects those legacy runtime entrypoints
   at compile time and forces use of `threadschedule::abi::*`.
+- `ThreadSchedule::StableAbi` links the shared runtime and enables strict stable
+  ABI mode for consumers that expose ThreadSchedule-related capabilities across
+  binary boundaries.
 
 ### Header-only builds and multiple DSOs
 

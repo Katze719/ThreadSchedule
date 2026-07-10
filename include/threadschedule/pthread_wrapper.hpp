@@ -178,6 +178,26 @@ class PThreadWrapper
         return detail::apply_scheduling_policy(thread_, policy, priority);
     }
 
+    [[nodiscard]] auto configure(ThreadSchedulingConfig const& config) const -> expected<void, std::error_code>
+    {
+        auto const scheduling = detail::resolve_scheduling_config(config);
+        return set_scheduling_policy(scheduling.policy, scheduling.priority);
+    }
+
+    [[nodiscard]] auto configure(ThreadConfig const& config) const -> expected<void, std::error_code>
+    {
+        bool success = true;
+        if (!config.name.empty() && !set_name(config.name).has_value())
+            success = false;
+        if (!configure(config.scheduling).has_value())
+            success = false;
+        if (config.affinity.has_value() && !set_affinity(*config.affinity).has_value())
+            success = false;
+        if (success)
+            return {};
+        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+    }
+
     [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) const -> expected<void, std::error_code>
     {
         return detail::apply_affinity(thread_, affinity);
@@ -223,6 +243,14 @@ class PThreadWrapper
         PThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
         (void)wrapper.set_name(name);
         (void)wrapper.set_scheduling_policy(policy, priority);
+        return wrapper;
+    }
+
+    template <typename F, typename... Args>
+    static auto create_with_config(ThreadConfig const& config, F&& f, Args&&... args) -> PThreadWrapper
+    {
+        PThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
+        (void)wrapper.configure(config);
         return wrapper;
     }
 

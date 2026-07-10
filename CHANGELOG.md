@@ -1,5 +1,54 @@
 # Changelog
 
+## v3.0.0
+
+> This release is planned as a breaking cleanup release. It makes the stable ABI
+> the foundation for runtime and cross-DSO use, unifies the public C++ API, and
+> redesigns priority/scheduling around clear user intent.
+
+### Breaking Changes
+
+- **Stable ABI becomes the runtime boundary** -- exported runtime APIs move
+  to C-compatible `threadschedule_abi_*` functions using opaque handles, POD
+  config structs, fixed-width status codes, and function-pointer callbacks.
+  Public C++ classes remain source-level convenience wrappers and are not a
+  supported ABI boundary. (`abi.hpp`, `runtime_registry.cpp`)
+
+- **Public API cleanup and consolidation** -- redundant aliases, legacy 2.x
+  migration paths, and overlapping entry points are removed or redirected
+  into one consistent wrapper style for registry, threads, pools, scheduled
+  tasks, and profiles. (`threadschedule.hpp`, `thread_pool.hpp`,
+  `thread_registry.hpp`)
+
+- **Priority and scheduling redesign** -- scheduling is exposed through
+  understandable intent-based requests such as background, normal, low-latency,
+  and realtime, with explicit advanced native controls for POSIX and Windows.
+  This replaces ambiguous raw-priority usage in user-facing APIs.
+  (`scheduler_policy.hpp`, `profiles.hpp`)
+
+### Implemented Foundation
+
+- **Pool stable ABI** -- added ABI-owned `pool_handle` lifecycle, post, wait,
+  shutdown, and statistics functions with callback-based task execution.
+  (`abi.hpp`, `runtime_registry.cpp`, `abi_test.cpp`)
+
+- **Unified scheduling config** -- added `ThreadSchedulingConfig`,
+  `ThreadConfig`, and `schedule::*` factories, then wired them through thread
+  wrappers, pthread wrappers, registries, and pools. (`scheduler_policy.hpp`,
+  `thread_wrapper.hpp`, `pthread_wrapper.hpp`, `thread_registry.hpp`,
+  `thread_pool.hpp`)
+
+- **Mixed C++17/C++23 ABI integration** -- added an install-tree integration
+  scenario where a C++17 producer DSO and C++23 consumer executable communicate
+  only through `ThreadSchedule::StableAbi` and `threadschedule::abi::*`.
+  (`integration_tests/stable_abi_runtime`)
+
+### Planning Docs
+
+- **New v3 design documents** -- added the initial API design and migration
+  guides for the 3.0.0 branch. (`docs/API_DESIGN_V3.md`,
+  `docs/MIGRATION_V3.md`)
+
 ## v2.4.0
 
 > This release adds an explicit stable-ABI subset for shared-runtime / DSO

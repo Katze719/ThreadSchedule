@@ -30,11 +30,46 @@ The stable ABI subset is intentionally small and C-like:
 - `threadschedule::abi::status` / `status_code`
 - `threadschedule::abi::thread_info_view`
 - `threadschedule::abi::thread_info_callback`
+- `threadschedule::abi::pool_handle`
+- `threadschedule::abi::pool_config`
+- `threadschedule::abi::pool_stats_view`
+- `threadschedule::abi::task_callback`
+- `threadschedule::abi::task_completion_callback`
 - `threadschedule::abi::create_registry()`, `destroy_registry(...)`,
   `current_registry()`, `set_external_registry(...)`,
   `registry_for_each(...)`, `register_current_thread(...)`,
   `unregister_current_thread(...)`
+- `threadschedule::abi::create_pool()`, `destroy_pool(...)`,
+  `pool_post(...)`, `pool_wait(...)`, `pool_shutdown(...)`,
+  `pool_stats(...)`
 - `threadschedule::abi::AutoRegisterCurrentThread`
+
+## Versioned ABI policy for v3.x
+
+ThreadSchedule 3.0 makes the ABI boundary explicit:
+
+- `threadschedule_abi_*` exported functions and the POD/handle types in
+  `threadschedule::abi` are the stable cross-DSO contract.
+- Source-level C++ wrappers may change in 3.0 and are not a binary contract.
+- A C++17 library may expose ThreadSchedule ABI handles to a C++23 consumer.
+- ABI structs use fixed-width scalar types where possible and include
+  version/size fields when they are expected to evolve.
+- ABI callbacks are `noexcept` by contract and must not throw across the
+  boundary.
+- ABI handles are opaque runtime-owned values; consumers must not reinterpret
+  them as C++ implementation objects.
+- Borrowed views such as `string_ref` and callback view pointers are valid only
+  for the duration documented by the ABI function that supplied them.
+
+Compatibility rule:
+
+- 3.x releases may add new ABI functions and append versioned struct fields.
+- 3.x releases must not reorder, remove, or change existing ABI fields or
+  exported function signatures once declared stable.
+- Breaking the stable ABI requires a future major release.
+
+CI should protect this with layout/static-signature tests, strict-mode compile
+checks, and mixed-standard integration tests.
 
 Do not export these runtime-oriented C++ types as part of your own DSO ABI:
 
@@ -43,6 +78,24 @@ Do not export these runtime-oriented C++ types as part of your own DSO ABI:
 - `AutoRegisterCurrentThread`
 - callbacks or virtual interfaces that embed those types, `std::string`, or
   other STL-heavy registry payloads directly in the exported signature
+
+## Lifetime and ownership rules
+
+The stable ABI avoids allocator and ownership transfer across DSOs. Follow these
+rules at every exported boundary:
+
+- Create and destroy `registry_handle` and `pool_handle` values through
+  `threadschedule::abi::*` / `threadschedule_abi_*` functions only.
+- Do not reinterpret an opaque handle as `ThreadRegistry`, `ThreadPool`, or any
+  other implementation object.
+- Do not call destroy concurrently with other operations on the same handle.
+- `thread_info_view const*` and its `string_ref` fields are borrowed callback
+  data. Copy anything you need after the callback returns.
+- `task_callback` and `task_completion_callback` must be `noexcept`.
+- `pool_post` user data remains owned by the caller. It must stay valid until
+  the task callback and, when provided, the completion callback have returned.
+- If you need to release caller-owned task state deterministically, use the
+  completion callback or call `pool_wait` / draining shutdown before release.
 
 ## Build-time migration helpers
 
@@ -105,8 +158,8 @@ Important scope note:
   ABI, for example 64-bit little-endian Linux
 - it is not a promise that a 32-bit build and a 64-bit build have identical
   layouts
-- the examples below assume a typical 64-bit build with 8-byte pointers,
-  8-byte `std::size_t`, and 4-byte `Tid`
+- the examples below assume a typical 64-bit build with 8-byte pointers and
+  little-endian integer encoding
 
 At that level, the core stable ABI types look like this:
 
@@ -119,19 +172,27 @@ enum class status_code : std::uint32_t {
     ok = 0,
     invalid_argument = 1,
     runtime_error = 2,
+    not_supported = 3,
+    permission_denied = 4,
+    shutdown = 5,
 };
 
 struct status {
+    std::uint32_t size;          // sizeof(status)
+    std::uint32_t version;       // packed ABI version
     status_code code;            // 4 bytes
+    std::uint32_t reserved;      // currently zero
 };
 
 struct string_ref {
     char const* data;            // pointer to bytes owned elsewhere
-    std::size_t size;            // byte count, not including any trailing NUL
+    std::uint64_t size;          // byte count, not including any trailing NUL
 };
 
 struct thread_info_view {
-    Tid tid;                     // usually 4 bytes
+    std::uint32_t size;          // sizeof(thread_info_view)
+    std::uint32_t version;       // packed ABI version
+    std::uint64_t tid;           // OS thread id widened for ABI transport
     string_ref name;             // pointer + size
     string_ref component_tag;    // pointer + size
     std::uint8_t alive;          // 0 or 1
@@ -154,17 +215,19 @@ The consumer must not interpret that address as a `ThreadRegistry` object. It
 only stores the pointer and passes it back into other `threadschedule::abi::*`
 entrypoints.
 
-`status` is even smaller. Because `status_code` has an explicit
-`std::uint32_t` underlying type, the object is just one 32-bit integer:
+`status` carries its own shape and ABI version. Because every field is a
+32-bit value, the object is exactly 16 bytes:
 
 ```text
-status{status_code::ok}               -> 00 00 00 00
-status{status_code::invalid_argument} -> 01 00 00 00
-status{status_code::runtime_error}    -> 02 00 00 00
+offset  size  field
+0x00    4     size = sizeof(status)
+0x04    4     version = threadschedule::abi::abi_version
+0x08    4     code
+0x0c    4     reserved
 ```
 
-On little-endian machines, the least significant byte comes first, which is
-why `invalid_argument` appears as `01 00 00 00`.
+On little-endian machines, `status_code::invalid_argument` appears in the
+`code` field as `01 00 00 00`.
 
 The more interesting case is `thread_info_view`. Suppose the runtime is about
 to invoke the callback for this thread:
@@ -178,14 +241,13 @@ to invoke the callback for this thread:
 The runtime bridge constructs it like this:
 
 ```cpp
-::threadschedule::abi::thread_info_view view{
-    info.tid,
-    {info.name.data(), info.name.size()},
-    {info.componentTag.data(), info.componentTag.size()},
-    static_cast<std::uint8_t>(info.alive ? 1U : 0U),
-    static_cast<std::uint8_t>(info.control ? 1U : 0U),
-    {0, 0, 0, 0, 0, 0},
-};
+::threadschedule::abi::thread_info_view view{};
+view.tid = static_cast<::threadschedule::abi::abi_tid>(info.tid);
+view.name = {info.name.data(), static_cast<::threadschedule::abi::abi_size>(info.name.size())};
+view.component_tag = {info.componentTag.data(),
+                      static_cast<::threadschedule::abi::abi_size>(info.componentTag.size())};
+view.alive = static_cast<std::uint8_t>(info.alive ? 1U : 0U);
+view.has_control_block = static_cast<std::uint8_t>(info.control ? 1U : 0U);
 ```
 
 On a typical 64-bit little-endian target, the object layout is:
@@ -194,30 +256,32 @@ On a typical 64-bit little-endian target, the object layout is:
 thread_info_view at 0x00007ffc913749f0
 
 offset  size  field
-0x00    4     tid
-0x04    4     alignment padding
-0x08    8     name.data
-0x10    8     name.size
-0x18    8     component_tag.data
-0x20    8     component_tag.size
-0x28    1     alive
-0x29    1     has_control_block
-0x2a    6     reserved
+0x00    4     size = sizeof(thread_info_view)
+0x04    4     version = threadschedule::abi::abi_version
+0x08    8     tid
+0x10    8     name.data
+0x18    8     name.size
+0x20    8     component_tag.data
+0x28    8     component_tag.size
+0x30    1     alive
+0x31    1     has_control_block
+0x32    6     reserved
 ```
 
 One concrete byte dump could look like:
 
 ```text
 offset  bytes                                        meaning
-0x00    2e 16 00 00                                 tid = 0x0000162e
-0x04    ?? ?? ?? ??                                 alignment padding
-0x08    40 30 10 52 fc 7f 00 00                     name.data = 0x00007ffc52103040
-0x10    04 00 00 00 00 00 00 00                     name.size = 4
-0x18    48 30 10 52 fc 7f 00 00                     component_tag.data = 0x00007ffc52103048
-0x20    06 00 00 00 00 00 00 00                     component_tag.size = 6
-0x28    01                                          alive = true
-0x29    01                                          has_control_block = true
-0x2a    00 00 00 00 00 00                          reserved bytes
+0x00    38 00 00 00                                 size = 56
+0x04    00 00 00 03                                 version = 3.0.0 packed
+0x08    2e 16 00 00 00 00 00 00                     tid = 0x0000162e
+0x10    40 30 10 52 fc 7f 00 00                     name.data = 0x00007ffc52103040
+0x18    04 00 00 00 00 00 00 00                     name.size = 4
+0x20    48 30 10 52 fc 7f 00 00                     component_tag.data = 0x00007ffc52103048
+0x28    06 00 00 00 00 00 00 00                     component_tag.size = 6
+0x30    01                                          alive = true
+0x31    01                                          has_control_block = true
+0x32    00 00 00 00 00 00                          reserved bytes
 ```
 
 The pointed-to string bytes live somewhere else:

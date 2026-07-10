@@ -785,6 +785,26 @@ class ThreadRegistry : public detail::QueryFacadeMixin<ThreadRegistry>
         return blk->set_scheduling_policy(policy, priority);
     }
 
+    [[nodiscard]] auto configure(Tid tid, ThreadSchedulingConfig const& config) const -> expected<void, std::error_code>
+    {
+        auto const scheduling = detail::resolve_scheduling_config(config);
+        return set_scheduling_policy(tid, scheduling.policy, scheduling.priority);
+    }
+
+    [[nodiscard]] auto configure(Tid tid, ThreadConfig const& config) const -> expected<void, std::error_code>
+    {
+        bool success = true;
+        if (!config.name.empty() && !set_name(tid, config.name).has_value())
+            success = false;
+        if (!configure(tid, config.scheduling).has_value())
+            success = false;
+        if (config.affinity.has_value() && !set_affinity(tid, *config.affinity).has_value())
+            success = false;
+        if (success)
+            return {};
+        return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+    }
+
     [[nodiscard]] auto set_name(Tid tid, std::string const& name) const -> expected<void, std::error_code>
     {
         auto blk = lock_block(tid);

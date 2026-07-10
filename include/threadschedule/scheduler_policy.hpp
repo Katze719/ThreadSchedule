@@ -200,11 +200,119 @@ class ThreadPriority
     int priority_;
 };
 
+enum class SchedulingIntent : std::uint_fast8_t
+{
+    background,
+    normal,
+    interactive,
+    low_latency,
+    realtime
+};
+
+enum class PriorityModel : std::uint_fast8_t
+{
+    intent,
+    posix_nice,
+    posix_realtime,
+    windows_thread,
+    platform_native
+};
+
+struct ThreadSchedulingConfig
+{
+    SchedulingIntent intent{SchedulingIntent::normal};
+    SchedulingPolicy policy{SchedulingPolicy::OTHER};
+    ThreadPriority priority{ThreadPriority::normal()};
+    PriorityModel priority_model{PriorityModel::intent};
+};
+
+struct ResolvedScheduling
+{
+    SchedulingPolicy policy{SchedulingPolicy::OTHER};
+    ThreadPriority priority{ThreadPriority::normal()};
+};
+
+namespace schedule
+{
+[[nodiscard]] constexpr auto background() noexcept -> ThreadSchedulingConfig
+{
+    return {SchedulingIntent::background, SchedulingPolicy::IDLE, ThreadPriority::lowest(), PriorityModel::intent};
+}
+
+[[nodiscard]] constexpr auto normal() noexcept -> ThreadSchedulingConfig
+{
+    return {SchedulingIntent::normal, SchedulingPolicy::OTHER, ThreadPriority::normal(), PriorityModel::intent};
+}
+
+[[nodiscard]] constexpr auto interactive() noexcept -> ThreadSchedulingConfig
+{
+    return {SchedulingIntent::interactive, SchedulingPolicy::OTHER, ThreadPriority{-5}, PriorityModel::intent};
+}
+
+[[nodiscard]] constexpr auto low_latency() noexcept -> ThreadSchedulingConfig
+{
+    return {SchedulingIntent::low_latency, SchedulingPolicy::OTHER, ThreadPriority::highest(), PriorityModel::intent};
+}
+
+[[nodiscard]] constexpr auto realtime_fifo(int priority = 80) noexcept -> ThreadSchedulingConfig
+{
+    return {SchedulingIntent::realtime, SchedulingPolicy::FIFO, ThreadPriority{priority}, PriorityModel::posix_realtime};
+}
+
+[[nodiscard]] constexpr auto realtime_rr(int priority = 80) noexcept -> ThreadSchedulingConfig
+{
+    return {SchedulingIntent::realtime, SchedulingPolicy::RR, ThreadPriority{priority}, PriorityModel::posix_realtime};
+}
+
+[[nodiscard]] constexpr auto posix_nice(int nice_value) noexcept -> ThreadSchedulingConfig
+{
+    return {SchedulingIntent::normal, SchedulingPolicy::OTHER, ThreadPriority{nice_value}, PriorityModel::posix_nice};
+}
+
+[[nodiscard]] constexpr auto native(SchedulingPolicy policy, ThreadPriority priority) noexcept -> ThreadSchedulingConfig
+{
+    return {SchedulingIntent::normal, policy, priority, PriorityModel::platform_native};
+}
+
+[[nodiscard]] constexpr auto native_windows_priority(int priority) noexcept -> ThreadSchedulingConfig
+{
+    return {SchedulingIntent::normal, SchedulingPolicy::OTHER, ThreadPriority{priority}, PriorityModel::windows_thread};
+}
+} // namespace schedule
+
 namespace detail
 {
-inline auto is_realtime_policy(SchedulingPolicy policy) noexcept -> bool
+constexpr auto is_realtime_policy(SchedulingPolicy policy) noexcept -> bool
 {
     return policy == SchedulingPolicy::FIFO || policy == SchedulingPolicy::RR;
+}
+
+[[nodiscard]] constexpr auto resolve_scheduling_config(ThreadSchedulingConfig const& config) noexcept
+    -> ResolvedScheduling
+{
+    if (config.priority_model == PriorityModel::posix_realtime)
+    {
+        auto policy = is_realtime_policy(config.policy) ? config.policy : SchedulingPolicy::RR;
+        return {policy, config.priority};
+    }
+
+    if (config.priority_model != PriorityModel::intent)
+        return {config.policy, config.priority};
+
+    switch (config.intent)
+    {
+    case SchedulingIntent::background:
+        return {SchedulingPolicy::IDLE, ThreadPriority::lowest()};
+    case SchedulingIntent::interactive:
+        return {SchedulingPolicy::OTHER, ThreadPriority{-5}};
+    case SchedulingIntent::low_latency:
+        return {SchedulingPolicy::OTHER, ThreadPriority::highest()};
+    case SchedulingIntent::realtime:
+        return {is_realtime_policy(config.policy) ? config.policy : SchedulingPolicy::RR, config.priority};
+    case SchedulingIntent::normal:
+    default:
+        return {SchedulingPolicy::OTHER, ThreadPriority::normal()};
+    }
 }
 
 #ifdef _WIN32
@@ -418,6 +526,13 @@ class ThreadAffinity
 #else
     cpu_set_t cpuset_;
 #endif
+};
+
+struct ThreadConfig
+{
+    std::string name{};
+    ThreadSchedulingConfig scheduling{schedule::normal()};
+    std::optional<ThreadAffinity> affinity{};
 };
 
 /**

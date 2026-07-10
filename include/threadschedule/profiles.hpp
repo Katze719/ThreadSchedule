@@ -80,11 +80,13 @@ inline auto realtime() -> ThreadProfile
 }
 
 /**
- * @brief Low-latency interactive profile using RR scheduling.
+ * @brief Low-latency interactive profile that avoids real-time privileges.
  */
 inline auto low_latency() -> ThreadProfile
 {
-    return ThreadProfile{"low_latency", SchedulingPolicy::RR, ThreadPriority{75}, std::nullopt};
+    auto const config = schedule::low_latency();
+    auto const scheduling = detail::resolve_scheduling_config(config);
+    return ThreadProfile{"low_latency", scheduling.policy, scheduling.priority, std::nullopt};
 }
 
 /**

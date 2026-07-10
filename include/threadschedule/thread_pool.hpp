@@ -54,6 +54,30 @@ inline auto configure_worker_threads(WorkerRange& workers, std::string const& na
 }
 
 template <typename WorkerRange>
+inline auto configure_worker_threads(WorkerRange& workers, ThreadConfig const& config)
+    -> expected<void, std::error_code>
+{
+    bool success = true;
+    auto const scheduling = resolve_scheduling_config(config.scheduling);
+    for (size_t i = 0; i < workers.size(); ++i)
+    {
+        if (!config.name.empty())
+        {
+            std::string const thread_name = config.name + "_" + std::to_string(i);
+            if (!workers[i].set_name(thread_name).has_value())
+                success = false;
+        }
+        if (!workers[i].set_scheduling_policy(scheduling.policy, scheduling.priority).has_value())
+            success = false;
+        if (config.affinity.has_value() && !workers[i].set_affinity(*config.affinity).has_value())
+            success = false;
+    }
+    if (success)
+        return {};
+    return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+}
+
+template <typename WorkerRange>
 inline auto set_worker_affinity(WorkerRange& workers, ThreadAffinity const& affinity) -> expected<void, std::error_code>
 {
     bool success = true;
@@ -1029,6 +1053,11 @@ class HighPerformancePool
         return detail::configure_worker_threads(workers_, name_prefix, policy, priority);
     }
 
+    auto configure_threads(ThreadConfig const& config) -> expected<void, std::error_code>
+    {
+        return detail::configure_worker_threads(workers_, config);
+    }
+
     /// @brief Pin all workers to the same CPU set.
     auto set_affinity(ThreadAffinity const& affinity) -> expected<void, std::error_code>
     {
@@ -1587,6 +1616,11 @@ class ThreadPoolBase
                            ThreadPriority priority = ThreadPriority::normal()) -> expected<void, std::error_code>
     {
         return detail::configure_worker_threads(workers_, name_prefix, policy, priority);
+    }
+
+    auto configure_threads(ThreadConfig const& config) -> expected<void, std::error_code>
+    {
+        return detail::configure_worker_threads(workers_, config);
     }
 
     /// @brief Pin all workers to the same CPU set.
@@ -2163,6 +2197,11 @@ class LightweightPoolT
                            ThreadPriority priority = ThreadPriority::normal()) -> expected<void, std::error_code>
     {
         return detail::configure_worker_threads(workers_, name_prefix, policy, priority);
+    }
+
+    auto configure_threads(ThreadConfig const& config) -> expected<void, std::error_code>
+    {
+        return detail::configure_worker_threads(workers_, config);
     }
 
     /// @brief Pin all workers to the same CPU set.

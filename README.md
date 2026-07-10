@@ -21,8 +21,9 @@ or with optional **shared runtime** for multi-DSO applications.
   feature detection and optimization
 - **C++20 Modules**: Optional `import threadschedule;` support (C++20+)
 - **Header-Only or Shared Runtime**: Choose based on your needs
-- **Stable ABI Subset**: `threadschedule::abi::*` helpers for runtime-backed
-  DSO/plugin boundaries across mixed language modes
+- **Stable ABI Subset**: `threadschedule::abi::*` helpers and
+  `ThreadSchedule::StableAbi` for runtime-backed DSO/plugin boundaries across
+  mixed language modes
 - **Enhanced Wrappers**: Extend `std::thread`, `std::jthread`, and `pthread`
   with powerful features
 - **Non-owning Views**: Zero-overhead views to configure existing threads or
@@ -30,8 +31,8 @@ or with optional **shared runtime** for multi-DSO applications.
 - **`ThreadInfo` Handles**: Lightweight bound thread handles for the current
   thread or any known `Tid`
 - **Thread Naming**: Human-readable thread names for debugging
-- **Priority & Scheduling**: Fine-grained control over thread priorities and
-  scheduling policies
+- **Priority & Scheduling**: Intent-based and native scheduling controls for
+  worker threads, pools, and registry-managed threads
 - **CPU Affinity**: Pin threads to specific CPU cores
 - **Global Control Registry**: Process-wide registry to list and control running
   threads (affinity, priority, name)
@@ -55,6 +56,25 @@ or with optional **shared runtime** for multi-DSO applications.
 - **Performance Metrics**: Built-in statistics and monitoring
 - **RAII & Exception Safety**: Automatic resource management
 - **Multiple Integration Methods**: CMake, CPM, Conan, FetchContent
+
+## What's new in v3.0
+
+Version 3.0 focuses on making the DSO boundary explicit and cleaning up the
+scheduling API. This is the branch for ABI-safe runtime integration and larger
+API cleanup work.
+
+| Area                              | What changed                                                                                                                                                         |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Stable ABI boundary**           | `threadschedule::abi::*` is now the supported cross-DSO contract. ABI records are POD-like, versioned where they can evolve, and use runtime-owned opaque handles. |
+| **Stable ABI target**             | `ThreadSchedule::StableAbi` links the shared runtime, requires C++17, and enables strict compile-time checks against unsafe runtime C++ APIs.                       |
+| **Pool ABI**                      | Runtime pools can cross plugin boundaries through `pool_handle`, `pool_config`, callback-based `pool_post`, wait/shutdown, and stats APIs.                         |
+| **Mixed-standard integration**    | Integration coverage now exercises a C++17 producer DSO with a C++23 consumer executable through the stable ABI path.                                               |
+| **Scheduling/Priority API**       | New `ThreadSchedulingConfig`, `ThreadConfig`, and `threadschedule::schedule::*` factories provide a cleaner interface for intent, POSIX nice, realtime, and native priorities. |
+| **Windows/realtime priority fixes** | Windows priority ordering no longer maps inverted nice semantics, and POSIX realtime priority uses the valid `1..99` range where higher means higher priority.     |
+
+For the design and migration details, see
+[Stable ABI](docs/STABLE_ABI.md), [v3 migration](docs/MIGRATION_V3.md), and
+[v3 API design](docs/API_DESIGN_V3.md).
 
 ## What's new in v2.2
 
@@ -101,6 +121,12 @@ when upgrading from v1.x.
 
 - **[Migrating to v2.0](docs/MIGRATION_V2.md)** - Breaking changes, renames, and
   recommended follow-ups from v1.x
+- **[Migrating to v3.0](docs/MIGRATION_V3.md)** - Stable ABI boundary,
+  scheduling cleanup, and source migration notes
+- **[Stable ABI](docs/STABLE_ABI.md)** - ABI-safe DSO/plugin integration with
+  opaque handles and callback-based runtime entrypoints
+- **[v3 API Design](docs/API_DESIGN_V3.md)** - Planned 3.0 API shape and
+  cleanup constraints
 - **[Integration Guide](docs/INTEGRATION.md)** - CMake, Conan, FetchContent,
   system installation
 - **[Thread Registry Guide](docs/REGISTRY.md)** - Process-wide thread control
@@ -207,6 +233,41 @@ target_link_libraries(your_app PRIVATE ThreadSchedule::ThreadSchedule)
 
 **Other integration methods:** See [docs/INTEGRATION.md](docs/INTEGRATION.md)
 for FetchContent, Conan, system installation, and shared runtime option.
+
+### Stable ABI / Plugin Boundary Usage
+
+For plugins, shared libraries, or mixed C++17/C++23 components, build the shared
+runtime and link exported-boundary code against `ThreadSchedule::StableAbi`:
+
+```cmake
+set(THREADSCHEDULE_RUNTIME ON)
+add_subdirectory(external/ThreadSchedule)
+
+add_library(my_plugin SHARED plugin.cpp)
+target_link_libraries(my_plugin PRIVATE ThreadSchedule::StableAbi)
+```
+
+Export only `threadschedule::abi::*` types across that boundary:
+
+```cpp
+#include <threadschedule/abi.hpp>
+
+namespace ts_abi = threadschedule::abi;
+
+THREADSCHEDULE_VALIDATE_STABLE_ABI_EXPORT(ts_abi::status, ts_abi::registry_handle);
+extern "C" auto plugin_start(ts_abi::registry_handle registry) noexcept -> ts_abi::status
+{
+    return ts_abi::register_current_thread(registry, "plugin-main", "plugin");
+}
+```
+
+Do not export `ThreadRegistry`, `RegisteredThreadInfo`, `ThreadPool`,
+`std::string`, `std::function`, `std::future`, exceptions, references, or C++
+ownership types as part of a DSO ABI. Use `registry_handle`, `pool_handle`,
+versioned POD records, and `noexcept` callbacks instead. Handles are
+runtime-owned, `string_ref` values are borrowed for the current callback only,
+and `pool_post` user data must remain valid until the task completion callback
+has run or the pool has been drained.
 
 ### C++20 Module Usage
 
@@ -419,14 +480,16 @@ int main() {
 **For multi-DSO applications:** Use the shared runtime option
 (`THREADSCHEDULE_RUNTIME=ON`) to ensure a single process-wide registry.
 
-If your app or plugin ABI crosses shared-library boundaries, prefer the stable
-ABI subset in `threadschedule::abi::*` instead of exporting
-`ThreadRegistry`, `RegisteredThreadInfo`, or `AutoRegisterCurrentThread`
-directly in your own ABI. Enabling `THREADSCHEDULE_STABLE_ABI=ON` adds
-deprecation warnings for runtime-backed APIs that are unsafe to expose across
-those boundaries, including mixed builds such as one DSO compiled as C++17 and
-another as C++23, and `THREADSCHEDULE_STABLE_ABI_STRICT=ON` turns those uses
-into compile errors. See [docs/REGISTRY.md](docs/REGISTRY.md) and
+If your app or plugin ABI crosses shared-library boundaries, use
+`ThreadSchedule::StableAbi` and the stable ABI subset in
+`threadschedule::abi::*` instead of exporting `ThreadRegistry`,
+`RegisteredThreadInfo`, `ThreadPool`, or `AutoRegisterCurrentThread` directly in
+your own ABI. Enabling `THREADSCHEDULE_STABLE_ABI=ON` adds deprecation warnings
+for runtime-backed APIs that are unsafe to expose across those boundaries,
+including mixed builds such as one DSO compiled as C++17 and another as C++23.
+`THREADSCHEDULE_STABLE_ABI_STRICT=ON` turns those uses into compile errors.
+See [docs/STABLE_ABI.md](docs/STABLE_ABI.md),
+[docs/REGISTRY.md](docs/REGISTRY.md), and
 [docs/CMAKE_REFERENCE.md](docs/CMAKE_REFERENCE.md) for the migration details.
 
 Notes:

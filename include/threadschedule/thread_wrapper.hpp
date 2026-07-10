@@ -125,6 +125,22 @@ inline auto configure_thread(ThreadLike& thread, std::string const& name, Schedu
         return {};
     return unexpected(std::make_error_code(std::errc::operation_not_permitted));
 }
+
+template <typename ThreadLike>
+inline auto configure_thread(ThreadLike& thread, ThreadConfig const& config) -> expected<void, std::error_code>
+{
+    bool success = true;
+    if (!config.name.empty() && !thread.set_name(config.name).has_value())
+        success = false;
+    auto const scheduling = resolve_scheduling_config(config.scheduling);
+    if (!thread.set_scheduling_policy(scheduling.policy, scheduling.priority).has_value())
+        success = false;
+    if (config.affinity.has_value() && !thread.set_affinity(*config.affinity).has_value())
+        success = false;
+    if (success)
+        return {};
+    return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+}
 } // namespace detail
 
 /**
@@ -241,6 +257,17 @@ class BaseThreadWrapper : protected detail::ThreadStorage<ThreadType, OwnershipT
         -> expected<void, std::error_code>
     {
         return detail::apply_scheduling_policy(native_handle(), policy, priority);
+    }
+
+    [[nodiscard]] auto configure(ThreadSchedulingConfig const& config) -> expected<void, std::error_code>
+    {
+        auto const scheduling = detail::resolve_scheduling_config(config);
+        return set_scheduling_policy(scheduling.policy, scheduling.priority);
+    }
+
+    [[nodiscard]] auto configure(ThreadConfig const& config) -> expected<void, std::error_code>
+    {
+        return detail::configure_thread(*this, config);
     }
 
     [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) -> expected<void, std::error_code>
@@ -431,6 +458,14 @@ class ThreadWrapper : public BaseThreadWrapper<std::thread, detail::OwningTag>
         (void)wrapper.set_scheduling_policy(policy, priority);
         return wrapper;
     }
+
+    template <typename F, typename... Args>
+    static auto create_with_config(ThreadConfig const& config, F&& f, Args&&... args) -> ThreadWrapper
+    {
+        ThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
+        (void)wrapper.configure(config);
+        return wrapper;
+    }
 };
 
 /**
@@ -579,6 +614,14 @@ class JThreadWrapper : public BaseThreadWrapper<std::jthread, detail::OwningTag>
         JThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
         (void)wrapper.set_name(name);
         (void)wrapper.set_scheduling_policy(policy, priority);
+        return wrapper;
+    }
+
+    template <typename F, typename... Args>
+    static auto create_with_config(ThreadConfig const& config, F&& f, Args&&... args) -> JThreadWrapper
+    {
+        JThreadWrapper wrapper(std::forward<F>(f), std::forward<Args>(args)...);
+        (void)wrapper.configure(config);
         return wrapper;
     }
 };
@@ -781,6 +824,17 @@ class ThreadByNameView
 #endif
     }
 
+    [[nodiscard]] auto configure(ThreadSchedulingConfig const& config) const -> expected<void, std::error_code>
+    {
+        auto const scheduling = detail::resolve_scheduling_config(config);
+        return set_scheduling_policy(scheduling.policy, scheduling.priority);
+    }
+
+    [[nodiscard]] auto configure(ThreadConfig const& config) const -> expected<void, std::error_code>
+    {
+        return detail::configure_thread(*this, config);
+    }
+
     [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
@@ -873,6 +927,17 @@ class ThreadInfo
         if (has_native_handle())
             return detail::apply_scheduling_policy(native_handle(), policy, priority);
         return detail::apply_scheduling_policy(tid_, policy, priority);
+    }
+
+    [[nodiscard]] auto configure(ThreadSchedulingConfig const& config) const -> expected<void, std::error_code>
+    {
+        auto const scheduling = detail::resolve_scheduling_config(config);
+        return set_scheduling_policy(scheduling.policy, scheduling.priority);
+    }
+
+    [[nodiscard]] auto configure(ThreadConfig const& config) const -> expected<void, std::error_code>
+    {
+        return detail::configure_thread(*this, config);
     }
 
     [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) const -> expected<void, std::error_code>

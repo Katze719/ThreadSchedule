@@ -291,6 +291,20 @@ if(THREADSCHEDULE_RUNTIME)
         OUTPUT_NAME_DEBUG "threadscheduled"
     )
     add_library(ThreadSchedule::Runtime ALIAS ThreadScheduleRuntime)
+
+    add_library(ThreadScheduleStableAbi INTERFACE)
+    add_library(ThreadSchedule::StableAbi ALIAS ThreadScheduleStableAbi)
+    target_include_directories(ThreadScheduleStableAbi INTERFACE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    )
+    target_compile_features(ThreadScheduleStableAbi INTERFACE cxx_std_17)
+    target_compile_definitions(ThreadScheduleStableAbi INTERFACE
+        THREADSCHEDULE_RUNTIME=1
+        THREADSCHEDULE_STABLE_ABI=1
+        THREADSCHEDULE_STABLE_ABI_STRICT=1
+    )
+    target_link_libraries(ThreadScheduleStableAbi INTERFACE ThreadScheduleRuntime)
 endif()
 
 # Optional C++20 module target (requires CMake >= 3.28 and C++20 or later)
@@ -444,7 +458,7 @@ if(THREADSCHEDULE_INSTALL)
     )
 
     if(THREADSCHEDULE_RUNTIME)
-        install(TARGETS ThreadScheduleRuntime
+        install(TARGETS ThreadScheduleRuntime ThreadScheduleStableAbi
             EXPORT ThreadScheduleTargets
             LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}

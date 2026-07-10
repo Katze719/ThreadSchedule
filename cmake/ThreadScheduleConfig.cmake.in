@@ -23,6 +23,11 @@ if(TARGET ThreadSchedule::ThreadScheduleRuntime AND NOT TARGET ThreadSchedule::R
     add_library(ThreadSchedule::Runtime ALIAS ThreadSchedule::ThreadScheduleRuntime)
 endif()
 
+# Provide convenient alias for the strict stable ABI target if present
+if(TARGET ThreadSchedule::ThreadScheduleStableAbi AND NOT TARGET ThreadSchedule::StableAbi)
+    add_library(ThreadSchedule::StableAbi ALIAS ThreadSchedule::ThreadScheduleStableAbi)
+endif()
+
 # Verify that targets exist
 check_required_components(ThreadSchedule)
 
@@ -32,4 +37,3 @@ set(ThreadSchedule_VERSION "@PROJECT_VERSION@")
 set(ThreadSchedule_VERSION_MAJOR "@PROJECT_VERSION_MAJOR@")
 set(ThreadSchedule_VERSION_MINOR "@PROJECT_VERSION_MINOR@")
 set(ThreadSchedule_VERSION_PATCH "@PROJECT_VERSION_PATCH@")
-
