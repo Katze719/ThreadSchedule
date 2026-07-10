@@ -301,7 +301,7 @@ class PThreadAttributes
     auto operator=(PThreadAttributes const&) -> PThreadAttributes& = delete;
 
     // Movable
-    PThreadAttributes(PThreadAttributes&& other) noexcept : attr_(other.attr_)
+    PThreadAttributes(PThreadAttributes&& other) noexcept : attr_(other.attr_), policy_(other.policy_)
     {
         if (pthread_attr_init(&other.attr_) != 0)
         {
@@ -315,6 +315,7 @@ class PThreadAttributes
         {
             pthread_attr_destroy(&attr_);
             attr_ = other.attr_;
+            policy_ = other.policy_;
             if (pthread_attr_init(&other.attr_) != 0)
             {
                 std::terminate(); // Can't throw from move assignment
@@ -352,14 +353,18 @@ class PThreadAttributes
     auto set_scheduling_policy(SchedulingPolicy policy) -> bool
     {
         int const policy_int = static_cast<int>(policy);
-        return pthread_attr_setschedpolicy(&attr_, policy_int) == 0;
+        if (pthread_attr_setschedpolicy(&attr_, policy_int) != 0)
+            return false;
+        policy_ = policy;
+        return true;
     }
 
     auto set_scheduling_parameter(ThreadPriority priority) -> bool
     {
-        sched_param param{};
-        param.sched_priority = priority.value();
-        return pthread_attr_setschedparam(&attr_, &param) == 0;
+        auto params = SchedulerParams::create_for_policy(policy_, priority);
+        if (!params.has_value())
+            return false;
+        return pthread_attr_setschedparam(&attr_, &params.value()) == 0;
     }
 
     auto set_inherit_sched(bool inherit) -> bool
@@ -407,6 +412,7 @@ class PThreadAttributes
 
   private:
     pthread_attr_t attr_;
+    SchedulingPolicy policy_{SchedulingPolicy::OTHER};
 };
 
 /**
