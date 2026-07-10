@@ -21,6 +21,8 @@ or with optional **shared runtime** for multi-DSO applications.
   feature detection and optimization
 - **C++20 Modules**: Optional `import threadschedule;` support (C++20+)
 - **Header-Only or Shared Runtime**: Choose based on your needs
+- **Stable ABI Subset**: `threadschedule::abi::*` helpers for runtime-backed
+  DSO/plugin boundaries across mixed language modes
 - **Enhanced Wrappers**: Extend `std::thread`, `std::jthread`, and `pthread`
   with powerful features
 - **Non-owning Views**: Zero-overhead views to configure existing threads or
@@ -102,7 +104,7 @@ when upgrading from v1.x.
 - **[Integration Guide](docs/INTEGRATION.md)** - CMake, Conan, FetchContent,
   system installation
 - **[Thread Registry Guide](docs/REGISTRY.md)** - Process-wide thread control
-  and multi-DSO patterns
+  and multi-DSO / stable-ABI patterns
 - **[Scheduled Tasks Guide](docs/SCHEDULED_TASKS.md)** - Timer and periodic task
   scheduling
 - **[Error Handling Guide](docs/ERROR_HANDLING.md)** - Exception handling with
@@ -415,8 +417,17 @@ int main() {
 ```
 
 **For multi-DSO applications:** Use the shared runtime option
-(`THREADSCHEDULE_RUNTIME=ON`) to ensure a single process-wide registry. See
-[docs/REGISTRY.md](docs/REGISTRY.md) for detailed patterns.
+(`THREADSCHEDULE_RUNTIME=ON`) to ensure a single process-wide registry.
+
+If your app or plugin ABI crosses shared-library boundaries, prefer the stable
+ABI subset in `threadschedule::abi::*` instead of exporting
+`ThreadRegistry`, `RegisteredThreadInfo`, or `AutoRegisterCurrentThread`
+directly in your own ABI. Enabling `THREADSCHEDULE_STABLE_ABI=ON` adds
+deprecation warnings for runtime-backed APIs that are unsafe to expose across
+those boundaries, including mixed builds such as one DSO compiled as C++17 and
+another as C++23, and `THREADSCHEDULE_STABLE_ABI_STRICT=ON` turns those uses
+into compile errors. See [docs/REGISTRY.md](docs/REGISTRY.md) and
+[docs/CMAKE_REFERENCE.md](docs/CMAKE_REFERENCE.md) for the migration details.
 
 Notes:
 

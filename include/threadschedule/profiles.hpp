@@ -76,7 +76,7 @@ inline auto realtime() -> ThreadProfile
 #else
                          SchedulingPolicy::FIFO,
 #endif
-                         ThreadPriority::highest(), std::nullopt};
+                         ThreadPriority::realtime_highest(), std::nullopt};
 }
 
 /**
@@ -84,7 +84,7 @@ inline auto realtime() -> ThreadProfile
  */
 inline auto low_latency() -> ThreadProfile
 {
-    return ThreadProfile{"low_latency", SchedulingPolicy::RR, ThreadPriority{5}, std::nullopt};
+    return ThreadProfile{"low_latency", SchedulingPolicy::RR, ThreadPriority{75}, std::nullopt};
 }
 
 /**
