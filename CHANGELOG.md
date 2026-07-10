@@ -43,6 +43,14 @@
   during normal compilation. (`thread_registry.hpp`, `runtime_registry.cpp`,
   `chaos.hpp`)
 
+- **Priority semantics are now policy-aware across platforms** --
+  `ThreadPriority` now supports the POSIX real-time priority range up to `99`
+  while preserving nice-style ordering for regular scheduling. Windows priority
+  mapping was corrected so higher ThreadSchedule priorities map to higher
+  Win32 thread priorities, and FIFO/RR policies now accept native real-time
+  values where larger numbers mean higher priority. (`scheduler_policy.hpp`,
+  `pthread_wrapper.hpp`, `profiles.hpp`)
+
 ### Tests
 
 - **New stable-ABI regression coverage** -- added dedicated tests for the new

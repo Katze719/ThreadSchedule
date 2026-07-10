@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <future>
 #include <threadschedule/threadschedule.hpp>
 
@@ -28,6 +29,15 @@ TEST_F(ThreadConfigTest, ThreadPriorityValueConstruction)
 {
     ThreadPriority priority(10);
     EXPECT_EQ(priority.value(), 10);
+
+    ThreadPriority realtime_priority(99);
+    EXPECT_EQ(realtime_priority.value(), 99);
+}
+
+TEST_F(ThreadConfigTest, ThreadPriorityClampsToSupportedRange)
+{
+    EXPECT_EQ(ThreadPriority{-100}.value(), ThreadPriority::highest().value());
+    EXPECT_EQ(ThreadPriority{150}.value(), ThreadPriority::realtime_highest().value());
 }
 
 TEST_F(ThreadConfigTest, ThreadPriorityFactoryMethods)
@@ -36,9 +46,11 @@ TEST_F(ThreadConfigTest, ThreadPriorityFactoryMethods)
     auto normal = ThreadPriority::normal();
     auto highest = ThreadPriority::highest();
 
-    EXPECT_LT(lowest.value(), normal.value());
+    EXPECT_GT(lowest.value(), normal.value());
     EXPECT_EQ(normal.value(), 0);
-    EXPECT_LT(normal.value(), highest.value());
+    EXPECT_GT(normal.value(), highest.value());
+    EXPECT_EQ(ThreadPriority::realtime_lowest().value(), 1);
+    EXPECT_EQ(ThreadPriority::realtime_highest().value(), 99);
 }
 
 TEST_F(ThreadConfigTest, ThreadPriorityComparison)
@@ -68,11 +80,31 @@ TEST_F(ThreadConfigTest, ThreadPriorityToString)
 
 TEST_F(ThreadConfigTest, ThreadPriorityMinMax)
 {
-    auto min_prio = ThreadPriority::lowest();
-    auto max_prio = ThreadPriority::highest();
+    auto lowest = ThreadPriority::lowest();
+    auto highest = ThreadPriority::highest();
 
-    EXPECT_LT(min_prio.value(), max_prio.value());
+    EXPECT_GT(lowest.value(), highest.value());
 }
+
+#ifdef _WIN32
+TEST_F(ThreadConfigTest, WindowsPriorityMappingUsesNiceSemantics)
+{
+    EXPECT_EQ(detail::map_priority_to_win32(ThreadPriority::highest().value()), THREAD_PRIORITY_TIME_CRITICAL);
+    EXPECT_EQ(detail::map_priority_to_win32(ThreadPriority{-5}.value()), THREAD_PRIORITY_ABOVE_NORMAL);
+    EXPECT_EQ(detail::map_priority_to_win32(ThreadPriority::normal().value()), THREAD_PRIORITY_NORMAL);
+    EXPECT_EQ(detail::map_priority_to_win32(ThreadPriority{5}.value()), THREAD_PRIORITY_BELOW_NORMAL);
+    EXPECT_EQ(detail::map_priority_to_win32(ThreadPriority::lowest().value()), THREAD_PRIORITY_IDLE);
+
+    auto params = SchedulerParams::create_for_policy(SchedulingPolicy::OTHER, ThreadPriority::highest());
+    ASSERT_TRUE(params.has_value());
+    EXPECT_EQ(params.value().sched_priority, THREAD_PRIORITY_TIME_CRITICAL);
+
+    auto realtime_params =
+        SchedulerParams::create_for_policy(SchedulingPolicy::FIFO, ThreadPriority::realtime_highest());
+    ASSERT_TRUE(realtime_params.has_value());
+    EXPECT_EQ(realtime_params.value().sched_priority, THREAD_PRIORITY_TIME_CRITICAL);
+}
+#endif
 
 // ==================== ThreadAffinity Tests ====================
 
@@ -219,6 +251,33 @@ TEST_F(ThreadConfigTest, SchedulerParamsFIFO)
     {
         EXPECT_GT(params.value().sched_priority, 0);
     }
+}
+
+TEST_F(ThreadConfigTest, SchedulerParamsFIFOMapsNiceSemanticsToNativePriority)
+{
+    auto highest = SchedulerParams::create_for_policy(SchedulingPolicy::FIFO, ThreadPriority::highest());
+    auto lowest = SchedulerParams::create_for_policy(SchedulingPolicy::FIFO, ThreadPriority::lowest());
+
+    ASSERT_TRUE(highest.has_value());
+    ASSERT_TRUE(lowest.has_value());
+    EXPECT_GT(highest.value().sched_priority, lowest.value().sched_priority);
+}
+
+TEST_F(ThreadConfigTest, SchedulerParamsFIFOAcceptsNativeRealtimePriorityRange)
+{
+    int const min_priority = sched_get_priority_min(static_cast<int>(SchedulingPolicy::FIFO));
+    int const max_priority = sched_get_priority_max(static_cast<int>(SchedulingPolicy::FIFO));
+
+    auto lowest = SchedulerParams::create_for_policy(SchedulingPolicy::FIFO, ThreadPriority::realtime_lowest());
+    auto middle = SchedulerParams::create_for_policy(SchedulingPolicy::FIFO, ThreadPriority{50});
+    auto highest = SchedulerParams::create_for_policy(SchedulingPolicy::FIFO, ThreadPriority::realtime_highest());
+
+    ASSERT_TRUE(lowest.has_value());
+    ASSERT_TRUE(middle.has_value());
+    ASSERT_TRUE(highest.has_value());
+    EXPECT_EQ(lowest.value().sched_priority, min_priority);
+    EXPECT_EQ(middle.value().sched_priority, std::clamp(50, min_priority, max_priority));
+    EXPECT_EQ(highest.value().sched_priority, max_priority);
 }
 #endif
 
