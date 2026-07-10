@@ -16,12 +16,12 @@
 #include <vector>
 
 #ifdef _WIN32
-#include <windows.h>
+#    include <windows.h>
 #else
-#include <pthread.h>
-#include <sched.h>
-#include <sys/resource.h>
-#include <sys/types.h>
+#    include <pthread.h>
+#    include <sched.h>
+#    include <sys/resource.h>
+#    include <sys/types.h>
 #endif
 
 namespace threadschedule
@@ -44,14 +44,14 @@ using Tid = pid_t; // Linux TID via gettid()
  * point of application.
  *
  * ### Linux behaviour
- * | Policy     | Description                                                                 | Privileges required          |
+ * | Policy     | Description                                                                 | Privileges required |
  * |------------|-----------------------------------------------------------------------------|------------------------------|
- * | OTHER      | Default CFS (Completely Fair Scheduler) time-sharing.                       | None                         |
- * | FIFO       | Real-time FIFO - runs until it yields or a higher-priority thread arrives.  | `CAP_SYS_NICE` or root       |
- * | RR         | Real-time round-robin - like FIFO but with a per-thread time quantum.       | `CAP_SYS_NICE` or root       |
- * | BATCH      | Like OTHER but the scheduler assumes the thread is CPU-bound (longer slices).| None                        |
- * | IDLE       | Extremely low priority; runs only when no other runnable thread exists.      | None                        |
- * | DEADLINE   | EDF (Earliest Deadline First) real-time scheduling (Linux >= 3.14).          | `CAP_SYS_NICE` or root       |
+ * | OTHER      | Default CFS (Completely Fair Scheduler) time-sharing.                       | None | | FIFO       |
+ * Real-time FIFO - runs until it yields or a higher-priority thread arrives.  | `CAP_SYS_NICE` or root       | | RR |
+ * Real-time round-robin - like FIFO but with a per-thread time quantum.       | `CAP_SYS_NICE` or root       | | BATCH
+ * | Like OTHER but the scheduler assumes the thread is CPU-bound (longer slices).| None                        | | IDLE
+ * | Extremely low priority; runs only when no other runnable thread exists.      | None                        | |
+ * DEADLINE   | EDF (Earliest Deadline First) real-time scheduling (Linux >= 3.14).          | `CAP_SYS_NICE` or root |
  *
  * ### Windows behaviour
  * Windows does not expose POSIX scheduling policies. The library maps each
@@ -82,28 +82,31 @@ enum class SchedulingPolicy : std::uint_fast8_t
     RR = SCHED_RR,       ///< Round-robin
     BATCH = SCHED_BATCH, ///< For batch style execution
     IDLE = SCHED_IDLE,   ///< For very low priority background tasks
-#ifdef SCHED_DEADLINE
+#    ifdef SCHED_DEADLINE
     DEADLINE = SCHED_DEADLINE ///< Real-time deadline scheduling
-#endif
+#    endif
 #endif
 };
 
 /**
  * @brief Value-semantic wrapper for a thread scheduling priority.
  *
- * Encapsulates a single integer priority in the range **[-20, 19]** - the same
- * range used by POSIX nice values on Linux. The value is silently clamped to
- * this range on construction (via `std::clamp`), so out-of-range inputs never
- * produce an invalid object.
+ * Encapsulates a single integer priority in the range **[-20, 99]**. The value
+ * is silently clamped to this range on construction (via `std::clamp`), so
+ * out-of-range inputs never produce an invalid object.
  *
  * ### Semantics
- * Lower numeric values denote **higher** scheduling priority (following the
- * Unix nice convention): -20 is the most favourable and 19 is the least.
+ * For regular scheduling, lower numeric values denote **higher** scheduling
+ * priority (following the Unix nice convention): -20 is the most favourable
+ * and 19 is the least. For POSIX real-time policies (`FIFO` / `RR`), positive
+ * values are treated as native real-time priorities where larger values mean
+ * higher priority (typically 1..99 on Linux).
  *
  * ### Platform notes
- * - **Linux:** The value is used directly as the nice level for `SCHED_OTHER`
- *   / `SCHED_BATCH` / `SCHED_IDLE`, or clamped to the real-time priority
- *   range for `SCHED_FIFO` / `SCHED_RR` by SchedulerParams::create_for_policy().
+ * - **Linux:** The value follows nice-level ordering for regular scheduling.
+ *   For real-time policies, SchedulerParams::create_for_policy() accepts
+ *   native positive real-time priorities directly and maps non-positive
+ *   nice-style values into the native POSIX priority range.
  * - **Windows:** The value is mapped to a Windows thread priority constant
  *   (e.g. `THREAD_PRIORITY_HIGHEST`, `THREAD_PRIORITY_LOWEST`) when applied.
  *
@@ -136,7 +139,7 @@ class ThreadPriority
 
     [[nodiscard]] static constexpr auto lowest() noexcept -> ThreadPriority
     {
-        return ThreadPriority(min_priority);
+        return ThreadPriority(max_nice_priority);
     }
     [[nodiscard]] static constexpr auto normal() noexcept -> ThreadPriority
     {
@@ -144,7 +147,15 @@ class ThreadPriority
     }
     [[nodiscard]] static constexpr auto highest() noexcept -> ThreadPriority
     {
-        return ThreadPriority(max_priority);
+        return ThreadPriority(min_nice_priority);
+    }
+    [[nodiscard]] static constexpr auto realtime_lowest() noexcept -> ThreadPriority
+    {
+        return ThreadPriority(min_realtime_priority);
+    }
+    [[nodiscard]] static constexpr auto realtime_highest() noexcept -> ThreadPriority
+    {
+        return ThreadPriority(max_realtime_priority);
     }
 
     [[nodiscard]] constexpr auto operator==(ThreadPriority const& other) const noexcept -> bool
@@ -180,10 +191,41 @@ class ThreadPriority
     }
 
   private:
-    static constexpr int min_priority = -20;
-    static constexpr int max_priority = 19;
+    static constexpr int min_nice_priority = -20;
+    static constexpr int max_nice_priority = 19;
+    static constexpr int min_realtime_priority = 1;
+    static constexpr int max_realtime_priority = 99;
+    static constexpr int min_priority = min_nice_priority;
+    static constexpr int max_priority = max_realtime_priority;
     int priority_;
 };
+
+namespace detail
+{
+inline auto is_realtime_policy(SchedulingPolicy policy) noexcept -> bool
+{
+    return policy == SchedulingPolicy::FIFO || policy == SchedulingPolicy::RR;
+}
+
+#ifdef _WIN32
+inline auto map_priority_to_win32(int prio_val) -> int
+{
+    if (prio_val <= -15)
+        return THREAD_PRIORITY_TIME_CRITICAL;
+    if (prio_val <= -10)
+        return THREAD_PRIORITY_HIGHEST;
+    if (prio_val < 0)
+        return THREAD_PRIORITY_ABOVE_NORMAL;
+    if (prio_val == 0)
+        return THREAD_PRIORITY_NORMAL;
+    if (prio_val <= 5)
+        return THREAD_PRIORITY_BELOW_NORMAL;
+    if (prio_val <= 10)
+        return THREAD_PRIORITY_LOWEST;
+    return THREAD_PRIORITY_IDLE;
+}
+#endif
+} // namespace detail
 
 /**
  * @brief Manages a set of CPU indices to which a thread may be bound.
@@ -398,11 +440,13 @@ class ThreadAffinity
  * Useful for normalising priorities across policies.
  *
  * ### Platform differences
- * - **Linux:** Delegates directly to POSIX `sched_get_priority_min` /
- *   `sched_get_priority_max` and populates a `sched_param`.
+ * - **Linux:** Delegates to POSIX `sched_get_priority_min` /
+ *   `sched_get_priority_max`. Positive priorities for real-time policies are
+ *   used as native POSIX values; non-positive values are mapped from
+ *   nice-style ordering into the native `sched_param` range.
  * - **Windows:** Returns a fixed range of 30 (mapping to the -15 ... +15
- *   Windows thread priority levels) and stores the raw priority in a
- *   lightweight `sched_param_win` POD.
+ *   Windows thread priority levels) and stores the mapped native thread
+ *   priority constant in a lightweight `sched_param_win` POD.
  *
  * ### Thread safety
  * All members are static and stateless; concurrent calls from any number of
@@ -426,8 +470,27 @@ class SchedulerParams
                                                                         ThreadPriority priority)
     {
         sched_param_win param{};
-        // On Windows, priority is directly used
-        param.sched_priority = priority.value();
+        if (detail::is_realtime_policy(policy) && priority.value() > 0)
+        {
+            int const value = std::clamp(priority.value(), 1, 99);
+            if (value >= 90)
+                param.sched_priority = THREAD_PRIORITY_TIME_CRITICAL;
+            else if (value >= 75)
+                param.sched_priority = THREAD_PRIORITY_HIGHEST;
+            else if (value >= 60)
+                param.sched_priority = THREAD_PRIORITY_ABOVE_NORMAL;
+            else if (value >= 40)
+                param.sched_priority = THREAD_PRIORITY_NORMAL;
+            else if (value >= 20)
+                param.sched_priority = THREAD_PRIORITY_BELOW_NORMAL;
+            else if (value > 1)
+                param.sched_priority = THREAD_PRIORITY_LOWEST;
+            else
+                param.sched_priority = THREAD_PRIORITY_IDLE;
+            return param;
+        }
+
+        param.sched_priority = detail::map_priority_to_win32(priority.value());
         return param;
     }
 
@@ -451,7 +514,24 @@ class SchedulerParams
             return unexpected(std::make_error_code(std::errc::invalid_argument));
         }
 
-        param.sched_priority = std::clamp(priority.value(), min_prio, max_prio);
+        if (min_prio == max_prio)
+        {
+            param.sched_priority = min_prio;
+            return param;
+        }
+
+        if (detail::is_realtime_policy(policy) && priority.value() > 0)
+        {
+            param.sched_priority = std::clamp(priority.value(), min_prio, max_prio);
+            return param;
+        }
+
+        constexpr int highest_nice_value = -20;
+        constexpr int lowest_nice_value = 19;
+        constexpr int user_span = lowest_nice_value - highest_nice_value;
+        int const native_span = max_prio - min_prio;
+        int const offset = std::clamp(priority.value(), highest_nice_value, lowest_nice_value) - highest_nice_value;
+        param.sched_priority = max_prio - (((offset * native_span) + (user_span / 2)) / user_span);
         return param;
     }
 
@@ -509,23 +589,6 @@ namespace detail
 
 #ifdef _WIN32
 
-inline auto map_priority_to_win32(int prio_val) -> int
-{
-    if (prio_val <= -10)
-        return THREAD_PRIORITY_IDLE;
-    if (prio_val <= -5)
-        return THREAD_PRIORITY_LOWEST;
-    if (prio_val < 0)
-        return THREAD_PRIORITY_BELOW_NORMAL;
-    if (prio_val == 0)
-        return THREAD_PRIORITY_NORMAL;
-    if (prio_val <= 5)
-        return THREAD_PRIORITY_ABOVE_NORMAL;
-    if (prio_val <= 10)
-        return THREAD_PRIORITY_HIGHEST;
-    return THREAD_PRIORITY_TIME_CRITICAL;
-}
-
 inline auto apply_priority(HANDLE handle, ThreadPriority priority) -> expected<void, std::error_code>
 {
     if (!handle)
@@ -535,10 +598,17 @@ inline auto apply_priority(HANDLE handle, ThreadPriority priority) -> expected<v
     return unexpected(std::make_error_code(std::errc::operation_not_permitted));
 }
 
-inline auto apply_scheduling_policy(HANDLE handle, SchedulingPolicy /*policy*/, ThreadPriority priority)
+inline auto apply_scheduling_policy(HANDLE handle, SchedulingPolicy policy, ThreadPriority priority)
     -> expected<void, std::error_code>
 {
-    return apply_priority(handle, priority);
+    if (!handle)
+        return unexpected(std::make_error_code(std::errc::no_such_process));
+    auto params_result = SchedulerParams::create_for_policy(policy, priority);
+    if (!params_result.has_value())
+        return unexpected(params_result.error());
+    if (SetThreadPriority(handle, params_result.value().sched_priority) != 0)
+        return {};
+    return unexpected(std::make_error_code(std::errc::operation_not_permitted));
 }
 
 inline auto apply_affinity(HANDLE handle, ThreadAffinity const& affinity) -> expected<void, std::error_code>
@@ -575,8 +645,8 @@ inline auto apply_name(HANDLE handle, std::string const& name) -> expected<void,
     HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
     if (!hMod)
         return unexpected(std::make_error_code(std::errc::function_not_supported));
-    auto set_desc = reinterpret_cast<SetThreadDescriptionFn>(
-        reinterpret_cast<void*>(GetProcAddress(hMod, "SetThreadDescription")));
+    auto set_desc =
+        reinterpret_cast<SetThreadDescriptionFn>(reinterpret_cast<void*>(GetProcAddress(hMod, "SetThreadDescription")));
     if (!set_desc)
         return unexpected(std::make_error_code(std::errc::function_not_supported));
     std::wstring wide(name.begin(), name.end());
@@ -593,8 +663,8 @@ inline auto read_name(HANDLE handle) -> std::optional<std::string>
     HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
     if (!hMod)
         return std::nullopt;
-    auto get_desc = reinterpret_cast<GetThreadDescriptionFn>(
-        reinterpret_cast<void*>(GetProcAddress(hMod, "GetThreadDescription")));
+    auto get_desc =
+        reinterpret_cast<GetThreadDescriptionFn>(reinterpret_cast<void*>(GetProcAddress(hMod, "GetThreadDescription")));
     if (!get_desc)
         return std::nullopt;
     PWSTR thread_name = nullptr;

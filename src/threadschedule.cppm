@@ -74,7 +74,7 @@ using ::threadschedule::AutoRegisterCurrentThread;
 using ::threadschedule::registry;
 using ::threadschedule::set_external_registry;
 #ifndef THREADSCHEDULE_RUNTIME
-using ::threadschedule::registry_storage;
+using ::threadschedule::detail::registry_storage;
 #endif
 
 // -- error_handler.hpp ------------------------------------------------------

@@ -1,5 +1,92 @@
 # Changelog
 
+## v2.4.0
+
+> This release adds an explicit stable-ABI subset for shared-runtime / DSO
+> boundaries, introduces a migration path with deprecations before hard
+> enforcement, and expands ABI-focused regression coverage.
+
+### ABI Stability
+
+- **New opt-in stable ABI subset for runtime boundaries** -- the shared-runtime
+  build now exposes `threadschedule::abi::*` helpers with opaque
+  `registry_handle`, POD-style `thread_info_view`, stable status codes, and a
+  dedicated `abi::AutoRegisterCurrentThread` path for cross-DSO integration.
+  (`abi.hpp`, `runtime_registry.cpp`)
+
+- **Compile-time ABI markers and export validation** -- the new
+  `threadschedule::abi::is_abi_stable_v<T>` trait and
+  `THREADSCHEDULE_VALIDATE_STABLE_ABI_EXPORT(...)` macro let library and
+  downstream code mark and enforce signatures that are safe to export across a
+  stable ABI boundary. (`abi.hpp`)
+
+- **Stable-ABI build modes for migration and enforcement** -- CMake now
+  provides `THREADSCHEDULE_STABLE_ABI=ON` for migration builds and
+  `THREADSCHEDULE_STABLE_ABI_STRICT=ON` for hard enforcement. In runtime mode,
+  the strict path rejects ABI-unsafe entry points such as
+  `registry()`, `set_external_registry(ThreadRegistry*)`, and the legacy
+  `AutoRegisterCurrentThread` constructors at compile time. (`CMakeLists.txt`,
+  `thread_registry.hpp`)
+
+### Compatibility
+
+- **Deprecation-first migration path for legacy runtime APIs** -- when
+  `THREADSCHEDULE_STABLE_ABI=ON` is enabled without strict mode, the existing
+  runtime-facing C++ helpers remain available but are marked deprecated with
+  guidance toward `threadschedule::abi::*`. This keeps default builds
+  source-compatible while making ABI-unsafe usage visible before it becomes a
+  hard error. (`export.hpp`, `thread_registry.hpp`)
+
+- **Runtime internals now route through non-deprecated helpers** -- internal
+  registry access was split into dedicated detail helpers so ThreadSchedule's
+  own headers and runtime implementation do not trip the new deprecation path
+  during normal compilation. (`thread_registry.hpp`, `runtime_registry.cpp`,
+  `chaos.hpp`)
+
+- **Priority semantics are now policy-aware across platforms** --
+  `ThreadPriority` now supports the POSIX real-time priority range up to `99`
+  while preserving nice-style ordering for regular scheduling. Windows priority
+  mapping was corrected so higher ThreadSchedule priorities map to higher
+  Win32 thread priorities, and FIFO/RR policies now accept native real-time
+  values where larger numbers mean higher priority. (`scheduler_policy.hpp`,
+  `pthread_wrapper.hpp`, `profiles.hpp`)
+
+### Tests
+
+- **New stable-ABI regression coverage** -- added dedicated tests for the new
+  ABI surface plus compile-time checks that confirm:
+  stable handles are accepted, `ThreadRegistry*` exports are rejected, and
+  runtime `registry()` usage transitions from deprecation in migration mode to
+  hard failure in strict mode. (`tests/abi_test.cpp`, `tests/CMakeLists.txt`)
+
+- **Cross-standard runtime ABI coverage was strengthened** -- the integration
+  test now explicitly mixes an older C++17-built dependency with C++23-built
+  current components to keep the mixed-standard runtime scenario visible in CI
+  and local release validation. (`integration_tests/runtime_abi_compat/*`)
+
+## v2.3.1
+
+> This release focuses on ABI hardening for mixed-standard consumers of the
+> shared runtime.
+
+### ABI / Runtime Fixes
+
+- **`threadschedule::expected` is now always the library-owned type** -- the
+  public `expected` alias no longer flips over to `std::expected` in C++23+.
+  This stabilizes exported signatures across consumers compiled with different
+  language modes and avoids cross-DSO ABI mismatches when an intermediate
+  library exposes ThreadSchedule result types. (`expected.hpp`)
+
+- **Runtime visibility and consumer defines were tightened** -- the runtime
+  target now consistently exports default-visible symbols and propagates the
+  `THREADSCHEDULE_RUNTIME` define so consumers call into the shared runtime
+  instead of accidentally instantiating a separate header-only registry.
+  (`thread_registry.hpp`, `CMakeLists.txt`)
+
+- **Packaging/tooling fixes for runtime consumers** -- Conan/CMake packaging
+  paths were adjusted so runtime-enabled consumers resolve the intended build
+  configuration more reliably. (`conanfile.py`, `CMakeLists.txt`)
+
 ## v2.3.0
 
 > This release adds an opt-in GCC 16/C++26 reflection surface, modernizes
@@ -483,6 +570,18 @@ auto futures = pool.submit_range(tasks.begin(), tasks.end());
 // v2: submit_batch (same signature, more efficient)
 auto futures = pool.submit_batch(tasks.begin(), tasks.end());
 ```
+
+## v1.4.3
+
+- Docs: clarified scheduled-task storage and dispatch-order edge cases in
+  `scheduled_pool.hpp`, especially around queueing semantics and execution
+  ordering guarantees for scheduled workloads.
+
+## v1.4.2
+
+- Docs: expanded and restructured documentation across multiple public headers
+  to better explain thread wrappers, registries, pools, and scheduling-related
+  APIs without changing library behaviour.
 
 ## v1.4.1
 

@@ -78,6 +78,28 @@ if(TARGET gtest)
         DISCOVERY_TIMEOUT 60
         PROPERTIES TIMEOUT 120
     )
+
+    add_executable(abi_test abi_test.cpp)
+    target_link_libraries(abi_test
+        ThreadSchedule::ThreadSchedule
+        gtest
+        gtest_main
+    )
+    if(THREADSCHEDULE_RUNTIME)
+        target_link_libraries(abi_test ThreadSchedule::Runtime)
+        if(WIN32)
+            add_custom_command(TARGET abi_test POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    $<TARGET_FILE:ThreadScheduleRuntime>
+                    $<TARGET_FILE_DIR:abi_test>
+            )
+        endif()
+    endif()
+    gtest_discover_tests(abi_test
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES TIMEOUT 120
+    )
+
     add_executable(thread_registry_stress_test thread_registry_stress_test.cpp)
     target_link_libraries(thread_registry_stress_test 
         ThreadSchedule::ThreadSchedule 
@@ -176,7 +198,65 @@ if(TARGET gtest)
     endif()
 
     # Coroutine tests (C++20)
+    include(CheckCXXCompilerFlag)
     include(CheckCXXSourceCompiles)
+    set(_THREADSCHEDULE_SAVED_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
+    set(_THREADSCHEDULE_SAVED_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES}")
+    set(CMAKE_REQUIRED_INCLUDES "${PROJECT_SOURCE_DIR}/include")
+    check_cxx_compiler_flag("-Werror=deprecated-declarations" THREADSCHEDULE_HAS_WERROR_DEPRECATED)
+    set(_THREADSCHEDULE_DEPRECATED_AS_ERROR_FLAG "")
+    if(THREADSCHEDULE_HAS_WERROR_DEPRECATED)
+        set(_THREADSCHEDULE_DEPRECATED_AS_ERROR_FLAG " -Werror=deprecated-declarations")
+    endif()
+    set(CMAKE_REQUIRED_FLAGS
+        "${CMAKE_REQUIRED_FLAGS} -DTHREADSCHEDULE_RUNTIME -DTHREADSCHEDULE_STABLE_ABI=1${_THREADSCHEDULE_DEPRECATED_AS_ERROR_FLAG}"
+    )
+    check_cxx_source_compiles("
+        #include <threadschedule/thread_registry.hpp>
+        int main() {
+            auto& reg = threadschedule::registry();
+            return static_cast<int>(reg.count());
+        }
+    " THREADSCHEDULE_STABLE_ABI_DEPRECATED_RUNTIME_REGISTRY)
+    if(THREADSCHEDULE_HAS_WERROR_DEPRECATED AND THREADSCHEDULE_STABLE_ABI_DEPRECATED_RUNTIME_REGISTRY)
+        message(FATAL_ERROR "THREADSCHEDULE_STABLE_ABI must deprecate threadschedule::registry() in runtime mode")
+    endif()
+
+    set(CMAKE_REQUIRED_FLAGS
+        "${CMAKE_REQUIRED_FLAGS} -DTHREADSCHEDULE_RUNTIME -DTHREADSCHEDULE_STABLE_ABI=1 -DTHREADSCHEDULE_STABLE_ABI_STRICT=1"
+    )
+    check_cxx_source_compiles("
+        #include <threadschedule/thread_registry.hpp>
+        int main() {
+            auto& reg = threadschedule::registry();
+            return static_cast<int>(reg.count());
+        }
+    " THREADSCHEDULE_STRICT_RUNTIME_REGISTRY_AVAILABLE)
+    if(THREADSCHEDULE_STRICT_RUNTIME_REGISTRY_AVAILABLE)
+        message(FATAL_ERROR "THREADSCHEDULE_STABLE_ABI_STRICT must reject threadschedule::registry() in runtime mode")
+    endif()
+
+    check_cxx_source_compiles("
+        #include <threadschedule/thread_registry.hpp>
+        THREADSCHEDULE_VALIDATE_STABLE_ABI_EXPORT(void, ::threadschedule::ThreadRegistry*);
+        int main() { return 0; }
+    " THREADSCHEDULE_UNSAFE_SIGNATURE_ALLOWED)
+    if(THREADSCHEDULE_UNSAFE_SIGNATURE_ALLOWED)
+        message(FATAL_ERROR "Stable ABI signature validation must reject ThreadRegistry* exports")
+    endif()
+
+    check_cxx_source_compiles("
+        #include <threadschedule/abi.hpp>
+        THREADSCHEDULE_VALIDATE_STABLE_ABI_EXPORT(void, ::threadschedule::abi::registry_handle);
+        int main() { return 0; }
+    " THREADSCHEDULE_SAFE_SIGNATURE_ALLOWED)
+    if(NOT THREADSCHEDULE_SAFE_SIGNATURE_ALLOWED)
+        message(FATAL_ERROR "Stable ABI signature validation must accept registry_handle exports")
+    endif()
+
+    set(CMAKE_REQUIRED_FLAGS "${_THREADSCHEDULE_SAVED_REQUIRED_FLAGS}")
+    set(CMAKE_REQUIRED_INCLUDES "${_THREADSCHEDULE_SAVED_REQUIRED_INCLUDES}")
+
     set(CMAKE_REQUIRED_FLAGS "${CMAKE_CXX_FLAGS}")
     check_cxx_source_compiles("
         #include <coroutine>

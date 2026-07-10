@@ -250,6 +250,56 @@ graph TD
   - If components statically include ThreadSchedule: Use `set_external_registry(&appRegistry)` in `main()` and register threads to that instance everywhere.
   - If isolated registries are desired for components: Each component uses its own `ThreadRegistry`, and the app merges them using `CompositeThreadRegistry`.
 
+### Stable ABI subset for DSO and plugin boundaries
+
+If a shared library, plugin, or intermediate wrapper library exports
+ThreadSchedule-related types in its own ABI, treat the normal registry API as a
+source-level API, not as a stable binary contract. This matters especially when
+different components may be built in different language modes, for example one
+DSO as C++17 and another as C++23.
+
+For the full rationale, byte-level layout discussion, mixed-standard Conan
+failure walkthrough, and `expected` mismatch example, see
+[STABLE_ABI.md](./STABLE_ABI.md).
+
+Use the `threadschedule::abi::*` surface when all of these are true:
+
+- components cross a shared-library boundary
+- components may be built with different language modes or standard library
+  configurations
+- the boundary needs registry access or thread auto-registration
+
+The stable ABI subset is intentionally small and C-like:
+
+- `threadschedule::abi::registry_handle`
+- `threadschedule::abi::string_ref`
+- `threadschedule::abi::status` / `status_code`
+- `threadschedule::abi::thread_info_view`
+- `threadschedule::abi::thread_info_callback`
+- `threadschedule::abi::create_registry()`, `destroy_registry(...)`,
+  `current_registry()`, `set_external_registry(...)`,
+  `registry_for_each(...)`, `register_current_thread(...)`,
+  `unregister_current_thread(...)`
+- `threadschedule::abi::AutoRegisterCurrentThread`
+
+Do not export these runtime-oriented C++ types as part of your own DSO ABI:
+
+- `ThreadRegistry` or `ThreadRegistry*`
+- `RegisteredThreadInfo`
+- `AutoRegisterCurrentThread`
+- callbacks or virtual interfaces that embed those types, `std::string`, or
+  other STL-heavy registry payloads directly in the exported signature
+
+Build-time migration helpers:
+
+- `THREADSCHEDULE_RUNTIME=ON` enables the shared runtime that backs the stable
+  ABI entrypoints.
+- `THREADSCHEDULE_STABLE_ABI=ON` keeps the legacy runtime API available but
+  marks `registry()`, `set_external_registry(ThreadRegistry*)`, and
+  `AutoRegisterCurrentThread` as deprecated for DSO boundaries.
+- `THREADSCHEDULE_STABLE_ABI_STRICT=ON` rejects those legacy runtime entrypoints
+  at compile time and forces use of `threadschedule::abi::*`.
+
 ### Header-only builds and multiple DSOs
 
 Because ThreadSchedule is header-only, each DSO that includes it may get its own internal `registry()` singleton. To obtain a unified process-wide view, use one of these patterns:
@@ -318,11 +368,15 @@ target_link_libraries(your_dso PRIVATE ThreadSchedule::ThreadSchedule ThreadSche
 - Exported APIs (same as header-only), provided by the runtime:
   - `threadschedule::registry()` - returns the single process-wide registry instance
   - `threadschedule::set_external_registry(ThreadRegistry*)` - optionally redirect runtime to an app-owned instance
+  - `threadschedule::abi::*` helpers - stable handle/view/callback surface for
+    plugin and DSO boundaries
 
 Notes:
 - With `THREADSCHEDULE_RUNTIME=ON`, the header declares these functions and the `.so/.dll` provides the definitions.
 - This ensures all components in the process resolve to the same registry object as long as they link to the runtime.
 - You can still call `set_external_registry(&appReg)` early in `main()` to make the app’s instance authoritative.
+- If your own shared-library ABI exposes ThreadSchedule-related registry access,
+  prefer `threadschedule::abi::*` over the legacy C++ runtime API.
 
 ### Examples
 
@@ -612,5 +666,3 @@ All control functions return `expected<void, std::error_code>`. Typical errors i
 - Linux cgroup helper (best-effort):
   - `cgroup_attach_tid("/sys/fs/cgroup/mygroup", e.tid)` attempts to write the TID into common cgroup files (`cgroup.threads`, `tasks`, `cgroup.procs`).
   - Requires appropriate privileges; returns `operation_not_permitted` on failure.
-
-

@@ -62,9 +62,15 @@ option(THREADSCHEDULE_BUILD_TESTS "Build tests" OFF)
 option(THREADSCHEDULE_BUILD_BENCHMARKS "Build benchmarks" OFF)
 option(THREADSCHEDULE_INSTALL "Generate install target" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
 option(THREADSCHEDULE_RUNTIME "Build shared runtime for global registry (non header-only)" ON)
+option(THREADSCHEDULE_STABLE_ABI "Expose the stable ABI subset helpers" OFF)
+option(THREADSCHEDULE_STABLE_ABI_STRICT "Reject non-stable runtime ABI usage at compile time" OFF)
 option(THREADSCHEDULE_MODULE "Build C++20 module target (requires CMake >= 3.28 and C++20+)" OFF)
 option(THREADSCHEDULE_BUILD_DOCS "Build API documentation with Doxygen" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
 option(THREADSCHEDULE_ENABLE_REFLECTION "Enable GCC 16 C++26 reflection APIs when supported" OFF)
+
+if(THREADSCHEDULE_STABLE_ABI_STRICT AND NOT THREADSCHEDULE_STABLE_ABI)
+    set(THREADSCHEDULE_STABLE_ABI ON)
+endif()
 
 # CPM support (optional, download if building tests or benchmarks)
 if(THREADSCHEDULE_BUILD_TESTS OR THREADSCHEDULE_BUILD_BENCHMARKS)
@@ -176,6 +182,14 @@ target_include_directories(ThreadSchedule INTERFACE
     $<INSTALL_INTERFACE:include>
 )
 
+if(THREADSCHEDULE_STABLE_ABI)
+    target_compile_definitions(ThreadSchedule INTERFACE THREADSCHEDULE_STABLE_ABI=1)
+endif()
+
+if(THREADSCHEDULE_STABLE_ABI_STRICT)
+    target_compile_definitions(ThreadSchedule INTERFACE THREADSCHEDULE_STABLE_ABI_STRICT=1)
+endif()
+
 # Link libraries
 target_link_libraries(ThreadSchedule INTERFACE Threads::Threads)
 
@@ -249,13 +263,20 @@ if(THREADSCHEDULE_RUNTIME)
     add_library(ThreadScheduleRuntime SHARED
         src/runtime_registry.cpp
     )
-    target_compile_definitions(ThreadScheduleRuntime PRIVATE THREADSCHEDULE_EXPORTS THREADSCHEDULE_RUNTIME)
+    target_compile_definitions(ThreadScheduleRuntime PRIVATE THREADSCHEDULE_EXPORTS THREADSCHEDULE_RUNTIME
+                                                             THREADSCHEDULE_INTERNAL_RUNTIME_BUILD=1)
     if(THREADSCHEDULE_HAS_REFLECTION)
         target_compile_definitions(ThreadScheduleRuntime PUBLIC THREADSCHEDULE_HAS_REFLECTION=1)
         target_compile_options(ThreadScheduleRuntime PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-freflection>)
     endif()
     # Propagate the THREADSCHEDULE_RUNTIME define to consumers so headers call into the DLL
     target_compile_definitions(ThreadScheduleRuntime INTERFACE THREADSCHEDULE_RUNTIME)
+    if(THREADSCHEDULE_STABLE_ABI)
+        target_compile_definitions(ThreadScheduleRuntime PUBLIC THREADSCHEDULE_STABLE_ABI=1)
+    endif()
+    if(THREADSCHEDULE_STABLE_ABI_STRICT)
+        target_compile_definitions(ThreadScheduleRuntime PUBLIC THREADSCHEDULE_STABLE_ABI_STRICT=1)
+    endif()
     target_include_directories(ThreadScheduleRuntime
         PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
