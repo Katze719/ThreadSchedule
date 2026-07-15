@@ -24,7 +24,7 @@ namespace threadschedule
  *
  * @par Usage
  * @code
- * ThreadPool pool(4);
+ * thread_pool_backend pool(4);
  * {
  *     task_group group(pool);
  *     group.submit([]{ do_work_a(); });
@@ -47,82 +47,85 @@ namespace threadschedule
 template <typename Pool>
 class task_group
 {
-  public:
-    explicit task_group(Pool& pool) : pool_(pool) {}
+public:
+  explicit task_group(Pool& pool) : pool_(pool) {}
 
-    task_group(task_group const&) = delete;
-    auto operator=(task_group const&) -> task_group& = delete;
+  task_group(task_group const&) = delete;
+  auto operator=(task_group const&) -> task_group& = delete;
 
-    ~task_group()
+  ~task_group()
+  {
+    try
+      {
+        wait();
+      }
+    catch (...)
+      {
+      }
+  }
+
+  /**
+   * @brief Submit a void() callable to the group.
+   *
+   * The returned future is tracked internally; you do not need to
+   * store it yourself.
+   */
+  template <typename F>
+  void
+  submit(F&& f)
+  {
+    auto future = pool_.submit(std::forward<F>(f));
+    std::lock_guard<std::mutex> lock(mutex_);
+    futures_.push_back(std::move(future));
+  }
+
+  /**
+   * @brief Block until all submitted tasks complete.
+   *
+   * @throws Rethrows the first exception from any task. All tasks are
+   *         still waited on even if one throws.
+   */
+  void
+  wait()
+  {
+    std::vector<std::future<void>> local;
     {
+      std::lock_guard<std::mutex> lock(mutex_);
+      local.swap(futures_);
+    }
+
+    std::exception_ptr first_error;
+    for (auto& f : local)
+      {
         try
-        {
-            wait();
-        }
+          {
+            f.get();
+          }
         catch (...)
-        {
-        }
-    }
+          {
+            if (!first_error)
+              first_error = std::current_exception();
+          }
+      }
 
-    /**
-     * @brief Submit a void() callable to the group.
-     *
-     * The returned future is tracked internally; you do not need to
-     * store it yourself.
-     */
-    template <typename F>
-    void submit(F&& f)
-    {
-        auto future = pool_.submit(std::forward<F>(f));
-        std::lock_guard<std::mutex> lock(mutex_);
-        futures_.push_back(std::move(future));
-    }
+    if (first_error)
+      std::rethrow_exception(first_error);
+  }
 
-    /**
-     * @brief Block until all submitted tasks complete.
-     *
-     * @throws Rethrows the first exception from any task. All tasks are
-     *         still waited on even if one throws.
-     */
-    void wait()
-    {
-        std::vector<std::future<void>> local;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            local.swap(futures_);
-        }
+  /**
+   * @brief Number of pending (not yet waited) tasks.
+   */
+  [[nodiscard]] auto
+  pending() const -> size_t
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return futures_.size();
+  }
 
-        std::exception_ptr first_error;
-        for (auto& f : local)
-        {
-            try
-            {
-                f.get();
-            }
-            catch (...)
-            {
-                if (!first_error)
-                    first_error = std::current_exception();
-            }
-        }
-
-        if (first_error)
-            std::rethrow_exception(first_error);
-    }
-
-    /**
-     * @brief Number of pending (not yet waited) tasks.
-     */
-    [[nodiscard]] auto pending() const -> size_t
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return futures_.size();
-    }
-
-  private:
-    Pool& pool_;
-    mutable std::mutex mutex_;
-    std::vector<std::future<void>> futures_;
+private:
+  Pool& pool_;
+  mutable std::mutex mutex_;
+  std::vector<std::future<void>> futures_;
 };
 
 } // namespace threadschedule

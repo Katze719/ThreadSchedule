@@ -1,7 +1,7 @@
 @PACKAGE_INIT@
 
 # ThreadSchedule Package Configuration
-# Provides ThreadSchedule::ThreadSchedule interface target
+# Provides ThreadSchedule::ThreadSchedule and, when built, ThreadSchedule::Runtime
 
 include(CMakeFindDependencyMacro)
 
@@ -16,16 +16,6 @@ endif()
 # Include the exported targets
 if(NOT TARGET ThreadSchedule::ThreadSchedule)
     include("${CMAKE_CURRENT_LIST_DIR}/ThreadScheduleTargets.cmake")
-endif()
-
-# Provide convenient alias for runtime target if present
-if(TARGET ThreadSchedule::ThreadScheduleRuntime AND NOT TARGET ThreadSchedule::Runtime)
-    add_library(ThreadSchedule::Runtime ALIAS ThreadSchedule::ThreadScheduleRuntime)
-endif()
-
-# Provide convenient alias for the strict stable ABI target if present
-if(TARGET ThreadSchedule::ThreadScheduleStableAbi AND NOT TARGET ThreadSchedule::StableAbi)
-    add_library(ThreadSchedule::StableAbi ALIAS ThreadSchedule::ThreadScheduleStableAbi)
 endif()
 
 # Verify that targets exist

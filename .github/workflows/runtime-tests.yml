@@ -2,44 +2,89 @@ name: Runtime Tests
 
 on:
   push:
-    branches: [ main, dev ]
+    branches: [main, dev]
   pull_request:
+  workflow_dispatch:
 
 jobs:
-  build-and-test:
-    name: Runtime (${{ matrix.os }}, C++${{ matrix.cpp_standard }})
+  runtime:
+    name: Runtime ${{ matrix.os }} / C++${{ matrix.standard }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, ubuntu-24.04-arm, windows-latest ]
-        cpp_standard: [ 17 ]
         include:
-          - os: ubuntu-latest
-            cpp_standard: 26
-          - os: ubuntu-24.04-arm
-            cpp_standard: 26
-
-    runs-on: ${{ matrix.os }}
-
+          - { os: ubuntu-24.04, standard: 17, cxx: g++-14 }
+          - { os: ubuntu-24.04, standard: 20, cxx: g++-14 }
+          - { os: ubuntu-24.04, standard: 23, cxx: g++-14 }
+          - { os: ubuntu-24.04, standard: 26, cxx: g++-14 }
+          - { os: ubuntu-24.04-arm, standard: 17, cxx: g++-14 }
+          - { os: ubuntu-24.04-arm, standard: 20, cxx: g++-14 }
+          - { os: ubuntu-24.04-arm, standard: 23, cxx: g++-14 }
+          - { os: ubuntu-24.04-arm, standard: 26, cxx: g++-14 }
+          - { os: windows-2022, standard: 17, cxx: msvc }
+          - { os: windows-2022, standard: 20, cxx: msvc }
+          - { os: windows-2022, standard: 23, cxx: msvc }
+          - { os: windows-2022, standard: 17, cxx: mingw }
+          - { os: windows-2022, standard: 20, cxx: mingw }
+          - { os: windows-2022, standard: 23, cxx: mingw }
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install GCC 14 (C++26)
-        if: matrix.cpp_standard == 26 && runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y g++-14
-      
-      - name: Configure CMake
+      - uses: actions/checkout@v4
+      - name: Install GCC 14
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y g++-14
+      - name: Enable MSVC
+        if: matrix.cxx == 'msvc'
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Enable MinGW
+        if: matrix.cxx == 'mingw'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja
+      - name: Configure Linux
+        if: runner.os == 'Linux'
         env:
-          CXX: ${{ matrix.cpp_standard == 26 && 'g++-14' || '' }}
-        run: cmake -S . -B build -DTHREADSCHEDULE_BUILD_TESTS=ON -DTHREADSCHEDULE_RUNTIME=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }}
-
-      - name: Build
+          CXX: ${{ matrix.cxx }}
+        run: >-
+          cmake -S . -B build
+          -DTHREADSCHEDULE_BUILD_TESTS=ON
+          -DTHREADSCHEDULE_RUNTIME=ON
+          -DTHREADSCHEDULE_BUILD_DOCS=OFF
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_STANDARD=${{ matrix.standard }}
+      - name: Configure Windows
+        if: matrix.cxx == 'msvc'
+        run: >-
+          cmake -S . -B build
+          -DTHREADSCHEDULE_BUILD_TESTS=ON
+          -DTHREADSCHEDULE_RUNTIME=ON
+          -DTHREADSCHEDULE_BUILD_DOCS=OFF
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_STANDARD=${{ matrix.standard }}
+          -Dgtest_force_shared_crt=ON
+      - name: Configure MinGW
+        if: matrix.cxx == 'mingw'
+        shell: msys2 {0}
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DTHREADSCHEDULE_BUILD_TESTS=ON
+          -DTHREADSCHEDULE_RUNTIME=ON
+          -DTHREADSCHEDULE_BUILD_DOCS=OFF
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_STANDARD=${{ matrix.standard }}
+      - name: Build Linux and MSVC
+        if: matrix.cxx != 'mingw'
         run: cmake --build build --config Release --parallel
-
-      - name: Run tests
+      - name: Test Linux and MSVC
+        if: matrix.cxx != 'mingw'
         run: ctest --test-dir build --output-on-failure -C Release
-
-
+      - name: Build MinGW
+        if: matrix.cxx == 'mingw'
+        shell: msys2 {0}
+        run: cmake --build build --parallel
+      - name: Test MinGW
+        if: matrix.cxx == 'mingw'
+        shell: msys2 {0}
+        run: ctest --test-dir build --output-on-failure

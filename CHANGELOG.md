@@ -2,57 +2,41 @@
 
 ## v3.0.0
 
-> This release is planned as a breaking cleanup release. It makes the stable ABI
-> the foundation for runtime and cross-DSO use, unifies the public C++ API, and
-> redesigns priority/scheduling around clear user intent.
+> A deliberate C++17 API reset focused on one approachable default surface,
+> explicit errors, and stable behavior across consumer language modes.
 
 ### Breaking Changes
 
-- **Thread-name query errors are now observable** -- `get_name()` returns
-  `expected<std::string, std::error_code>` instead of `optional<std::string>`.
-  Windows preserves Win32/HRESULT and UTF conversion failures instead of
-  collapsing them into an empty optional.
-
-- **Stable ABI becomes the runtime boundary** -- exported runtime APIs move
-  to C-compatible `threadschedule_abi_*` functions using opaque handles, POD
-  config structs, fixed-width status codes, and function-pointer callbacks.
-  Public C++ classes remain source-level convenience wrappers and are not a
-  supported ABI boundary. (`abi.hpp`, `runtime_registry.cpp`)
-
-- **Public API cleanup and consolidation** -- redundant aliases, legacy 2.x
-  migration paths, and overlapping entry points are removed or redirected
-  into one consistent wrapper style for registry, threads, pools, scheduled
-  tasks, and profiles. (`threadschedule.hpp`, `thread_pool.hpp`,
-  `thread_registry.hpp`)
-
-- **Priority and scheduling redesign** -- scheduling is exposed through
-  understandable intent-based requests such as background, normal, low-latency,
-  and realtime, with explicit advanced native controls for POSIX and Windows.
-  This replaces ambiguous raw-priority usage in user-facing APIs.
-  (`scheduler_policy.hpp`, `profiles.hpp`)
-
-### Implemented Foundation
-
-- **Pool stable ABI** -- added ABI-owned `pool_handle` lifecycle, post, wait,
-  shutdown, and statistics functions with callback-based task execution.
-  (`abi.hpp`, `runtime_registry.cpp`, `abi_test.cpp`)
-
-- **Unified scheduling config** -- added `ThreadSchedulingConfig`,
-  `ThreadConfig`, and `schedule::*` factories, then wired them through thread
-  wrappers, pthread wrappers, registries, and pools. (`scheduler_policy.hpp`,
-  `thread_wrapper.hpp`, `pthread_wrapper.hpp`, `thread_registry.hpp`,
-  `thread_pool.hpp`)
-
-- **Mixed C++17/C++23 ABI integration** -- added an install-tree integration
-  scenario where a C++17 producer DSO and C++23 consumer executable communicate
-  only through `ThreadSchedule::StableAbi` and `threadschedule::abi::*`.
-  (`integration_tests/stable_abi_runtime`)
-
-### Planning Docs
-
-- **New v3 design documents** -- added the initial API design and migration
-  guides for the 3.0.0 branch. (`docs/API_DESIGN_V3.md`,
-  `docs/MIGRATION_V3.md`)
+- **Small canonical API** -- added `thread`, `thread_view`, `thread_pool`,
+  `scheduled_pool`, `thread_registry`, and matching lowercase config types.
+  These are independent value/composition types rather than aliases or public
+  subclasses of the former PascalCase surface.
+- **Standard-style construction** -- `thread`, `thread_registry`,
+  `thread_pool`, and `scheduled_pool` are directly constructible. Optional
+  `create(...)` factories return the library-owned
+  `expected<T, std::error_code>` when an error-value path is preferred.
+- **Integrated task reporting** -- `thread_pool_config::on_task_error` replaces
+  the separate `PoolWithErrors` adapter family.
+- **Portable scheduling intent** -- common use goes through
+  `schedule::{background, normal, interactive, low_latency, realtime_fifo,
+  realtime_rr}`; backend and native controls live under `advanced`.
+- **Stable C++17 core surface** -- public callables and inline implementation
+  paths keep their C++17 representations under C++17/20/23/26.
+- **Focused C++20 support** -- `threadschedule::jthread` is available when
+  `std::jthread` is detected and forwards stop-token-aware callables just like
+  the standard type. C++20 modules, coroutine helpers, ranges-only overloads,
+  and C++26 reflection are gone.
+- **One thread implementation** -- the dedicated pthread wrapper, attributes,
+  mutex helpers, and factories are removed. All managed threads use
+  `std::thread`; POSIX APIs remain implementation details of native-handle
+  operations.
+- **Removed portable ABI claims** -- the experimental C ABI, `StableAbi`
+  target, opaque handles, and related integration paths are removed. The
+  optional runtime now provides only a shared C++ registry within one supported
+  toolchain line.
+- **Repository cleanup** -- README, examples, CMake reference, compatibility
+  contract, migration guide, release packaging, and CI now describe and test
+  the actual v3 surface.
 
 ## v2.4.0
 
@@ -65,7 +49,7 @@
 - **New opt-in stable ABI subset for runtime boundaries** -- the shared-runtime
   build now exposes `threadschedule::abi::*` helpers with opaque
   `registry_handle`, POD-style `thread_info_view`, stable status codes, and a
-  dedicated `abi::AutoRegisterCurrentThread` path for cross-DSO integration.
+  dedicated `abi::auto_register_current_thread` path for cross-DSO integration.
   (`abi.hpp`, `runtime_registry.cpp`)
 
 - **Compile-time ABI markers and export validation** -- the new
@@ -79,7 +63,7 @@
   `THREADSCHEDULE_STABLE_ABI_STRICT=ON` for hard enforcement. In runtime mode,
   the strict path rejects ABI-unsafe entry points such as
   `registry()`, `set_external_registry(ThreadRegistry*)`, and the legacy
-  `AutoRegisterCurrentThread` constructors at compile time. (`CMakeLists.txt`,
+  `auto_register_current_thread` constructors at compile time. (`CMakeLists.txt`,
   `thread_registry.hpp`)
 
 ### Compatibility
@@ -145,7 +129,7 @@
 
 > This release adds an opt-in GCC 16/C++26 reflection surface, modernizes
 > callable/callback storage paths for newer standard libraries, expands the
-> benchmark and reporting tooling, and improves current-thread `ThreadInfo`
+> benchmark and reporting tooling, and improves current-thread `thread_info`
 > handling for more direct native-thread operations.
 
 ### New Features
@@ -159,8 +143,8 @@
   `threadschedule.cppm`, `threadschedule.hpp`, `CMakeLists.txt`)
 
 - **Reflection-backed registry selectors** -- `ThreadRegistry` and
-  `QueryView` now expose field-oriented helpers such as
-  `where<registered_thread_fields::componentTag()>(...)`,
+  `query_view` now expose field-oriented helpers such as
+  `where<registered_thread_fields::component()>(...)`,
   `where_if<registered_thread_fields::alive()>(...)`,
   `find_by<registered_thread_fields::name()>(...)`,
   `contains<...>(...)`, and `project<...>()` when reflection is enabled.
@@ -171,10 +155,10 @@
   `std::move_only_function`, `std::copyable_function`, and `std::function_ref`,
   while preserving compatibility on older standard libraries. (`callable.hpp`)
 
-- **Current-thread `ThreadInfo` now prefers the native handle** --
-  default-constructed `ThreadInfo` binds the current thread's native handle and
+- **Current-thread `thread_info` now prefers the native handle** --
+  default-constructed `thread_info` binds the current thread's native handle and
   uses the more direct pthread/HANDLE-based paths for current-thread name,
-  affinity, policy, and priority operations, while `ThreadInfo(Tid)` remains
+  affinity, policy, and priority operations, while `thread_info(native_thread_id)` remains
   available for explicit TID-bound access. (`thread_wrapper.hpp`,
   `scheduler_policy.hpp`)
 
@@ -234,9 +218,9 @@
   `function_ref` behavior and public callback alias usage on the new callable
   abstraction paths. (`tests/callable_test.cpp`, `tests/CMakeLists.txt`)
 
-- **Updated `ThreadInfo` regression coverage** -- tests now verify the
+- **Updated `thread_info` regression coverage** -- tests now verify the
   default-construction path can still resolve current-thread identity and read
-  current-thread metadata while the explicit `Tid` constructor continues to
+  current-thread metadata while the explicit `native_thread_id` constructor continues to
   control a remote target thread. (`tests/thread_config_test.cpp`)
 
 ### CI / Infrastructure
@@ -256,20 +240,20 @@
 ## v2.2.0
 
 > **No intended API/ABI breaking changes.** This release extends thread-control
-> coverage to library-owned background threads and expands `ThreadInfo` into a
+> coverage to library-owned background threads and expands `thread_info` into a
 > lightweight per-thread control handle.
 
 ### New Features
 
-- **`ThreadInfo` now supports bound thread IDs** -- it can be default-constructed
-  for the current thread or explicitly constructed from a `Tid`, then used to
+- **`thread_info` now supports bound thread IDs** -- it can be default-constructed
+  for the current thread or explicitly constructed from a `native_thread_id`, then used to
   `set_name`, `get_name`, `set_priority`, `set_scheduling_policy`,
   `set_affinity`, `get_affinity`, `get_policy`, and `get_priority`.
   The existing static convenience methods remain available. (`thread_wrapper.hpp`)
 
-- **Library-owned background threads are now configurable** -- `ScheduledThreadPoolT`
+- **Library-owned background threads are now configurable** -- `scheduled_pool_backend_base`
   exposes `scheduler_thread_info()` and `configure_scheduler_thread(...)`, and
-  `ChaosController` exposes `thread_info()` and `configure_thread(...)`, so the
+  `chaos_controller` exposes `thread_info()` and `configure_thread(...)`, so the
   scheduler/control threads are no longer anonymous internal `std::thread`s.
   (`scheduled_pool.hpp`, `chaos.hpp`)
 
@@ -304,8 +288,8 @@
 
 - **New regression coverage for modern callable paths** -- tests now cover
   move-only `post` tasks, move-only scheduled tasks, move-only
-  `FutureWithErrorHandler::on_error(...)` callbacks, `PoolWithErrors` with
-  move-only arguments, and `ThreadInfo(Tid)` invalid-target behavior.
+  `future_with_error_handler::on_error(...)` callbacks, `PoolWithErrors` with
+  move-only arguments, and `thread_info(native_thread_id)` invalid-target behavior.
   (`thread_pool_v2_test.cpp`, `futures_test.cpp`, `thread_config_test.cpp`)
 
 - **New callable benchmark target** -- `callable_benchmarks` compares small
@@ -338,16 +322,16 @@
   index bias. Empty input now throws `std::invalid_argument` instead of
   looping forever. (futures.hpp)
 
-- **`ScheduledThreadPoolT::insert_task` checks `stop_`** -- scheduling a
-  task after `shutdown()` now returns a pre-cancelled `ScheduledTaskHandle`
+- **`scheduled_pool_backend_base::insert_task` checks `stop_`** -- scheduling a
+  task after `shutdown()` now returns a pre-cancelled `scheduled_task_backend`
   instead of silently inserting a task that will never execute.
   (scheduled_pool.hpp)
 
-- **`ChaosController` uses actual thread priority** -- priority jitter now
+- **`chaos_controller` uses actual thread priority** -- priority jitter now
   reads the real scheduling priority via `sched_getparam()` on Linux instead
   of hardcoding `ThreadPriority::normal()`. (chaos.hpp)
 
-- **`ErrorHandler::handle_error` releases the lock before invoking
+- **`error_handler_backend::handle_error` releases the lock before invoking
   callbacks** -- callbacks are snapshot-copied under the mutex, then executed
   outside the critical section, eliminating deadlock risk when callbacks
   interact with the handler. (error_handler.hpp)
@@ -360,8 +344,8 @@
 
 - **`distribute_affinities_by_numa` calls `read_topology()` once** -- the
   previous implementation read sysfs O(n) times for n threads. New additive
-  overloads `affinity_for_node(CpuTopology const&, ...)` and
-  `distribute_affinities_by_numa(CpuTopology const&, ...)` accept a
+  overloads `affinity_for_node(cpu_topology const&, ...)` and
+  `distribute_affinities_by_numa(cpu_topology const&, ...)` accept a
   pre-read topology snapshot. (topology.hpp)
 
 ### New Features
@@ -388,21 +372,21 @@
 ### Module Exports
 
 - Added missing exports to `threadschedule.cppm`: `when_all`, `when_any`,
-  `when_all_settled`, `ShutdownPolicy`, `IndefiniteWait`, `PollingWait`,
-  `ThreadPoolBase`, `LightweightPoolT`, `LightweightPool`, `GlobalPool`,
-  `PoolWithErrors`, `ScheduledLightweightPool`, `TaskStartCallback`,
-  `TaskEndCallback`, `schedule_on`, `run_on`, `pool_executor`, `InlinePool`,
+  `when_all_settled`, `ShutdownPolicy`, `indefinite_wait`, `polling_wait`,
+  `thread_pool_backend_base`, `lightweight_pool_backend_base`, `LightweightPool`, `global_pool_backend`,
+  `PoolWithErrors`, `scheduled_lightweight_pool_backend`, `task_start_callback`,
+  `task_end_callback`, `schedule_on`, `run_on`, `pool_executor`, `InlinePool`,
   `task_group`, `apply_profile_detailed`.
 
 ### Tests
 
 - **65 new Google Test cases** across four new test files:
   - `thread_pool_v2_test.cpp` -- `try_submit`, `try_post`, `submit_batch`,
-    `parallel_for_each`, `ShutdownPolicy`, `LightweightPool`, `GlobalPool`,
+    `parallel_for_each`, `ShutdownPolicy`, `LightweightPool`, `global_pool_backend`,
     `ScheduledThreadPool`, stop-token tasks, `InlinePool`, `task_group`.
   - `futures_test.cpp` -- `when_all`, `when_any`, `when_all_settled` (typed
     and void variants, empty input, exception propagation).
-  - `registry_query_test.cpp` -- chainable `QueryView` API: `filter`, `map`,
+  - `registry_query_test.cpp` -- chainable `query_view` API: `filter`, `map`,
     `for_each`, `find_if`, `any`/`all`/`none`, `take`, `skip`.
   - `coroutine_pool_test.cpp` -- `schedule_on`, `run_on`, `pool_executor`,
     nested awaits, cross-pool hops, exception propagation (C++20 coroutines).
@@ -423,7 +407,7 @@
 ### Breaking Changes
 
 - **`ThreadPool` and `FastThreadPool` are now type aliases** for
-  `ThreadPoolBase<IndefiniteWait>` and `ThreadPoolBase<PollingWait>`. Behavior
+  `thread_pool_backend_base<indefinite_wait>` and `thread_pool_backend_base<polling_wait>`. Behavior
   is unchanged, but code that forward-declares or specializes on the concrete
   class name may need adjustment.
 
@@ -434,7 +418,7 @@
   `operator bool`), but code that stores the result in a `bool` variable needs
   updating to `auto` or the expected type.
 
-- **`ThreadPool::Statistics`** now includes `tasks_per_second` and
+- **`ThreadPool::statistics`** now includes `tasks_per_second` and
   `avg_task_time` fields (previously only on `FastThreadPool` and
   `HighPerformancePool`).
 
@@ -443,19 +427,19 @@
   is also more efficient: it acquires the queue lock once for the entire batch
   instead of per-item.
 
-- **`GlobalThreadPool::submit_range()` removed**. Use
-  `GlobalThreadPool::submit_batch()`.
+- **`global_thread_pool_backend::submit_range()` removed**. Use
+  `global_thread_pool_backend::submit_batch()`.
 
 - **`HighPerformancePoolWithErrors`, `FastThreadPoolWithErrors`,
   `ThreadPoolWithErrors`** are now type aliases for `PoolWithErrors<Pool>`. The
   public API is unchanged.
 
-- **`GlobalThreadPool`, `GlobalHighPerformancePool`** are now type aliases for
-  `GlobalPool<Pool>`. The public API is unchanged.
+- **`global_thread_pool_backend`, `global_work_stealing_pool_backend`** are now type aliases for
+  `global_pool_backend<Pool>`. The public API is unchanged.
 
 ### Quality-of-Life Features
 
-- **`ErrorHandler::remove_callback(id)` / `has_callback(id)`** -- callbacks are
+- **`error_handler_backend::remove_callback(id)` / `has_callback(id)`** -- callbacks are
   now stored in a `std::map` with stable IDs. Individual callbacks can be
   removed without clearing all of them.
 
@@ -463,26 +447,26 @@
   pool types, returning `expected<std::future<T>, std::error_code>` instead of
   throwing on shutdown.
 
-- **Chunked `parallel_for_each`** -- `ThreadPoolBase` now uses the same chunked
+- **Chunked `parallel_for_each`** -- `thread_pool_backend_base` now uses the same chunked
   work distribution as `HighPerformancePool` via a shared
   `detail::parallel_for_each_chunked` helper (one task per element is gone).
 
-- **`PollingWait<IntervalMs>`** -- tunable polling interval (default 10 ms).
-  `FastThreadPool` is `ThreadPoolBase<PollingWait<>>`.
+- **`polling_wait<IntervalMs>`** -- tunable polling interval (default 10 ms).
+  `FastThreadPool` is `thread_pool_backend_base<polling_wait<>>`.
 
 - **`HighPerformancePool` deque capacity** -- configurable via constructor:
   `HighPerformancePool(threads, deque_capacity)`.
 
-- **`GlobalPool::init(n)`** -- pre-configure thread count before first use
+- **`global_pool_backend::init(n)`** -- pre-configure thread count before first use
   (std::call_once semantics).
 
 - **C++20 ranges overloads** -- `submit_batch(range)`,
   `try_submit_batch(range)`, `parallel_for_each(range, func)` on all pool types
-  and GlobalPool. Guarded by `__cpp_lib_ranges`.
+  and global_pool_backend. Guarded by `__cpp_lib_ranges`.
 
 - **Auto-register pool workers** -- opt-in `register_workers` flag on both pool
   constructors. Workers register/unregister automatically via
-  `AutoRegisterCurrentThread` RAII guard.
+  `auto_register_current_thread` RAII guard.
 
 - **Per-task tracing hooks** -- `set_on_task_start(callback)` and
   `set_on_task_end(callback)` on both pool types. Callbacks receive timestamp,
@@ -504,38 +488,38 @@
   for pool-aware tasks, `run_on(pool, coro_fn)` convenience returning
   `std::future`.
 
-- **`LightweightPoolT<TaskSize>`** -- ultra-lightweight fire-and-forget pool
-  using a custom `detail::SboCallable<TaskSize>` with configurable inline buffer
+- **`lightweight_pool_backend_base<TaskSize>`** -- ultra-lightweight fire-and-forget pool
+  using a custom `detail::sbo_callable<TaskSize>` with configurable inline buffer
   (default 64 bytes = 1 cache line, 56 bytes usable). Zero heap allocations for
   typical lambdas. No futures, no `packaged_task`, no statistics, no tracing.
   Workers are `ThreadWrapper` so `configure_threads`/`set_affinity` still work.
-  `using LightweightPool = LightweightPoolT<>` for the default.
+  `using LightweightPool = lightweight_pool_backend_base<>` for the default.
 
 - **`post()` / `try_post()`** -- fire-and-forget submission on all pool types
-  (`HighPerformancePool`, `ThreadPoolBase`, `GlobalPool`). Same queue logic as
+  (`HighPerformancePool`, `thread_pool_backend_base`, `global_pool_backend`). Same queue logic as
   `submit()` but skips `packaged_task`/`shared_ptr`/`future` overhead.
 
-- **`ScheduledThreadPoolT` now uses `post()`** internally instead of `submit()`,
+- **`scheduled_pool_backend_base` now uses `post()`** internally instead of `submit()`,
   eliminating wasted `future` allocations for every scheduled task dispatch. New
-  alias: `ScheduledLightweightPool = ScheduledThreadPoolT<LightweightPool>`.
+  alias: `scheduled_lightweight_pool_backend = scheduled_pool_backend_base<LightweightPool>`.
 
 ### New Types
 
-- `ThreadPoolBase<WaitPolicy>` - parameterized single-queue thread pool.
-- `IndefiniteWait` / `PollingWait<IntervalMs>` - wait policy types for
-  `ThreadPoolBase`.
+- `thread_pool_backend_base<WaitPolicy>` - parameterized single-queue thread pool.
+- `indefinite_wait` / `polling_wait<IntervalMs>` - wait policy types for
+  `thread_pool_backend_base`.
 - `PoolWithErrors<PoolType>` - generic error-handling pool wrapper.
-- `GlobalPool<PoolType>` - generic singleton pool accessor.
+- `global_pool_backend<PoolType>` - generic singleton pool accessor.
 - `ShutdownPolicy` - enum controlling shutdown behavior (drain / drop_pending).
-- `TaskStartCallback` / `TaskEndCallback` - tracing callback types.
+- `task_start_callback` / `task_end_callback` - tracing callback types.
 - `executor_base` / `pool_executor<Pool>` - type-erased executor for coroutines.
 - `schedule_on<Pool>` - awaitable for hopping to a pool thread.
 - `futures.hpp` - future combinators (`when_all`, `when_any`,
   `when_all_settled`).
-- `LightweightPoolT<TaskSize>` / `LightweightPool` - fire-and-forget pool with
+- `lightweight_pool_backend_base<TaskSize>` / `LightweightPool` - fire-and-forget pool with
   SBO.
-- `detail::SboCallable<TaskSize>` - type-erased callable with inline storage.
-- `ScheduledLightweightPool` - scheduled pool backed by `LightweightPool`.
+- `detail::sbo_callable<TaskSize>` - type-erased callable with inline storage.
+- `scheduled_lightweight_pool_backend` - scheduled pool backed by `LightweightPool`.
 
 ### Internal Improvements
 
@@ -546,37 +530,37 @@
 - **Priority / affinity / scheduling policy** OS-level logic centralized into
   `detail::apply_priority()`, `detail::apply_scheduling_policy()`, and
   `detail::apply_affinity()` free functions (overloaded for `pthread_t`,
-  `pid_t`, and `HANDLE`). `BaseThreadWrapper`, `ThreadControlBlock`,
-  `PThreadWrapper`, and `ThreadByNameView` now delegate to these shared
+  `pid_t`, and `HANDLE`). `BaseThreadWrapper`, `thread_control_block`,
+  `PThreadWrapper`, and `thread_by_name_view` now delegate to these shared
   implementations.
 
 - **`apply_profile()` overloads** refactored to use shared
   `detail::apply_profile_to()` and `detail::apply_profile_to_pool()` helpers.
 
-- **`ScheduledThreadPoolT`**: `schedule_at()` and `schedule_periodic_after()`
+- **`scheduled_pool_backend_base`**: `schedule_at()` and `schedule_periodic_after()`
   now share a private `insert_task()` helper.
 
 - **Pool worker configuration deduplicated**: `configure_threads()`,
   `set_affinity()`, `distribute_across_cpus()` in `HighPerformancePool` and
-  `ThreadPoolBase` now delegate to shared `detail::configure_worker_threads`,
+  `thread_pool_backend_base` now delegate to shared `detail::configure_worker_threads`,
   `detail::set_worker_affinity`, `detail::distribute_workers_across_cpus`
   templates.
 
 - **Thread naming/affinity reading centralized**: `set_name()`, `get_name()`,
   `get_affinity()` across `BaseThreadWrapper`, `PThreadWrapper`, and
-  `ThreadControlBlock` now delegate to `detail::apply_name`,
+  `thread_control_block` now delegate to `detail::apply_name`,
   `detail::read_name`, `detail::read_affinity` in `scheduler_policy.hpp`.
 
-- **`FutureWithErrorHandler<void>` specialization removed**: The primary
+- **`future_with_error_handler<void>` specialization removed**: The primary
   template now handles both `T` and `void` via `if constexpr`, eliminating ~70
   lines of duplicated code. No API change.
 
 - **`CompositeThreadRegistry` facade deduplicated**: The 12 query facade methods
   (filter, map, for_each, find_if, any, all, none, take, skip, count, empty,
-  apply) are now inherited from `detail::QueryFacadeMixin<Derived>` CRTP base.
+  apply) are now inherited from `detail::query_facade_mixin<Derived>` CRTP base.
   No API change.
 
-- **`ThreadRegistry` inherits `detail::QueryFacadeMixin`**: The 12 facade
+- **`ThreadRegistry` inherits `detail::query_facade_mixin`**: The 12 facade
   methods (filter, map, for_each, find_if, any, all, none, take, skip, count,
   empty, apply) are now provided by the same CRTP mixin as
   `CompositeThreadRegistry`, eliminating the duplicate implementations.
@@ -587,7 +571,7 @@
   and error handling.
 
 - **`ThreadRegistry::register_current_thread` consolidated**: Both overloads now
-  delegate to a private `try_register(RegisteredThreadInfo)` method, removing
+  delegate to a private `try_register(registered_thread_info_backend)` method, removing
   the duplicated lock/emplace/callback logic.
 
 - **`PoolWithErrors` submit methods consolidated**: `submit()` and
@@ -596,15 +580,15 @@
 
 - **`TaskError::capture()` factory**: New static factory method centralizes the
   repeated exception/thread_id/timestamp capture pattern. Used by
-  `ErrorHandledTask` and `PoolWithErrors`.
+  `error_handled_task` and `PoolWithErrors`.
 
-- **`ThreadControlBlock` native handle accessor**: Private `native_handle()`
+- **`thread_control_block` native handle accessor**: Private `native_handle()`
   method replaces four identical `#ifdef _WIN32` dispatch blocks in the
   set_affinity/set_priority/set_scheduling_policy/set_name methods.
 
 ### Migration Guide
 
-Full step-by-step guide: **[docs/MIGRATION_V2.md](docs/MIGRATION_V2.md)**.
+The former v2 migration guide was retired with the v3 API reset.
 
 Quick reference:
 
@@ -653,8 +637,8 @@ auto futures = pool.submit_batch(tasks.begin(), tasks.end());
 
 ## v1.4.0
 
-- Fix: `AutoRegisterCurrentThread` move constructor and move assignment now
-  correctly transfer `externalReg_`, preventing unregister from the wrong
+- Fix: `auto_register_current_thread` move constructor and move assignment now
+  correctly transfer `external_registry_`, preventing unregister from the wrong
   registry after a move.
 - Fix: Consistent MSVC C++20 detection (`_MSVC_LANG`) in `thread_wrapper.hpp`
   and `concepts.hpp`, matching the guard already used in
@@ -676,8 +660,8 @@ auto futures = pool.submit_batch(tasks.begin(), tasks.end());
   consistently with the rest of the library.
 - Improved: `ThreadPriority` factory methods are now `[[nodiscard]]` and
   `noexcept`; comparison operators are now `constexpr noexcept`.
-- Improved: Added `[[nodiscard]]` to query methods across `WorkStealingDeque`,
-  all pool classes, and `ScheduledTaskHandle`.
+- Improved: Added `[[nodiscard]]` to query methods across `work_stealing_deque`,
+  all pool classes, and `scheduled_task_backend`.
 - Removed: Unused `thread_local std::random_device` in
   `HighPerformancePool::worker_function`.
 - Added: C++20 coroutine primitive `task<T>` (`task.hpp`) - a lazy single-value
@@ -694,7 +678,7 @@ auto futures = pool.submit_batch(tasks.begin(), tasks.end());
 
 ## v1.3.0
 
-- Added: Build-mode introspection (`BuildMode` enum, `build_mode()`,
+- Added: Build-mode introspection (`build_mode` enum, `build_mode()`,
   `build_mode_string()`) to distinguish header-only from runtime builds at
   compile time and runtime.
 - Added: C++20 module support (`src/threadschedule.cppm`) re-exporting the full
@@ -743,7 +727,7 @@ auto futures = pool.submit_batch(tasks.begin(), tasks.end());
 
 ## v1.0.0
 
-- Refactor `ThreadControlBlock` and `RegisteredThreadInfo`
+- Refactor `thread_control_block` and `registered_thread_info_backend`
 
 ## v1.0.0-rc.5
 

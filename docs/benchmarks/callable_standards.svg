@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 482" width="820" height="482" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
 <rect x="0" y="0" width="820" height="482" rx="14" fill="#ffffff" stroke="#dbe3ef" />
-<text x="24" y="34" fill="#122033" font-size="18" font-weight="700">Does replacing std::function help? (ThreadPool task storage)</text>
+<text x="24" y="34" fill="#122033" font-size="18" font-weight="700">Does replacing std::function help? (thread_pool_backend task storage)</text>
 <text x="24" y="56" fill="#5b6b82" font-size="13">Build + invoke cost per task for detail::move_callable (std::function on C++17/20, std::move_only_function on C++23+); lower is better</text>
 <line x1="64" y1="396.0" x2="796" y2="396.0" stroke="#dbe3ef" stroke-width="1" />
 <text x="56" y="400.0" fill="#5b6b82" font-size="11" text-anchor="end">0.0</text>

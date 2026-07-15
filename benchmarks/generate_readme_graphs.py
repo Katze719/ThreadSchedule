@@ -16,12 +16,12 @@ from pathlib import Path
 
 TIME_TO_NS = {"ns": 1.0, "us": 1_000.0, "ms": 1_000_000.0, "s": 1_000_000_000.0}
 
-POOL_ORDER = ("ThreadPool", "FastThreadPool", "HighPerformancePool", "LightweightPool")
+POOL_ORDER = ("thread_pool_backend", "polling_pool_backend", "work_stealing_pool_backend", "lightweight_pool_backend")
 POOL_COLORS = {
-    "ThreadPool": "#2a7fff",
-    "FastThreadPool": "#16a34a",
-    "HighPerformancePool": "#f59e0b",
-    "LightweightPool": "#db2777",
+    "thread_pool_backend": "#2a7fff",
+    "polling_pool_backend": "#16a34a",
+    "work_stealing_pool_backend": "#f59e0b",
+    "lightweight_pool_backend": "#db2777",
 }
 VARIANT_COLORS = {
     "submit(future)": "#2a7fff",
@@ -209,7 +209,7 @@ def pool_runs_by_tasks(entries: list[Entry]) -> dict[str, dict[str, Entry]]:
         if e.family != "BM_ComparePoolTypes_LightWorkload":
             continue
         # Label format is "<PoolName> tasks=N"; match the leading token so that
-        # "ThreadPool" does not shadow "FastThreadPool" via substring matching.
+        # "thread_pool_backend" does not shadow "polling_pool_backend" via substring matching.
         first_token = e.label.split()[0] if e.label else ""
         pool = first_token if first_token in POOL_ORDER else None
         if not pool:
@@ -225,7 +225,7 @@ def build_pool_comparison(entries: list[Entry], out_dir: Path) -> Path | None:
         return None
     tasks = max(by_tasks, key=lambda t: int(t) if t.isdigit() else 0)
     pools = by_tasks[tasks]
-    baseline = pools.get("ThreadPool")
+    baseline = pools.get("thread_pool_backend")
     items: list[tuple[str, float, str, str]] = []
     ordered = sorted(pools.items(), key=lambda kv: kv[1].time_ns)
     for pool, e in ordered:
@@ -243,7 +243,7 @@ def build_pool_comparison(entries: list[Entry], out_dir: Path) -> Path | None:
         items.append((pool, e.time_ns, annotation, POOL_COLORS.get(pool, "#2a7fff")))
     svg = horizontal_bar_chart(
         "Thread pool comparison \u2014 light workload",
-        f"Wall-clock time to run {int(tasks):,} tiny tasks (lower is better, relative to ThreadPool)",
+        f"Wall-clock time to run {int(tasks):,} tiny tasks (lower is better, relative to thread_pool_backend)",
         items,
     )
     path = out_dir / "pool_comparison.svg"
@@ -353,74 +353,6 @@ def build_pool_workload(entries: list[Entry], out_dir: Path) -> Path | None:
     return path
 
 
-def _reflection_pair(
-    entries: list[Entry],
-    manual_family: str,
-    reflect_family: str,
-    title: str,
-    subtitle: str,
-    manual_label: str,
-    reflect_label: str,
-    out_name: str,
-    out_dir: Path,
-) -> Path | None:
-    manual = {e.args: e for e in entries if e.family == manual_family}
-    reflect = {e.args: e for e in entries if e.family == reflect_family}
-    common = sorted(set(manual) & set(reflect), key=lambda a: int(a[0]) if a and a[0].isdigit() else 0)
-    if not common:
-        return None
-    args = common[-1]  # largest registry size
-    m = manual[args]
-    r = reflect[args]
-    size = args[0] if args else "?"
-    items: list[tuple[str, float, str, str]] = []
-    for label, e, color in (
-        (manual_label, m, "#2a7fff"),
-        (reflect_label, r, "#f59e0b"),
-    ):
-        if m.time_ns > 0 and e.time_ns > 0:
-            ratio = e.time_ns / m.time_ns
-            rel = "baseline" if abs(ratio - 1.0) < 0.02 else (
-                f"{ratio:.2f}x slower" if ratio > 1.0 else f"{1.0 / ratio:.2f}x faster"
-            )
-            annotation = f"{fmt_time(e.time_ns)}  ({rel})"
-        else:
-            annotation = fmt_time(e.time_ns)
-        items.append((label, e.time_ns, annotation, color))
-    svg = horizontal_bar_chart(title, subtitle.format(size=f"{int(size):,}" if size.isdigit() else size), items)
-    path = out_dir / out_name
-    path.write_text(svg, encoding="utf-8")
-    return path
-
-
-def build_reflection_query(entries: list[Entry], out_dir: Path) -> Path | None:
-    return _reflection_pair(
-        entries,
-        "BM_QueryView_FilterMapName",
-        "BM_QueryView_ReflectionWhereProjectName",
-        "Reflection registry query: project a field",
-        "Selecting + projecting one field over {size} registered threads (lower is better)",
-        "filter + map (hand-written)",
-        "where + project (reflection)",
-        "reflection_query.svg",
-        out_dir,
-    )
-
-
-def build_reflection_lookup(entries: list[Entry], out_dir: Path) -> Path | None:
-    return _reflection_pair(
-        entries,
-        "BM_QueryView_FindIf",
-        "BM_QueryView_ReflectionFindBy",
-        "Reflection registry query: find by field",
-        "Locating a single entry by name over {size} registered threads (lower is better)",
-        "find_if (hand-written)",
-        "find_by (reflection)",
-        "reflection_lookup.svg",
-        out_dir,
-    )
-
-
 def load_callable_medians(path: Path) -> dict[str, float]:
     """Return family -> per-task time (ns) from an aggregate-only callable JSON."""
     payload = json.loads(path.read_text())
@@ -458,7 +390,7 @@ def build_callable_charts(std_medians: dict[str, dict[str, float]], out_dir: Pat
             series_a.append((std, vals, CXX_COLORS[std]))
     if series_a:
         svg = grouped_bar_chart(
-            "Does replacing std::function help? (ThreadPool task storage)",
+            "Does replacing std::function help? (thread_pool_backend task storage)",
             "Build + invoke cost per task for detail::move_callable "
             "(std::function on C++17/20, std::move_only_function on C++23+); lower is better",
             group_labels,
@@ -495,8 +427,8 @@ def build_callable_charts(std_medians: dict[str, dict[str, float]], out_dir: Pat
     sbo_vals = [medians.get(f"BM_Sbo_{key}", 0.0) for key, _ in CALLABLE_CAPTURES]
     if any(v > 0 for v in move_vals) and any(v > 0 for v in sbo_vals):
         series_c = [
-            ("move_callable (ThreadPool / std lib)", move_vals, "#2a7fff"),
-            ("SboCallable (LightweightPool)", sbo_vals, "#db2777"),
+            ("move_callable (thread_pool_backend / std lib)", move_vals, "#2a7fff"),
+            ("sbo_callable (lightweight_pool_backend)", sbo_vals, "#db2777"),
         ]
         svg = grouped_bar_chart(
             f"Do the SBO callables help? ({newest})",
@@ -543,8 +475,6 @@ def main() -> int:
         build_pool_comparison(entries, out_dir),
         build_pool_workload(entries, out_dir),
         build_post_vs_submit(entries, out_dir),
-        build_reflection_query(entries, out_dir),
-        build_reflection_lookup(entries, out_dir),
     ]
     generated.extend(build_callable_charts(std_medians, out_dir))
     for path in generated:

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish (e.g., 1.0.0)'
+        description: 'Version to publish (e.g., 3.0.0)'
         required: true
 
 jobs:
@@ -30,6 +30,9 @@ jobs:
           VERSION="${{ github.event.inputs.version }}"
         fi
         echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Validate release version
+      run: test "$(tr -d '[:space:]' < VERSION)" = "${{ steps.get_version.outputs.version }}"
     
     - name: Create source archive
       run: |
@@ -38,8 +41,8 @@ jobs:
           --exclude='build*' \
           --exclude='.github' \
           --transform "s,^,threadschedule-${{ steps.get_version.outputs.version }}/," \
-          include/ cmake/ examples/ tests/ benchmarks/ docs/ \
-          CMakeLists.txt conanfile.py README.md LICENSE
+          include/ src/ cmake/ examples/ tests/ benchmarks/ docs/ \
+          CMakeLists.txt VERSION CHANGELOG.md README.md LICENSE
     
     - name: Create header-only package
       run: |
@@ -47,6 +50,7 @@ jobs:
         cp -r include threadschedule-${{ steps.get_version.outputs.version }}-headers/
         cp LICENSE threadschedule-${{ steps.get_version.outputs.version }}-headers/
         cp README.md threadschedule-${{ steps.get_version.outputs.version }}-headers/
+        cp VERSION CHANGELOG.md threadschedule-${{ steps.get_version.outputs.version }}-headers/
         tar -czf threadschedule-${{ steps.get_version.outputs.version }}-headers.tar.gz \
           threadschedule-${{ steps.get_version.outputs.version }}-headers/
     

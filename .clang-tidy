@@ -1,33 +1,38 @@
-Checks: '-*,modernize-*,performance-*,readability-*,-readability-braces-*,-readability-magic-numbers,-modernize-avoid-c-arrays'
+Checks: '-*,bugprone-use-after-move,performance-for-range-copy,performance-move-const-arg,performance-unnecessary-copy-initialization,modernize-use-nullptr,modernize-use-override,readability-identifier-naming'
 WarningsAsErrors: ''
-HeaderFilterRegex: '.*'
-FormatStyle:     none
+HeaderFilterRegex: '(^|/)include/threadschedule/.*\.hpp$'
+FormatStyle: file
 CheckOptions:
-  - key:             modernize-use-nullptr.NullMacros
-    value:           'NULL'
-  - key:             modernize-use-nullptr.UseNullptr
-    value:           true
-  - key:             modernize-use-auto.MinTypeNameLength
-    value:           '5'
-  - key:             readability-identifier-length.MinimumVariableNameLength
-    value:           '1'
-  - key:             readability-identifier-length.MinimumParameterNameLength
-    value:           '1'
-  - key:             readability-identifier-naming.VariableCase
-    value:           aNy_CasE
-  - key:             readability-identifier-naming.FunctionCase
-    value:           lower_case
-  - key:             readability-identifier-naming.ClassCase
-    value:           aNy_CasE
-  - key:             readability-identifier-naming.StructCase
-    value:           aNy_CasE
-  - key:             readability-identifier-naming.EnumCase
-    value:           aNy_CasE
-  - key:             readability-identifier-naming.EnumConstantCase
-    value:           UPPER_CASE
-  - key:             cppcoreguidelines-pro-type-member-init.HaltOnMissingInit
-    value:           true
-  - key:             cppcoreguidelines-pro-type-member-init.IgnoreArrays
-    value:           false
-  - key:             cppcoreguidelines-pro-type-member-init.IgnoreTriviallyConstructible
-    value:           false
+  - key: modernize-use-nullptr.NullMacros
+    value: 'NULL'
+  - key: modernize-use-nullptr.UseNullptr
+    value: true
+
+  # Public libstdc++ names are lowercase/snake_case. Its _M_foo, _Tp and
+  # __detail forms are reserved implementation identifiers and are not copied.
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+  - key: readability-identifier-naming.ClassCase
+    value: lower_case
+  - key: readability-identifier-naming.StructCase
+    value: lower_case
+  - key: readability-identifier-naming.EnumCase
+    value: lower_case
+  - key: readability-identifier-naming.EnumConstantCase
+    value: lower_case
+  - key: readability-identifier-naming.TypeAliasCase
+    value: lower_case
+  - key: readability-identifier-naming.FunctionCase
+    value: lower_case
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+  - key: readability-identifier-naming.ParameterCase
+    value: lower_case
+  - key: readability-identifier-naming.PrivateMemberCase
+    value: lower_case
+  - key: readability-identifier-naming.PrivateMemberSuffix
+    value: '_'
+  - key: readability-identifier-naming.ProtectedMemberCase
+    value: lower_case
+  - key: readability-identifier-naming.ProtectedMemberSuffix
+    value: '_'

@@ -2,7 +2,8 @@
 
 /**
  * @file error_handler.hpp
- * @brief Error handling primitives: TaskError, ErrorHandler, and ErrorHandledTask.
+ * @brief Error handling primitives: task_error_backend, error_handler_backend,
+ * and error_handled_task.
  */
 
 #include "callable.hpp"
@@ -24,106 +25,118 @@ namespace threadschedule
 /**
  * @brief Holds diagnostic information captured from a failed task.
  *
- * TaskError is a value type (copyable and movable) that bundles the original
- * exception together with context about where and when the failure occurred.
+ * task_error_backend is a value type (copyable and movable) that bundles the
+ * original exception together with context about where and when the failure
+ * occurred.
  *
- * Instances are typically created by ErrorHandledTask and forwarded to
- * registered ErrorCallback functions through an ErrorHandler.
+ * Instances are typically created by error_handled_task and forwarded to
+ * registered error_callback_backend functions through an
+ * error_handler_backend.
  */
-struct TaskError
+struct task_error_backend
 {
-    /** @brief The captured exception. Never null when produced by the library. */
-    std::exception_ptr exception;
+  /** @brief The captured exception. Never null when produced by the library.
+   */
+  std::exception_ptr exception;
 
-    /** @brief Optional human-readable label supplied when the task was submitted. */
-    std::string task_description;
+  /** @brief Optional human-readable label supplied when the task was
+   * submitted. */
+  std::string task_description;
 
-    /** @brief Id of the thread on which the exception was thrown. */
-    std::thread::id thread_id;
+  /** @brief Id of the thread on which the exception was thrown. */
+  std::thread::id thread_id;
 
-    /** @brief Monotonic timestamp recorded immediately after the exception was caught. */
-    std::chrono::steady_clock::time_point timestamp;
+  /** @brief Monotonic timestamp recorded immediately after the exception was
+   * caught. */
+  std::chrono::steady_clock::time_point timestamp;
 
-    /**
-     * @brief Capture the current in-flight exception into a TaskError.
-     *
-     * Must be called inside a @c catch block. Fills exception, thread_id,
-     * and timestamp; optionally sets task_description.
-     */
-    static auto capture(std::string description = {}) -> TaskError
-    {
-        TaskError err;
-        err.exception = std::current_exception();
-        err.task_description = std::move(description);
-        err.thread_id = std::this_thread::get_id();
-        err.timestamp = std::chrono::steady_clock::now();
-        return err;
-    }
+  /**
+   * @brief Capture the current in-flight exception into a task_error_backend.
+   *
+   * Must be called inside a @c catch block. Fills exception, thread_id,
+   * and timestamp; optionally sets task_description.
+   */
+  static auto
+  capture(std::string description = {}) -> task_error_backend
+  {
+    task_error_backend err;
+    err.exception = std::current_exception();
+    err.task_description = std::move(description);
+    err.thread_id = std::this_thread::get_id();
+    err.timestamp = std::chrono::steady_clock::now();
+    return err;
+  }
 
-    /**
-     * @brief Extract the message string from the stored exception.
-     *
-     * Internally re-throws the exception and catches it as @c std::exception
-     * to call @c what().  This is safe but incurs the overhead of a throw /
-     * catch round-trip; avoid calling in tight loops.
-     *
-     * @return The exception message, @c "Unknown exception" if the stored
-     *         exception is not derived from @c std::exception, or
-     *         @c "No exception" if the pointer is empty.
-     */
-    [[nodiscard]] auto what() const -> std::string
-    {
-        try
-        {
-            if (exception)
-            {
-                std::rethrow_exception(exception);
-            }
-        }
-        catch (std::exception const& e)
-        {
-            return e.what();
-        }
-        catch (...)
-        {
-            return "Unknown exception";
-        }
-        return "No exception";
-    }
-
-    /**
-     * @brief Re-throw the original exception.
-     *
-     * If the stored @c exception pointer is non-null the exception is
-     * re-thrown via @c std::rethrow_exception.  This will terminate the
-     * program if called outside a try / catch block.
-     *
-     * @throws The original exception stored in @ref exception.
-     */
-    void rethrow() const
-    {
+  /**
+   * @brief Extract the message string from the stored exception.
+   *
+   * Internally re-throws the exception and catches it as @c std::exception
+   * to call @c what().  This is safe but incurs the overhead of a throw /
+   * catch round-trip; avoid calling in tight loops.
+   *
+   * @return The exception message, @c "Unknown exception" if the stored
+   *         exception is not derived from @c std::exception, or
+   *         @c "No exception" if the pointer is empty.
+   */
+  [[nodiscard]] auto
+  what() const -> std::string
+  {
+    try
+      {
         if (exception)
-        {
+          {
             std::rethrow_exception(exception);
-        }
-    }
+          }
+      }
+    catch (std::exception const& e)
+      {
+        return e.what();
+      }
+    catch (...)
+      {
+        return "Unknown exception";
+      }
+    return "No exception";
+  }
+
+  /**
+   * @brief Re-throw the original exception.
+   *
+   * If the stored @c exception pointer is non-null the exception is
+   * re-thrown via @c std::rethrow_exception.  This will terminate the
+   * program if called outside a try / catch block.
+   *
+   * @throws The original exception stored in @ref exception.
+   */
+  void
+  rethrow() const
+  {
+    if (exception)
+      {
+        std::rethrow_exception(exception);
+      }
+  }
 };
 
 /**
- * @brief Signature for error-handling callbacks registered with ErrorHandler.
+ * @brief Signature for error-handling callbacks registered with
+ * error_handler_backend.
  *
- * Callbacks receive a const reference to the TaskError describing the failure.
+ * Callbacks receive a const reference to the task_error_backend describing the
+ * failure.
  */
-using ErrorCallback = detail::copyable_callable<void(TaskError const&)>;
+using error_callback_backend
+    = detail::copyable_callable<void(task_error_backend const&)>;
 
-using ErrorCallbackStorage = ErrorCallback;
-using FutureErrorCallback = detail::move_callable<void(std::exception_ptr)>;
+using error_callback_storage = error_callback_backend;
+using future_error_callback = detail::move_callable<void(std::exception_ptr)>;
 
 /**
  * @brief Central registry and dispatcher for task-error callbacks.
  *
- * ErrorHandler maintains an ordered list of ErrorCallback functions and invokes
- * them whenever a task reports a failure through handle_error().
+ * error_handler_backend maintains an ordered list of error_callback_backend
+ * functions and invokes them whenever a task reports a failure through
+ * handle_error().
  *
  * @par Thread safety
  * All public methods are guarded by an internal @c std::mutex, so the handler
@@ -143,138 +156,155 @@ using FutureErrorCallback = detail::move_callable<void(std::exception_ptr)>;
  * The error count returned by error_count() is monotonically increasing and
  * is only reset by an explicit call to reset_error_count().
  */
-class ErrorHandler
+class error_handler_backend
 {
-  public:
-    /**
-     * @brief Register an error callback.
-     *
-     * @param callback Callable to invoke when a task throws.
-     * @return Stable ID for the callback, usable with remove_callback().
-     */
-    auto add_callback(ErrorCallback callback) -> size_t
+public:
+  /**
+   * @brief Register an error callback.
+   *
+   * @param callback Callable to invoke when a task throws.
+   * @return Stable ID for the callback, usable with remove_callback().
+   */
+  auto
+  add_callback(error_callback_backend callback) -> size_t
+  {
+    return emplace_callback(error_callback_storage(std::move(callback)));
+  }
+
+  template <typename Callback,
+            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>,
+                                             error_callback_backend>,
+                             int> = 0>
+  auto
+  add_callback(Callback&& callback) -> size_t
+  {
+    static_assert(
+        std::is_invocable_r_v<void, Callback&, task_error_backend const&>,
+        "Error callback must be invocable with task_error_backend const&");
+    return emplace_callback(
+        detail::make_copyable_callable<void(task_error_backend const&)>(
+            std::forward<Callback>(callback)));
+  }
+
+  /**
+   * @brief Remove a single callback by its ID.
+   *
+   * @param id The ID returned by add_callback().
+   * @return @c true if the callback was found and removed, @c false otherwise.
+   */
+  auto
+  remove_callback(size_t id) -> bool
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return callbacks_.erase(id) > 0;
+  }
+
+  /**
+   * @brief Check whether a callback with the given ID is registered.
+   */
+  [[nodiscard]] auto
+  has_callback(size_t id) const -> bool
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return callbacks_.count(id) > 0;
+  }
+
+  /**
+   * @brief Remove all registered error callbacks.
+   *
+   * After this call, handle_error() will still increment the error count
+   * but no callbacks will be invoked.
+   */
+  void
+  clear_callbacks()
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    callbacks_.clear();
+  }
+
+  /**
+   * @brief Dispatch an error to all registered callbacks.
+   *
+   * Increments the internal error counter and then invokes every registered
+   * callback in insertion order.  If any callback throws, the exception is
+   * caught and silently discarded so that subsequent callbacks still run.
+   *
+   * @param error Diagnostic information about the failed task.
+   */
+  void
+  handle_error(task_error_backend const& error)
+  {
+    std::vector<error_callback_storage> snapshot;
     {
-        return emplace_callback(ErrorCallbackStorage(std::move(callback)));
+      std::lock_guard<std::mutex> lock(mutex_);
+      error_count_++;
+      snapshot.reserve(callbacks_.size());
+      for (auto const& [id, callback] : callbacks_)
+        snapshot.push_back(callback);
     }
 
-    template <typename Callback,
-              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, ErrorCallback>, int> = 0>
-    auto add_callback(Callback&& callback) -> size_t
-    {
-        static_assert(std::is_invocable_r_v<void, Callback&, TaskError const&>,
-                      "Error callback must be invocable with TaskError const&");
-        return emplace_callback(detail::make_copyable_callable<void(TaskError const&)>(std::forward<Callback>(callback)));
-    }
+    for (auto& callback : snapshot)
+      {
+        try
+          {
+            callback(error);
+          }
+        catch (...)
+          {
+          }
+      }
+  }
 
-    /**
-     * @brief Remove a single callback by its ID.
-     *
-     * @param id The ID returned by add_callback().
-     * @return @c true if the callback was found and removed, @c false otherwise.
-     */
-    auto remove_callback(size_t id) -> bool
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return callbacks_.erase(id) > 0;
-    }
+  /**
+   * @brief Return the total number of errors handled since the last reset.
+   *
+   * The count is monotonically increasing and is only set back to zero by
+   * an explicit call to reset_error_count().
+   *
+   * @return Cumulative number of handle_error() invocations.
+   */
+  [[nodiscard]] auto
+  error_count() const -> size_t
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return error_count_;
+  }
 
-    /**
-     * @brief Check whether a callback with the given ID is registered.
-     */
-    [[nodiscard]] auto has_callback(size_t id) const -> bool
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return callbacks_.count(id) > 0;
-    }
+  /**
+   * @brief Reset the cumulative error count to zero.
+   */
+  void
+  reset_error_count()
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    error_count_ = 0;
+  }
 
-    /**
-     * @brief Remove all registered error callbacks.
-     *
-     * After this call, handle_error() will still increment the error count
-     * but no callbacks will be invoked.
-     */
-    void clear_callbacks()
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        callbacks_.clear();
-    }
+private:
+  auto
+  emplace_callback(error_callback_storage callback) -> size_t
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    size_t const id = next_callback_id_++;
+    callbacks_.emplace(id, std::move(callback));
+    return id;
+  }
 
-    /**
-     * @brief Dispatch an error to all registered callbacks.
-     *
-     * Increments the internal error counter and then invokes every registered
-     * callback in insertion order.  If any callback throws, the exception is
-     * caught and silently discarded so that subsequent callbacks still run.
-     *
-     * @param error Diagnostic information about the failed task.
-     */
-    void handle_error(TaskError const& error)
-    {
-        std::vector<ErrorCallbackStorage> snapshot;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            error_count_++;
-            snapshot.reserve(callbacks_.size());
-            for (auto const& [id, callback] : callbacks_)
-                snapshot.push_back(callback);
-        }
-
-        for (auto& callback : snapshot)
-        {
-            try
-            {
-                callback(error);
-            }
-            catch (...)
-            {
-            }
-        }
-    }
-
-    /**
-     * @brief Return the total number of errors handled since the last reset.
-     *
-     * The count is monotonically increasing and is only set back to zero by
-     * an explicit call to reset_error_count().
-     *
-     * @return Cumulative number of handle_error() invocations.
-     */
-    [[nodiscard]] auto error_count() const -> size_t
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return error_count_;
-    }
-
-    /**
-     * @brief Reset the cumulative error count to zero.
-     */
-    void reset_error_count()
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        error_count_ = 0;
-    }
-
-  private:
-    auto emplace_callback(ErrorCallbackStorage callback) -> size_t
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        size_t const id = next_callback_id_++;
-        callbacks_.emplace(id, std::move(callback));
-        return id;
-    }
-
-    mutable std::mutex mutex_;
-    std::map<size_t, ErrorCallbackStorage> callbacks_;
-    size_t next_callback_id_{0};
-    size_t error_count_{0};
+  mutable std::mutex mutex_;
+  std::map<size_t, error_callback_storage> callbacks_;
+  size_t next_callback_id_{ 0 };
+  size_t error_count_{ 0 };
 };
 
 /**
- * @brief Callable wrapper that catches exceptions and routes them to an @ref ErrorHandler.
+ * @brief Callable wrapper that catches exceptions and routes them to an @ref
+ * error_handler_backend.
  *
- * ErrorHandledTask wraps an arbitrary callable @p Func and invokes it inside a
- * try / catch block.  Any exception thrown by the callable is captured into a
- * @ref TaskError and forwarded to the associated @ref ErrorHandler; the exception is
+ * error_handled_task wraps an arbitrary callable @p Func and invokes it inside
+ * a try / catch block.  Any exception thrown by the callable is captured into
+ * a
+ * @ref task_error_backend and forwarded to the associated @ref
+ * error_handler_backend; the exception is
  * **not** re-thrown, so from the caller's perspective the task completes
  * normally (silently succeeds).
  *
@@ -282,58 +312,70 @@ class ErrorHandler
  *         arguments, return value is discarded).
  *
  * @par Ownership
- * The ErrorHandler is held via @c std::shared_ptr, making it safe to copy or
- * move ErrorHandledTask across thread boundaries without lifetime issues.
+ * The error_handler_backend is held via @c std::shared_ptr, making it safe to
+ * copy or move error_handled_task across thread boundaries without lifetime
+ * issues.
  *
  * @see make_error_handled_task
  */
 template <typename Func>
-class ErrorHandledTask
+class error_handled_task
 {
-  public:
-    ErrorHandledTask(Func&& func, std::shared_ptr<ErrorHandler> handler, std::string description = "")
-        : func_(std::forward<Func>(func)), handler_(std::move(handler)), description_(std::move(description))
-    {
-    }
+public:
+  error_handled_task(Func&& func,
+                     std::shared_ptr<error_handler_backend> handler,
+                     std::string description = "")
+      : func_(std::forward<Func>(func)), handler_(std::move(handler)),
+        description_(std::move(description))
+  {
+  }
 
-    void operator()()
-    {
-        try
-        {
-            func_();
-        }
-        catch (...)
-        {
-            if (handler_)
-                handler_->handle_error(TaskError::capture(description_));
-        }
-    }
+  void
+  operator()()
+  {
+    try
+      {
+        func_();
+      }
+    catch (...)
+      {
+        if (handler_)
+          handler_->handle_error(task_error_backend::capture(description_));
+      }
+  }
 
-  private:
-    Func func_;
-    std::shared_ptr<ErrorHandler> handler_;
-    std::string description_;
+private:
+  Func func_;
+  std::shared_ptr<error_handler_backend> handler_;
+  std::string description_;
 };
 
 /**
- * @brief Factory function that creates an @ref ErrorHandledTask with perfect forwarding.
+ * @brief Factory function that creates an @ref error_handled_task with perfect
+ * forwarding.
  *
  * @tparam Func Callable type (deduced).
  * @param func        The callable to wrap.
- * @param handler     Shared pointer to the ErrorHandler that will receive errors.
- * @param description Optional human-readable label stored in TaskError::task_description.
- * @return An ErrorHandledTask<Func> ready to be submitted to a thread pool.
+ * @param handler     Shared pointer to the error_handler_backend that will
+ * receive errors.
+ * @param description Optional human-readable label stored in
+ * task_error_backend::task_description.
+ * @return An error_handled_task<Func> ready to be submitted to a thread pool.
  */
 template <typename Func>
-auto make_error_handled_task(Func&& func, std::shared_ptr<ErrorHandler> handler, std::string description = "")
+auto
+make_error_handled_task(Func&& func,
+                        std::shared_ptr<error_handler_backend> handler,
+                        std::string description = "")
 {
-    return ErrorHandledTask<Func>(std::forward<Func>(func), std::move(handler), std::move(description));
+  return error_handled_task<Func>(std::forward<Func>(func), std::move(handler),
+                                  std::move(description));
 }
 
 /**
  * @brief A move-only future wrapper that supports an error callback.
  *
- * FutureWithErrorHandler<T> wraps a @c std::future<T> and adds an optional
+ * future_with_error_handler<T> wraps a @c std::future<T> and adds an optional
  * error callback that fires when get() encounters an exception.
  *
  * @tparam T The value type of the underlying future.
@@ -346,130 +388,146 @@ auto make_error_handled_task(Func&& func, std::shared_ptr<ErrorHandler> handler,
  * - Attach a callback with on_error().  At most one callback is supported;
  *   a subsequent call to on_error() replaces the previous callback.
  * - The callback is invoked **before** the exception is re-thrown from get().
- * - wait(), wait_for(), and wait_until() do **not** trigger the error callback.
+ * - wait(), wait_for(), and wait_until() do **not** trigger the error
+ * callback.
  * - valid() delegates directly to the underlying @c std::future::valid().
  */
 template <typename T>
-class FutureWithErrorHandler
+class future_with_error_handler
 {
-  public:
-    explicit FutureWithErrorHandler(std::future<T> future)
-        : future_(std::move(future)), error_callback_(nullptr), has_callback_(false)
-    {
-    }
+public:
+  explicit future_with_error_handler(std::future<T> future)
+      : future_(std::move(future)), error_callback_(nullptr),
+        has_callback_(false)
+  {
+  }
 
-    FutureWithErrorHandler(FutureWithErrorHandler const&) = delete;
-    auto operator=(FutureWithErrorHandler const&) -> FutureWithErrorHandler& = delete;
-    FutureWithErrorHandler(FutureWithErrorHandler&&) = default;
-    auto operator=(FutureWithErrorHandler&&) -> FutureWithErrorHandler& = default;
+  future_with_error_handler(future_with_error_handler const&) = delete;
+  auto operator=(future_with_error_handler const&)
+      -> future_with_error_handler& = delete;
+  future_with_error_handler(future_with_error_handler&&) = default;
+  auto operator=(future_with_error_handler&&)
+      -> future_with_error_handler& = default;
 
-    /**
-     * @brief Attach an error callback.
-     *
-     * The callback will be invoked with the current @c std::exception_ptr if
-     * get() encounters an exception.  Only one callback is stored; calling
-     * on_error() again replaces the previous callback.
-     *
-     * @param callback Callable invoked with the exception pointer on failure.
-     * @return Reference to @c *this, allowing fluent chaining.
-     */
-    auto on_error(std::function<void(std::exception_ptr)> callback) -> FutureWithErrorHandler&
-    {
-        error_callback_ = FutureErrorCallback(std::move(callback));
-        has_callback_ = true;
-        return *this;
-    }
+  /**
+   * @brief Attach an error callback.
+   *
+   * The callback will be invoked with the current @c std::exception_ptr if
+   * get() encounters an exception.  Only one callback is stored; calling
+   * on_error() again replaces the previous callback.
+   *
+   * @param callback Callable invoked with the exception pointer on failure.
+   * @return Reference to @c *this, allowing fluent chaining.
+   */
+  auto
+  on_error(std::function<void(std::exception_ptr)> callback)
+      -> future_with_error_handler&
+  {
+    error_callback_ = future_error_callback(std::move(callback));
+    has_callback_ = true;
+    return *this;
+  }
 
-    template <typename Callback,
-              std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, std::function<void(std::exception_ptr)>>,
-                               int> = 0>
-    auto on_error(Callback&& callback) -> FutureWithErrorHandler&
-    {
-        static_assert(std::is_invocable_r_v<void, Callback&, std::exception_ptr>,
-                      "Error callback must be invocable with std::exception_ptr");
-        error_callback_ = detail::make_move_callable<void(std::exception_ptr)>(std::forward<Callback>(callback));
-        has_callback_ = true;
-        return *this;
-    }
+  template <typename Callback,
+            std::enable_if_t<
+                !std::is_same_v<detail::remove_cvref_t<Callback>,
+                                std::function<void(std::exception_ptr)>>,
+                int> = 0>
+  auto
+  on_error(Callback&& callback) -> future_with_error_handler&
+  {
+    static_assert(std::is_invocable_r_v<void, Callback&, std::exception_ptr>,
+                  "Error callback must be invocable with std::exception_ptr");
+    error_callback_ = detail::make_move_callable<void(std::exception_ptr)>(
+        std::forward<Callback>(callback));
+    has_callback_ = true;
+    return *this;
+  }
 
-    /**
-     * @brief Retrieve the result, invoking the error callback on failure.
-     *
-     * If the underlying future holds an exception, the error callback (if any)
-     * is called **before** the exception is re-thrown to the caller.
-     *
-     * @return The stored value of type @p T (void when @p T is @c void).
-     * @throws Any exception stored in the underlying @c std::future.
-     */
-    auto get() -> T
-    {
-        try
-        {
-            if constexpr (std::is_void_v<T>)
-                future_.get();
-            else
-                return future_.get();
-        }
-        catch (...)
-        {
-            if (has_callback_ && error_callback_)
-            {
-                error_callback_(std::current_exception());
-            }
-            throw;
-        }
-    }
+  /**
+   * @brief Retrieve the result, invoking the error callback on failure.
+   *
+   * If the underlying future holds an exception, the error callback (if any)
+   * is called **before** the exception is re-thrown to the caller.
+   *
+   * @return The stored value of type @p T (void when @p T is @c void).
+   * @throws Any exception stored in the underlying @c std::future.
+   */
+  auto
+  get() -> T
+  {
+    try
+      {
+        if constexpr (std::is_void_v<T>)
+          future_.get();
+        else
+          return future_.get();
+      }
+    catch (...)
+      {
+        if (has_callback_ && error_callback_)
+          {
+            error_callback_(std::current_exception());
+          }
+        throw;
+      }
+  }
 
-    /**
-     * @brief Block until the result is ready.
-     *
-     * Does **not** trigger the error callback regardless of the stored state.
-     */
-    void wait() const
-    {
-        future_.wait();
-    }
+  /**
+   * @brief Block until the result is ready.
+   *
+   * Does **not** trigger the error callback regardless of the stored state.
+   */
+  void
+  wait() const
+  {
+    future_.wait();
+  }
 
-    /**
-     * @brief Block until the result is ready or the timeout elapses.
-     *
-     * Does **not** trigger the error callback.
-     *
-     * @return The @c std::future_status indicating whether the result is ready.
-     */
-    template <typename Rep, typename Period>
-    auto wait_for(std::chrono::duration<Rep, Period> const& timeout_duration) const
-    {
-        return future_.wait_for(timeout_duration);
-    }
+  /**
+   * @brief Block until the result is ready or the timeout elapses.
+   *
+   * Does **not** trigger the error callback.
+   *
+   * @return The @c std::future_status indicating whether the result is ready.
+   */
+  template <typename Rep, typename Period>
+  auto
+  wait_for(std::chrono::duration<Rep, Period> const& timeout_duration) const
+  {
+    return future_.wait_for(timeout_duration);
+  }
 
-    /**
-     * @brief Block until the result is ready or the given time point is reached.
-     *
-     * Does **not** trigger the error callback.
-     *
-     * @return The @c std::future_status indicating whether the result is ready.
-     */
-    template <typename Clock, typename Duration>
-    auto wait_until(std::chrono::time_point<Clock, Duration> const& timeout_time) const
-    {
-        return future_.wait_until(timeout_time);
-    }
+  /**
+   * @brief Block until the result is ready or the given time point is reached.
+   *
+   * Does **not** trigger the error callback.
+   *
+   * @return The @c std::future_status indicating whether the result is ready.
+   */
+  template <typename Clock, typename duration>
+  auto
+  wait_until(
+      std::chrono::time_point<Clock, duration> const& timeout_time) const
+  {
+    return future_.wait_until(timeout_time);
+  }
 
-    /**
-     * @brief Check whether the future refers to a shared state.
-     *
-     * Delegates directly to @c std::future::valid().
-     */
-    [[nodiscard]] auto valid() const -> bool
-    {
-        return future_.valid();
-    }
+  /**
+   * @brief Check whether the future refers to a shared state.
+   *
+   * Delegates directly to @c std::future::valid().
+   */
+  [[nodiscard]] auto
+  valid() const -> bool
+  {
+    return future_.valid();
+  }
 
-  private:
-    std::future<T> future_;
-    FutureErrorCallback error_callback_;
-    bool has_callback_{false};
+private:
+  std::future<T> future_;
+  future_error_callback error_callback_;
+  bool has_callback_{ false };
 };
 
 } // namespace threadschedule

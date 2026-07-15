@@ -8,9 +8,6 @@ add_executable(threadpool_memory_benchmarks memory_benchmarks.cpp)
 add_executable(threadpool_resampling_benchmarks resampling_benchmarks.cpp)
 add_executable(callable_benchmarks callable_benchmarks.cpp)
 add_executable(callable_std_benchmarks callable_std_benchmarks.cpp)
-if(THREADSCHEDULE_HAS_REFLECTION)
-    add_executable(reflection_registry_benchmarks reflection_registry_benchmarks.cpp)
-endif()
 
 # Real-world scenario benchmarks
 add_executable(web_server_benchmarks web_server_benchmarks.cpp)
@@ -29,9 +26,6 @@ set(ALL_BENCHMARK_TARGETS
     database_benchmarks
     audio_video_benchmarks
 )
-if(THREADSCHEDULE_HAS_REFLECTION)
-    list(APPEND ALL_BENCHMARK_TARGETS reflection_registry_benchmarks)
-endif()
 
 # Link libraries for all benchmarks
 foreach(target ${ALL_BENCHMARK_TARGETS})
@@ -67,9 +61,6 @@ add_test(NAME ThreadPoolThroughputBenchmarks COMMAND threadpool_throughput_bench
 add_test(NAME ThreadPoolMemoryBenchmarks COMMAND threadpool_memory_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3)
 add_test(NAME ThreadPoolResamplingBenchmarks COMMAND threadpool_resampling_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3)
 add_test(NAME CallableBenchmarks COMMAND callable_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3)
-if(THREADSCHEDULE_HAS_REFLECTION)
-    add_test(NAME ReflectionRegistryBenchmarks COMMAND reflection_registry_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3)
-endif()
 add_test(NAME WebServerBenchmarks COMMAND web_server_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3)
 add_test(NAME DatabaseBenchmarks COMMAND database_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3)
 add_test(NAME AudioVideoBenchmarks COMMAND audio_video_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3)
@@ -78,7 +69,7 @@ add_test(NAME AudioVideoBenchmarks COMMAND audio_video_benchmarks --benchmark_mi
 # Note: These targets only run when explicitly requested. They do NOT run during normal builds.
 
 add_custom_target(run_core_benchmarks
-    COMMAND echo "=== Core ThreadPool Benchmarks ==="
+    COMMAND echo "=== Core thread_pool_backend Benchmarks ==="
     COMMAND threadpool_basic_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3
     COMMAND echo "=== Throughput Benchmarks ==="
     COMMAND threadpool_throughput_benchmarks --benchmark_min_time=2s --benchmark_repetitions=3

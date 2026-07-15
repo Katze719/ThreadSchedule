@@ -100,12 +100,6 @@ if [[ -f "${THREADPOOL_JSON}" ]]; then
     JSON_FILES+=("${THREADPOOL_JSON}")
 fi
 
-REFLECTION_JSON="${OUTPUT_DIR}/reflection_registry.json"
-run_json_benchmark "reflection_registry_benchmarks" "BM_QueryView_.*" "${REFLECTION_JSON}"
-if [[ -f "${REFLECTION_JSON}" ]]; then
-    JSON_FILES+=("${REFLECTION_JSON}")
-fi
-
 if [[ ${#JSON_FILES[@]} -eq 0 ]]; then
     echo "No benchmark JSON files were produced." >&2
     exit 1

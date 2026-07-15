@@ -1,29 +1,28 @@
+#include <threadschedule/threadschedule.hpp>
+
 #include <chrono>
-#include <threadschedule/registered_threads.hpp>
-#include <threadschedule/thread_registry.hpp>
+#include <iostream>
+#include <thread>
 
-using namespace threadschedule;
-
-int main()
+int
+main()
 {
-    // Create a registered worker thread with tags
-    ThreadWrapperReg worker("worker-1", "io", [] {
-        // Simulate some work
-        std::this_thread::sleep_for(std::chrono::milliseconds(300));
-    });
+  threadschedule::thread worker(
+      []
+        {
+          auto& registry = threadschedule::global_registry();
+          (void)registry.register_current_thread("worker-1", "io");
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          (void)registry.unregister_current_thread();
+        });
 
-    // Wait a moment to ensure the thread has started and registered
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  auto entries = threadschedule::global_registry().snapshot();
+  if (!entries)
+    return 2;
 
-    // Apply a no-op priority change to all io threads (demo)
-    registry().apply([](RegisteredThreadInfo const& e) { return e.componentTag == "io"; },
-                     [](RegisteredThreadInfo const& e) { (void)registry().set_priority(e.tid, ThreadPriority{0}); });
+  for (auto const& entry : *entries)
+    std::cout << entry.name << " [" << entry.component << "]\n";
 
-    // Try to rename all io threads
-    registry().apply(
-        [](RegisteredThreadInfo const& e) { return e.componentTag == "io"; },
-        [](RegisteredThreadInfo const& e) { (void)registry().set_name(e.tid, std::string("io-") + e.name); });
-
-    worker.join();
-    return 0;
+  return worker.join() ? 0 : 3;
 }

@@ -2,83 +2,39 @@ name: Documentation
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
-  # Check documentation
   check-docs:
-    name: Check Documentation
+    name: Check documentation and examples
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Check for broken links in markdown
-      uses: gaurav-nelson/github-action-markdown-link-check@v1
-      with:
-        use-quiet-mode: 'yes'
-        config-file: '.github/markdown-link-check-config.json'
-        folder-path: '.'
-        file-extension: '.md'
-    
-    - name: Check README/examples presence
-      run: |
-        echo "Checking documentation examples..."
-        # Accept examples in README.md or docs/CMAKE_REFERENCE.md for CMake
-        if grep -q "cmake_minimum_required" README.md || grep -q "cmake_minimum_required" docs/CMAKE_REFERENCE.md; then
-          echo "Found CMake example in README.md or docs/CMAKE_REFERENCE.md"
-        else
-          echo "No CMake example found in README.md or docs/CMAKE_REFERENCE.md"
-          exit 1
-        fi
-        # Accept C++ include example in README.md or docs/INTEGRATION.md
-        if grep -q "#include <threadschedule/threadschedule.hpp>" README.md || grep -q "#include <threadschedule/threadschedule.hpp>" docs/INTEGRATION.md; then
-          echo "Found C++ include example"
-        else
-          echo "No C++ include example found (README.md or docs/INTEGRATION.md)"
-          exit 1
-        fi
-    
-    - name: Check integration documentation
-      run: |
-        # Verify integration guide exists and is comprehensive (use docs/INTEGRATION.md)
-        if [ ! -f "docs/INTEGRATION.md" ]; then
-          echo "docs/INTEGRATION.md not found"
-          exit 1
-        fi
-        # Check for key sections
-        for section in "FetchContent" "CPM" "Conan" "add_subdirectory"; do
-          if grep -q "$section" docs/INTEGRATION.md; then
-            echo "Found $section section"
-          else
-            echo "Missing $section section in docs/INTEGRATION.md"
-            exit 1
-          fi
-        done
-    
-    - name: Validate CMake reference
-      run: |
-        if [ ! -f "docs/CMAKE_REFERENCE.md" ]; then
-          echo "docs/CMAKE_REFERENCE.md not found"
-          exit 1
-        fi
-        # Check for key options
-        for option in "THREADSCHEDULE_BUILD_EXAMPLES" "THREADSCHEDULE_BUILD_TESTS" "THREADSCHEDULE_INSTALL"; do
-          if grep -q "$option" docs/CMAKE_REFERENCE.md; then
-            echo "Found $option documentation"
-          else
-            echo "Missing $option documentation in docs/CMAKE_REFERENCE.md"
-            exit 1
-          fi
-        done
+      - uses: actions/checkout@v4
+      - name: Check Markdown links
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-quiet-mode: 'yes'
+          config-file: '.github/markdown-link-check-config.json'
+          folder-path: '.'
+          file-extension: '.md'
+      - name: Build documented examples as C++17
+        run: |
+          cmake -S . -B build -DTHREADSCHEDULE_BUILD_EXAMPLES=ON -DTHREADSCHEDULE_BUILD_DOCS=OFF -DCMAKE_CXX_STANDARD=17
+          cmake --build build --parallel
+      - name: Validate release documentation
+        run: |
+          test -f docs/API.md
+          test -f docs/ADVANCED.md
+          test -f docs/COMPATIBILITY.md
+          test -f docs/CMAKE_REFERENCE.md
+          test -f docs/MIGRATION_V3.md
+          grep -q '#include <threadschedule/threadschedule.hpp>' README.md
 
-  # Build and deploy Doxygen to GitHub Pages
   deploy-docs:
-    name: Build & Deploy Doxygen
+    name: Build and deploy Doxygen
     if: github.ref == 'refs/heads/main'
     needs: check-docs
     runs-on: ubuntu-latest
@@ -87,37 +43,15 @@ jobs:
       pages: write
       id-token: write
     concurrency:
-      group: "pages"
+      group: pages
       cancel-in-progress: false
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Install Doxygen 1.14.0
-      run: |
-        cd /tmp
-        wget -q https://github.com/doxygen/doxygen/releases/download/Release_1_14_0/doxygen-1.14.0.linux.bin.tar.gz
-        tar -xzf doxygen-1.14.0.linux.bin.tar.gz
-        sudo cp doxygen-1.14.0/bin/doxygen /usr/local/bin/
-        doxygen --version
-        sudo apt-get update
-        sudo apt-get install -y graphviz
-
-    - name: Configure (enable docs)
-      run: cmake -S . -B build -DTHREADSCHEDULE_BUILD_DOCS=ON
-
-    - name: Build docs
-      run: cmake --build build --target docs -- -j
-
-    - name: Setup Pages
-      uses: actions/configure-pages@v5
-
-    - name: Upload artifact
-      uses: actions/upload-pages-artifact@v3
-      with:
-        path: build/docs/doxygen/html
-
-    - name: Deploy to GitHub Pages
-      id: deployment
-      uses: actions/deploy-pages@v4
-
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y doxygen graphviz
+      - run: cmake -S . -B build -DTHREADSCHEDULE_BUILD_DOCS=ON
+      - run: cmake --build build --target docs --parallel
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/docs/doxygen/html
+      - uses: actions/deploy-pages@v4
