@@ -45,3 +45,13 @@ TEST(CallableTest, PublicCallbackAliasesAcceptLambdas)
   EXPECT_TRUE(static_cast<bool>(on_start));
   EXPECT_TRUE(static_cast<bool>(on_error));
 }
+
+TEST(CallableTest, MoveCallableAcceptsMoveOnlyTargetsInCxx17)
+{
+  auto payload = std::make_unique<int>(42);
+  detail::move_callable<int()> callable([payload = std::move(payload)]
+                                          { return *payload; });
+
+  static_assert(!std::is_copy_constructible_v<decltype(callable)>);
+  EXPECT_EQ(callable(), 42);
+}

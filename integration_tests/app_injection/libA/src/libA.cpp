@@ -1,48 +1,45 @@
 #include <appinj_libA/libA.hpp>
-#include <chrono>
-#include <memory>
-#include <mutex>
-#include <threadschedule/detail/thread_backend.hpp>
-#include <threadschedule/registered_threads.hpp>
-#include <threadschedule/thread_registry.hpp>
-#include <vector>
 
-using namespace threadschedule;
+#include <chrono>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
 
 namespace appinj_libA
 {
-
-static std::mutex threads_mutex;
-static std::vector<std::unique_ptr<detail::thread_backend>> threads;
-
-// Allow the app to inject its registry into this DSO
-void
-set_registry(thread_registry_backend* reg)
+namespace
 {
-  set_external_registry(reg);
+std::mutex threads_mutex;
+std::vector<threadschedule::thread> threads;
+} // namespace
+
+void
+set_registry(threadschedule::thread_registry* registry)
+{
+  threadschedule::use_global_registry(registry);
 }
 
 void
 start_worker(char const* name)
 {
   std::lock_guard<std::mutex> lock(threads_mutex);
-  threads.push_back(std::make_unique<detail::thread_backend>(
-      [n = std::string(name)]()
+  threads.emplace_back(
+      [thread_name = std::string(name)]
         {
-          auto_register_current_thread guard(n, "AppInjLibA");
+          auto& registry = threadschedule::global_registry();
+          (void)registry.register_current_thread(thread_name, "AppInjLibA");
           std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        }));
+          (void)registry.unregister_current_thread();
+        });
 }
 
 void
 wait_for_threads()
 {
   std::lock_guard<std::mutex> lock(threads_mutex);
-  for (auto& t : threads)
-    {
-      if (t->joinable())
-        t->join();
-    }
+  for (auto& worker : threads)
+    (void)worker.join();
   threads.clear();
 }
 
