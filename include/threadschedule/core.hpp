@@ -16,16 +16,19 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <exception>
 #include <functional>
 #include <future>
 #include <memory>
+#include <mutex>
 #include <new>
 #include <optional>
 #include <string>
 #include <system_error>
 #include <thread>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -211,6 +214,32 @@ using error_callback = std::function<void(task_error const&)>;
 
 namespace detail
 {
+class thread_start_gate
+{
+public:
+  void
+  wait()
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    ready_.wait(lock, [this] { return open_; });
+  }
+
+  void
+  open()
+  {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      open_ = true;
+    }
+    ready_.notify_all();
+  }
+
+private:
+  std::mutex mutex_;
+  std::condition_variable ready_;
+  bool open_{ false };
+};
+
 [[nodiscard]] inline auto
 current_exception_error_code() noexcept -> std::error_code
 {
@@ -305,9 +334,9 @@ public:
 
   template <typename F, typename... Args>
   thread(thread_config const& config, F&& function, Args&&... args)
-      : impl_(std::forward<F>(function), std::forward<Args>(args)...)
+      : impl_(make_configured_impl(config, std::forward<F>(function),
+                                   std::forward<Args>(args)...))
   {
-    configure_or_throw(config);
   }
 
   thread(thread&&) noexcept = default;
@@ -459,12 +488,34 @@ public:
   }
 
 private:
-  void
-  configure_or_throw(thread_config const& config)
+  template <typename F, typename... Args>
+  static auto
+  make_configured_impl(thread_config const& config, F&& function,
+                       Args&&... args) -> detail::thread_backend
   {
-    auto configured = impl_.configure(detail::to_native(config));
-    if (!configured)
-      throw std::system_error(configured.error(), "thread configuration");
+    auto gate = std::make_shared<detail::thread_start_gate>();
+    detail::thread_backend value(
+        [gate,
+         callable = detail::bind_args(std::forward<F>(function),
+                                      std::forward<Args>(args)...)]() mutable
+          {
+            gate->wait();
+            callable();
+          });
+
+    try
+      {
+        auto configured = value.configure(detail::to_native(config));
+        gate->open();
+        if (!configured)
+          throw std::system_error(configured.error(), "thread configuration");
+      }
+    catch (...)
+      {
+        gate->open();
+        throw;
+      }
+    return value;
   }
 
   detail::thread_backend impl_;
@@ -492,9 +543,9 @@ public:
 
   template <typename F, typename... Args>
   jthread(thread_config const& config, F&& function, Args&&... args)
-      : impl_(std::forward<F>(function), std::forward<Args>(args)...)
+      : impl_(make_configured_impl(config, std::forward<F>(function),
+                                   std::forward<Args>(args)...))
   {
-    configure_or_throw(config);
   }
 
   jthread(jthread&&) noexcept = default;
@@ -678,12 +729,48 @@ private:
     return native_view_type(const_cast<std::jthread&>(impl_));
   }
 
-  void
-  configure_or_throw(thread_config const& config)
+  template <typename F, typename... Args>
+  static auto
+  make_configured_impl(thread_config const& config, F&& function,
+                       Args&&... args) -> std::jthread
   {
-    auto configured = configure(config);
-    if (!configured)
-      throw std::system_error(configured.error(), "jthread configuration");
+    using function_type = std::decay_t<F>;
+    auto gate = std::make_shared<detail::thread_start_gate>();
+    std::jthread value(
+        [gate, callable = function_type(std::forward<F>(function)),
+         arguments = std::make_tuple(std::forward<Args>(args)...)](
+            std::stop_token token) mutable
+          {
+            gate->wait();
+            std::apply(
+                [&callable, &token](auto&&... stored)
+                  {
+                    if constexpr (std::is_invocable_v<function_type,
+                                                      std::stop_token,
+                                                      decltype(stored)...>)
+                      std::invoke(std::move(callable), token,
+                                  std::forward<decltype(stored)>(stored)...);
+                    else
+                      std::invoke(std::move(callable),
+                                  std::forward<decltype(stored)>(stored)...);
+                  },
+                std::move(arguments));
+          });
+
+    try
+      {
+        native_view_type view(value);
+        auto configured = view.configure(detail::to_native(config));
+        gate->open();
+        if (!configured)
+          throw std::system_error(configured.error(), "jthread configuration");
+      }
+    catch (...)
+      {
+        gate->open();
+        throw;
+      }
+    return value;
   }
 
   std::jthread impl_;

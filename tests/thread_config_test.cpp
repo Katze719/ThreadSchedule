@@ -406,7 +406,7 @@ TEST_F(ThreadConfigTest, ThreadInfoDefaultConstructorTargetsCurrentThread)
   {
     native_thread_id fromConstructor{};
     native_thread_id fromStatic{};
-    expected<std::string, std::error_code> name{ unexpected(
+    expected<std::string, std::error_code> name{ threadschedule::unexpected(
         std::make_error_code(std::errc::state_not_recoverable)) };
     std::optional<native_scheduling_policy> policy;
     std::optional<int> priority;

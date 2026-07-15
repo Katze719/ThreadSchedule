@@ -1,41 +1,40 @@
-#include <chrono>
 #include <library_ra/library_ra.hpp>
-#include <memory>
-#include <mutex>
-#include <threadschedule/detail/thread_backend.hpp>
-#include <threadschedule/registered_threads.hpp>
-#include <threadschedule/thread_registry.hpp>
-#include <vector>
 
-using namespace threadschedule;
+#include <chrono>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <threadschedule/threadschedule.hpp>
+#include <vector>
 
 namespace runtime_libA
 {
-
-static std::mutex threads_mutex;
-static std::vector<std::unique_ptr<detail::thread_backend>> threads;
+namespace
+{
+std::mutex threads_mutex;
+std::vector<threadschedule::thread> threads;
+} // namespace
 
 void
 start_worker(char const* name)
 {
   std::lock_guard<std::mutex> lock(threads_mutex);
-  threads.push_back(std::make_unique<detail::thread_backend>(
-      [n = std::string(name)]()
+  threads.emplace_back(
+      [thread_name = std::string(name)]
         {
-          auto_register_current_thread guard(n, "RuntimeLibA");
+          auto& registry = threadschedule::global_registry();
+          (void)registry.register_current_thread(thread_name, "RuntimeLibA");
           std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-        }));
+          (void)registry.unregister_current_thread();
+        });
 }
 
 void
 wait_for_threads()
 {
   std::lock_guard<std::mutex> lock(threads_mutex);
-  for (auto& t : threads)
-    {
-      if (t->joinable())
-        t->join();
-    }
+  for (auto& worker : threads)
+    (void)worker.join();
   threads.clear();
 }
 

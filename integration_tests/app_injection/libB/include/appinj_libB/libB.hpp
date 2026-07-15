@@ -1,5 +1,5 @@
 #pragma once
-#include <threadschedule/thread_registry.hpp>
+#include <threadschedule/threadschedule.hpp>
 
 #if defined(_WIN32) && defined(BUILD_APPINJ_LIBB_SHARED)
 #  define APPINJ_LIBB_API __declspec(dllexport)
@@ -9,8 +9,7 @@
 
 namespace appinj_libB
 {
-APPINJ_LIBB_API void
-set_registry(threadschedule::thread_registry_backend* reg);
+APPINJ_LIBB_API void set_registry(threadschedule::thread_registry* registry);
 APPINJ_LIBB_API void start_worker(char const* name);
 APPINJ_LIBB_API void wait_for_threads();
 } // namespace appinj_libB

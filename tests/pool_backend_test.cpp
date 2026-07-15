@@ -60,8 +60,6 @@ TEST(PoolBackendTest, PostThrowsOnShutdown)
   EXPECT_THROW(pool.post([] {}), std::runtime_error);
 }
 
-#if defined(__cpp_lib_move_only_function)                                     \
-    && __cpp_lib_move_only_function >= 202110L
 TEST(PoolBackendTest, ThreadPoolTryPostAcceptsMoveOnlyTask)
 {
   thread_pool_backend pool(2);
@@ -91,7 +89,6 @@ TEST(PoolBackendTest, HighPerformancePoolTryPostAcceptsMoveOnlyTask)
   EXPECT_EQ(finished.get(), 77);
   pool.shutdown(shutdown_policy_backend::drain);
 }
-#endif
 
 // ==================== submit_batch / try_submit_batch ====================
 
@@ -491,8 +488,6 @@ TEST(PoolBackendTest, ScheduledSchedulerThreadInfoUnavailableAfterShutdown)
   EXPECT_FALSE(scheduler.scheduler_thread_info().has_value());
 }
 
-#if defined(__cpp_lib_move_only_function)                                     \
-    && __cpp_lib_move_only_function >= 202110L
 TEST(PoolBackendTest, ScheduledAfterAcceptsMoveOnlyTask)
 {
   scheduled_pool_backend scheduler(2);
@@ -508,7 +503,6 @@ TEST(PoolBackendTest, ScheduledAfterAcceptsMoveOnlyTask)
             std::future_status::ready);
   EXPECT_EQ(finished.get(), 55);
 }
-#endif
 
 TEST(PoolBackendTest, ScheduledHPPool)
 {
