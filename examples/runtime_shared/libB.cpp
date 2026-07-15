@@ -1,8 +1,7 @@
-#include <chrono>
-#include <threadschedule/thread_registry.hpp>
-#include <threadschedule/thread_wrapper.hpp>
+#include <threadschedule/threadschedule.hpp>
 
-using namespace threadschedule;
+#include <chrono>
+#include <thread>
 
 extern "C"
 #ifdef _WIN32
@@ -11,9 +10,13 @@ extern "C"
     void
     libB_start()
 {
-    ThreadWrapper t([] {
-        AutoRegisterCurrentThread guard("rt-b1", "B");
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    });
-    t.detach();
+  threadschedule::thread worker(
+      []
+        {
+          auto& registry = threadschedule::global_registry();
+          (void)registry.register_current_thread("rt-b1", "B");
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          (void)registry.unregister_current_thread();
+        });
+  (void)worker.detach();
 }

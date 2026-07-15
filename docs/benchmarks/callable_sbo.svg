@@ -25,7 +25,7 @@
 <rect x="674.0" y="162.2" width="81.0" height="233.8" rx="3" fill="#db2777" />
 <text x="674.0" y="414.0" fill="#122033" font-size="12" font-weight="600" text-anchor="middle">large (128 B)</text>
 <rect x="64" y="440" width="14" height="14" rx="3" fill="#2a7fff" />
-<text x="84" y="452" fill="#122033" font-size="12">move_callable (ThreadPool / std lib)</text>
+<text x="84" y="452" fill="#122033" font-size="12">move_callable (thread_pool_backend / std lib)</text>
 <rect x="353.2" y="440" width="14" height="14" rx="3" fill="#db2777" />
-<text x="373.2" y="452" fill="#122033" font-size="12">SboCallable (LightweightPool)</text>
+<text x="373.2" y="452" fill="#122033" font-size="12">sbo_callable (lightweight_pool_backend)</text>
 </svg>

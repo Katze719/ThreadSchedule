@@ -1,101 +1,71 @@
-# Migrating to ThreadSchedule v3.0
+# Migrating to ThreadSchedule 3.0
 
-This guide tracks the breaking changes for ThreadSchedule 3.0.0. It is kept on
-the 3.0.0 preparation branch and should be updated as implementation lands.
+Version 3.0 is a hard API reset. It deliberately does not provide deprecated
+aliases for 2.x names.
 
-For the authoritative release list, see [CHANGELOG.md](../CHANGELOG.md).
-For the target API shape, see [API_DESIGN_V3.md](API_DESIGN_V3.md).
+## Core renames
 
-## 1. Upgrade Strategy
+| 2.x | 3.0 |
+| --- | --- |
+| `ThreadWrapper` | `thread` |
+| `ThreadWrapperView` / ordinary `ThreadInfo` use | `thread_view` |
+| `ThreadRegistry` | `thread_registry` |
+| `registry()` | `global_registry()` |
+| `set_external_registry()` | `use_global_registry()` |
+| `build_mode()` | `current_build_mode()` |
+| `ThreadPool` | `thread_pool` |
+| `ScheduledThreadPool` | `scheduled_pool` |
+| `ThreadConfig` | `thread_config` |
+| `ThreadSchedulingConfig` | `scheduling_config` |
+| `ThreadAffinity` | `thread_affinity` |
+| `ShutdownPolicy` | `shutdown_policy` |
+| `ScheduledTaskHandle` | `scheduled_task` |
+| `TaskError` | `task_error` |
 
-1. Move to the 3.0.0 release branch or tag.
-2. Rebuild with C++17 or newer.
-3. If your code crosses shared-library or plugin boundaries, migrate exported
-   ThreadSchedule usage to `threadschedule::abi::*`.
-4. Replace legacy 2.x convenience entry points with the unified v3 wrappers.
-5. Update priority and scheduling code to the new intent-based API.
-6. Run unit, integration, and mixed-standard ABI tests.
+These are real v3 types, not source-compatibility aliases. The implementation
+backends are private details. Code that depended on inheritance or native
+storage must move to the documented lowercase operations or an explicit
+`advanced` API.
 
-## 2. Major Breaking Themes
+Threads, registries, and pools are directly constructible in the standard
+library style. Their constructors can throw on resource or initial
+configuration failures. The static `create(...)` factories remain available
+when an `expected` result is preferable. `thread_pool::submit` and `post` are
+non-throwing submission operations; use `submit_or_throw` or `post_or_throw`
+only when that policy is intentional.
 
-### 2.1 Stable ABI Is The Runtime Boundary
+## Advanced APIs
 
-The supported cross-DSO boundary is the stable ABI layer only. Exported runtime
-functions must use opaque handles, POD structs, fixed-width enums, callbacks,
-and status codes.
+| 2.x | 3.0 |
+| --- | --- |
+| `HighPerformancePool` | `advanced::work_stealing_pool` |
+| `FastThreadPool` | `advanced::polling_pool` |
+| `LightweightPool` | `advanced::lightweight_pool` |
+| `InlinePool` | `advanced::inline_pool` |
+| `PThreadWrapper` | Removed; use `thread` (`std::thread` internally) |
+| `ThreadPriority` / `SchedulingPolicy` | `advanced::native_thread_priority` / `advanced::native_scheduling_policy` |
 
-Code that exports or consumes these C++ types across binary boundaries must be
-changed:
+`PoolWithErrors` and its aliases were removed. Set
+`thread_pool_config::on_task_error` instead; task exceptions remain available
+through the returned future.
 
-- `ThreadRegistry`
-- `RegisteredThreadInfo`
-- `AutoRegisterCurrentThread`
-- pool classes
-- thread wrapper classes
-- STL-heavy callback signatures
-- `std::future` or `expected` in exported signatures
+## Removed features
 
-Use ABI handles and C++ wrapper objects over those handles instead.
+- the C ABI, opaque ABI handles, `ThreadSchedule::StableAbi`, and stable-ABI CMake options
+- the C++20 module target
+- the old `JThreadWrapper`; C++20 instead exposes the independent lowercase
+  `jthread`, with no C++17 fallback alias
+- coroutine `task` and `generator` helpers
+- C++26 reflection and reflection-backed registry queries
+- standard-dependent ranges overloads
 
-### 2.2 Unified Public C++ API
+Applications can compile the full C++17 core API unchanged in newer language
+modes. `jthread` is the deliberate exception and exists only when C++20
+`std::jthread` support is detected.
 
-The v3 C++ API should have one consistent style for registry, thread, pool,
-scheduled task, and profile operations. Duplicated aliases and compatibility
-names from 2.x may be removed.
+## Runtime migration
 
-Expected migration pattern:
-
-```cpp
-// v2 style: several class families and direct runtime C++ objects
-threadschedule::ThreadPool pool(4);
-auto future = pool.submit([] { return 42; });
-
-// v3 target style: one public wrapper style over stable runtime handles
-auto pool = threadschedule::thread_pool::create({.threads = 4});
-auto future = pool.submit([] { return 42; });
-```
-
-The exact wrapper spellings will be finalized in `API_DESIGN_V3.md` before the
-implementation is completed.
-
-### 2.3 Priority And Scheduling Are Redesigned
-
-The priority and scheduling API is rebuilt around user intent.
-
-Common operations should read like:
-
-```cpp
-thread.configure(threadschedule::schedule::background());
-thread.configure(threadschedule::schedule::low_latency());
-thread.configure(threadschedule::schedule::realtime_fifo(80));
-thread.configure(threadschedule::schedule::normal());
-```
-
-Advanced native control remains available, but it should be visibly advanced
-and policy-specific. Code that used generic `ThreadPriority::highest()` or raw
-integer priorities may need to migrate to explicit scheduling requests.
-
-### 2.4 Pools Move Behind ABI Handles
-
-Pool operations that must cross binary boundaries use `pool_handle` and
-callbacks. Futures remain a C++ wrapper feature and are not part of the exported
-ABI.
-
-## 3. Compatibility Expectations
-
-- C++17 remains supported.
-- C++20/C++23/C++26 helpers remain source-level conveniences.
-- A C++17 library should be able to expose ThreadSchedule ABI handles that a
-  C++23 consumer can use safely.
-- Header-only mode remains source-level only and is not a stable ABI promise.
-
-## 4. Migration Checklist
-
-- Replace exported C++ ThreadSchedule types with ABI handles.
-- Replace direct exported callbacks using STL types with function pointer plus
-  `void* user_data`.
-- Replace direct pool exports with pool handles or app-owned wrapper APIs.
-- Replace raw priority integers with intent-based scheduling requests.
-- Audit exception behavior at boundaries; convert ABI-facing failures to status
-  codes.
-- Add mixed-standard integration tests for every exported wrapper library.
+`THREADSCHEDULE_RUNTIME=ON` now builds only the optional shared C++ registry.
+All participating DSOs must use one supported toolchain line and identical v3
+headers. Projects that require a compiler-neutral plugin ABI must define that
+boundary in their own application protocol.

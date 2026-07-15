@@ -1,18 +1,18 @@
-#include "../include/threadschedule/threadschedule.hpp"
+#include <threadschedule/threadschedule.hpp>
+
 #include <iostream>
 
-int main()
+int
+main()
 {
-    std::cout << "ThreadSchedule library compilation test passed!" << std::endl;
+  threadschedule::thread_affinity affinity({ 0 });
+  threadschedule::thread_config config;
+  config.scheduling = threadschedule::schedule::normal();
+  config.affinity = affinity;
 
-    // Test basic type instantiation
-    threadschedule::ThreadPriority priority;
-    threadschedule::ThreadAffinity affinity;
-    threadschedule::SchedulingPolicy policy = threadschedule::SchedulingPolicy::OTHER;
+  threadschedule::thread_registry registry;
+  threadschedule::thread_pool pool(1);
 
-    std::cout << "Priority: " << priority.to_string() << std::endl;
-    std::cout << "Affinity: " << affinity.to_string() << std::endl;
-    std::cout << "Policy: " << threadschedule::to_string(policy) << std::endl;
-
-    return 0;
+  std::cout << "ThreadSchedule v3 core compilation test passed\n";
+  return 0;
 }
