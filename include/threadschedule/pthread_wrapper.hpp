@@ -18,6 +18,9 @@
 #include <tuple>
 
 #ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 // PThreadWrapper is not available on Windows as it's POSIX-specific
 // Users should use ThreadWrapper or JThreadWrapper instead
@@ -162,7 +165,7 @@ class PThreadWrapper
         return detail::apply_name(thread_, name);
     }
 
-    [[nodiscard]] auto get_name() const -> std::optional<std::string>
+    [[nodiscard]] auto get_name() const -> expected<std::string, std::error_code>
     {
         return detail::read_name(thread_);
     }

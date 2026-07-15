@@ -432,6 +432,9 @@ if (auto info = scheduler.scheduler_thread_info()) {
     ThreadInfo bound(tid);
     (void)bound.set_name("scheduler_main");
     auto current_name = bound.get_name();
+    if (!current_name) {
+        // Inspect current_name.error() when naming is unavailable or fails.
+    }
 }
 ```
 

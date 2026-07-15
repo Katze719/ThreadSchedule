@@ -7,8 +7,11 @@
 
 #include "expected.hpp"
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <cstdint>
 #include <fstream>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -16,7 +19,13 @@
 #include <vector>
 
 #ifdef _WIN32
+#    ifndef NOMINMAX
+#        define NOMINMAX
+#    endif
 #    include <windows.h>
+#    if defined(__MINGW32__)
+#        include <pthread.h>
+#    endif
 #else
 #    include <pthread.h>
 #    include <sched.h>
@@ -609,7 +618,7 @@ class SchedulerParams
         return param;
     }
 
-    static expected<int, std::error_code> get_priority_range(SchedulingPolicy policy)
+    static expected<int, std::error_code> get_priority_range([[maybe_unused]] SchedulingPolicy policy)
     {
         // Windows thread priorities range from -15 to +15
         return 30;
@@ -752,50 +761,189 @@ inline auto apply_affinity(HANDLE handle, ThreadAffinity const& affinity) -> exp
     return unexpected(std::make_error_code(std::errc::operation_not_permitted));
 }
 
+using SetThreadDescriptionFn = HRESULT(WINAPI*)(HANDLE, PCWSTR);
+using GetThreadDescriptionFn = HRESULT(WINAPI*)(HANDLE, PWSTR*);
+
+class HResultCategory final : public std::error_category
+{
+  public:
+    [[nodiscard]] auto name() const noexcept -> char const* override
+    {
+        return "HRESULT";
+    }
+
+    [[nodiscard]] auto message(int value) const -> std::string override
+    {
+        std::ostringstream stream;
+        stream << "HRESULT 0x" << std::hex << static_cast<std::uint32_t>(value);
+        return stream.str();
+    }
+};
+
+inline auto hresult_category() -> std::error_category const&
+{
+    static HResultCategory const category;
+    return category;
+}
+
+inline auto error_from_hresult(HRESULT result) -> std::error_code
+{
+    if (HRESULT_FACILITY(result) == FACILITY_WIN32)
+        return {static_cast<int>(HRESULT_CODE(result)), std::system_category()};
+    return {static_cast<int>(result), hresult_category()};
+}
+
+inline auto last_win32_error() -> std::error_code
+{
+    return {static_cast<int>(GetLastError()), std::system_category()};
+}
+
+struct ThreadDescriptionApi
+{
+    SetThreadDescriptionFn set = nullptr;
+    GetThreadDescriptionFn get = nullptr;
+    bool found_module = false;
+    std::error_code lookup_error{};
+};
+
+using ModuleLookupFn = HMODULE(WINAPI*)(LPCWSTR);
+using ProcLookupFn = FARPROC(WINAPI*)(HMODULE, LPCSTR);
+
+inline auto resolve_thread_description_api(ModuleLookupFn module_lookup = GetModuleHandleW,
+                                           ProcLookupFn proc_lookup = GetProcAddress) -> ThreadDescriptionApi
+{
+    ThreadDescriptionApi result;
+    DWORD last_error = ERROR_SUCCESS;
+    constexpr wchar_t const* modules[] = {L"kernel32.dll", L"kernelbase.dll"};
+    for (auto const* module_name : modules)
+    {
+        SetLastError(ERROR_SUCCESS);
+        HMODULE const module = module_lookup(module_name);
+        if (!module)
+        {
+            DWORD const error = GetLastError();
+            if (error != ERROR_SUCCESS)
+                last_error = error;
+            continue;
+        }
+        result.found_module = true;
+        if (!result.set)
+            result.set = reinterpret_cast<SetThreadDescriptionFn>(
+                reinterpret_cast<void*>(proc_lookup(module, "SetThreadDescription")));
+        if (!result.get)
+            result.get = reinterpret_cast<GetThreadDescriptionFn>(
+                reinterpret_cast<void*>(proc_lookup(module, "GetThreadDescription")));
+    }
+    if (!result.found_module)
+        result.lookup_error = {static_cast<int>(last_error == ERROR_SUCCESS ? ERROR_MOD_NOT_FOUND : last_error),
+                               std::system_category()};
+    return result;
+}
+
+inline auto resolved_set_thread_description() -> expected<SetThreadDescriptionFn, std::error_code>
+{
+    static std::atomic<SetThreadDescriptionFn> cached{nullptr};
+    if (auto const function = cached.load(std::memory_order_acquire))
+        return function;
+    auto const resolved = resolve_thread_description_api();
+    if (!resolved.set)
+    {
+        std::error_code const error = resolved.found_module ? std::make_error_code(std::errc::function_not_supported)
+                                                            : resolved.lookup_error;
+        return unexpected(error);
+    }
+    SetThreadDescriptionFn expected_null = nullptr;
+    cached.compare_exchange_strong(expected_null, resolved.set, std::memory_order_release, std::memory_order_acquire);
+    return expected_null ? expected_null : resolved.set;
+}
+
+inline auto resolved_get_thread_description() -> expected<GetThreadDescriptionFn, std::error_code>
+{
+    static std::atomic<GetThreadDescriptionFn> cached{nullptr};
+    if (auto const function = cached.load(std::memory_order_acquire))
+        return function;
+    auto const resolved = resolve_thread_description_api();
+    if (!resolved.get)
+    {
+        std::error_code const error = resolved.found_module ? std::make_error_code(std::errc::function_not_supported)
+                                                            : resolved.lookup_error;
+        return unexpected(error);
+    }
+    GetThreadDescriptionFn expected_null = nullptr;
+    cached.compare_exchange_strong(expected_null, resolved.get, std::memory_order_release, std::memory_order_acquire);
+    return expected_null ? expected_null : resolved.get;
+}
+
+inline auto utf8_to_utf16(std::string const& value) -> expected<std::wstring, std::error_code>
+{
+    if (value.empty())
+        return std::wstring{};
+    int const size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
+                                         nullptr, 0);
+    if (size == 0)
+        return unexpected(last_win32_error());
+    std::wstring result(static_cast<std::size_t>(size), L'\0');
+    int const written = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
+                                            result.data(), size);
+    if (written == 0)
+        return unexpected(last_win32_error());
+    result.resize(static_cast<std::size_t>(written));
+    return result;
+}
+
+struct LocalFreeDeleter
+{
+    void operator()(wchar_t* value) const noexcept
+    {
+        if (value)
+            LocalFree(value);
+    }
+};
+
+inline auto utf16_to_utf8(PCWSTR value) -> expected<std::string, std::error_code>
+{
+    int const size = WideCharToMultiByte(CP_UTF8, 0, value, -1, nullptr, 0, nullptr, nullptr);
+    if (size == 0)
+        return unexpected(last_win32_error());
+    std::string result(static_cast<std::size_t>(size), '\0');
+    int const written = WideCharToMultiByte(CP_UTF8, 0, value, -1, result.data(), size, nullptr, nullptr);
+    if (written == 0)
+        return unexpected(last_win32_error());
+    result.resize(static_cast<std::size_t>(written - 1));
+    return result;
+}
+
 inline auto apply_name(HANDLE handle, std::string const& name) -> expected<void, std::error_code>
 {
     if (!handle)
         return unexpected(std::make_error_code(std::errc::no_such_process));
-    using SetThreadDescriptionFn = HRESULT(WINAPI*)(HANDLE, PCWSTR);
-    HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
-    if (!hMod)
-        return unexpected(std::make_error_code(std::errc::function_not_supported));
-    auto set_desc =
-        reinterpret_cast<SetThreadDescriptionFn>(reinterpret_cast<void*>(GetProcAddress(hMod, "SetThreadDescription")));
-    if (!set_desc)
-        return unexpected(std::make_error_code(std::errc::function_not_supported));
-    std::wstring wide(name.begin(), name.end());
-    if (SUCCEEDED(set_desc(handle, wide.c_str())))
+    auto const wide = utf8_to_utf16(name);
+    if (!wide.has_value())
+        return unexpected(wide.error());
+    auto const set_description = resolved_set_thread_description();
+    if (!set_description.has_value())
+        return unexpected(set_description.error());
+    HRESULT const result = set_description.value()(handle, wide.value().c_str());
+    if (SUCCEEDED(result))
         return {};
-    return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+    return unexpected(error_from_hresult(result));
 }
 
-inline auto read_name(HANDLE handle) -> std::optional<std::string>
+inline auto read_name(HANDLE handle) -> expected<std::string, std::error_code>
 {
     if (!handle)
-        return std::nullopt;
-    using GetThreadDescriptionFn = HRESULT(WINAPI*)(HANDLE, PWSTR*);
-    HMODULE hMod = GetModuleHandleW(L"kernel32.dll");
-    if (!hMod)
-        return std::nullopt;
-    auto get_desc =
-        reinterpret_cast<GetThreadDescriptionFn>(reinterpret_cast<void*>(GetProcAddress(hMod, "GetThreadDescription")));
-    if (!get_desc)
-        return std::nullopt;
-    PWSTR thread_name = nullptr;
-    if (SUCCEEDED(get_desc(handle, &thread_name)) && thread_name)
-    {
-        int size = WideCharToMultiByte(CP_UTF8, 0, thread_name, -1, nullptr, 0, nullptr, nullptr);
-        if (size > 0)
-        {
-            std::string result(size - 1, '\0');
-            WideCharToMultiByte(CP_UTF8, 0, thread_name, -1, &result[0], size, nullptr, nullptr);
-            LocalFree(thread_name);
-            return result;
-        }
-        LocalFree(thread_name);
-    }
-    return std::nullopt;
+        return unexpected(std::make_error_code(std::errc::no_such_process));
+    auto const get_description = resolved_get_thread_description();
+    if (!get_description.has_value())
+        return unexpected(get_description.error());
+    PWSTR raw_name = nullptr;
+    HRESULT const result = get_description.value()(handle, &raw_name);
+    std::unique_ptr<wchar_t, LocalFreeDeleter> name(raw_name);
+    if (FAILED(result))
+        return unexpected(error_from_hresult(result));
+    if (!name)
+        return unexpected(std::make_error_code(std::errc::io_error));
+    return utf16_to_utf8(name.get());
 }
 
 inline auto read_affinity(HANDLE handle) -> std::optional<ThreadAffinity>
@@ -887,11 +1035,11 @@ inline auto apply_name(Tid tid, std::string const& name) -> expected<void, std::
     return result;
 }
 
-inline auto read_name(Tid tid) -> std::optional<std::string>
+inline auto read_name(Tid tid) -> expected<std::string, std::error_code>
 {
     HANDLE handle = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, tid);
     if (!handle)
-        return std::nullopt;
+        return unexpected(last_win32_error());
 
     auto result = read_name(handle);
     CloseHandle(handle);
@@ -930,6 +1078,82 @@ inline auto read_scheduling_policy(Tid tid) -> std::optional<SchedulingPolicy>
     CloseHandle(handle);
     return result;
 }
+
+#if defined(__MINGW32__)
+// winpthreads' pthread_t is an opaque identifier.  Keep conversion to a Win32
+// handle in this adapter; it must never participate in the Tid overload set.
+inline auto win32_handle_from_pthread(pthread_t thread) -> expected<HANDLE, std::error_code>
+{
+    HANDLE const handle = pthread_gethandle(thread);
+    if (!handle)
+        return unexpected(last_win32_error());
+    return handle;
+}
+
+inline auto apply_scheduling_policy(pthread_t thread, SchedulingPolicy policy, ThreadPriority priority)
+    -> expected<void, std::error_code>
+{
+    auto const handle = win32_handle_from_pthread(thread);
+    if (!handle.has_value())
+        return unexpected(handle.error());
+    return apply_scheduling_policy(handle.value(), policy, priority);
+}
+
+inline auto apply_priority(pthread_t thread, ThreadPriority priority) -> expected<void, std::error_code>
+{
+    auto const handle = win32_handle_from_pthread(thread);
+    if (!handle.has_value())
+        return unexpected(handle.error());
+    return apply_priority(handle.value(), priority);
+}
+
+inline auto apply_affinity(pthread_t thread, ThreadAffinity const& affinity) -> expected<void, std::error_code>
+{
+    auto const handle = win32_handle_from_pthread(thread);
+    if (!handle.has_value())
+        return unexpected(handle.error());
+    return apply_affinity(handle.value(), affinity);
+}
+
+inline auto apply_name(pthread_t thread, std::string const& name) -> expected<void, std::error_code>
+{
+    // Validate before handing UTF-8 to winpthreads, whose API accepts char*.
+    auto const wide = utf8_to_utf16(name);
+    if (!wide.has_value())
+        return unexpected(wide.error());
+    int const result = pthread_setname_np(thread, name.c_str());
+    if (result == 0)
+        return {};
+    return unexpected(std::error_code(result, std::generic_category()));
+}
+
+inline auto read_name(pthread_t thread) -> expected<std::string, std::error_code>
+{
+    std::array<char, 256> name{};
+    int const result = pthread_getname_np(thread, name.data(), name.size());
+    if (result != 0)
+        return unexpected(std::error_code(result, std::generic_category()));
+    return std::string(name.data());
+}
+
+inline auto read_affinity(pthread_t thread) -> std::optional<ThreadAffinity>
+{
+    auto const handle = win32_handle_from_pthread(thread);
+    return handle.has_value() ? read_affinity(handle.value()) : std::nullopt;
+}
+
+inline auto read_priority(pthread_t thread) -> std::optional<int>
+{
+    auto const handle = win32_handle_from_pthread(thread);
+    return handle.has_value() ? read_priority(handle.value()) : std::nullopt;
+}
+
+inline auto read_scheduling_policy(pthread_t thread) -> std::optional<SchedulingPolicy>
+{
+    auto const handle = win32_handle_from_pthread(thread);
+    return handle.has_value() ? read_scheduling_policy(handle.value()) : std::nullopt;
+}
+#endif
 
 #else // POSIX
 
@@ -973,17 +1197,19 @@ inline auto apply_name(pthread_t handle, std::string const& name) -> expected<vo
 {
     if (name.length() > 15)
         return unexpected(std::make_error_code(std::errc::invalid_argument));
-    if (pthread_setname_np(handle, name.c_str()) == 0)
+    int const result = pthread_setname_np(handle, name.c_str());
+    if (result == 0)
         return {};
-    return unexpected(std::error_code(errno, std::generic_category()));
+    return unexpected(std::error_code(result, std::generic_category()));
 }
 
-inline auto read_name(pthread_t handle) -> std::optional<std::string>
+inline auto read_name(pthread_t handle) -> expected<std::string, std::error_code>
 {
     char name[16];
-    if (pthread_getname_np(handle, name, sizeof(name)) == 0)
+    int const result = pthread_getname_np(handle, name, sizeof(name));
+    if (result == 0)
         return std::string(name);
-    return std::nullopt;
+    return unexpected(std::error_code(result, std::generic_category()));
 }
 
 inline auto read_affinity(pthread_t handle) -> std::optional<ThreadAffinity>
@@ -1059,15 +1285,17 @@ inline auto apply_name(pid_t tid, std::string const& name) -> expected<void, std
     return {};
 }
 
-inline auto read_name(pid_t tid) -> std::optional<std::string>
+inline auto read_name(pid_t tid) -> expected<std::string, std::error_code>
 {
     std::string const path = std::string("/proc/self/task/") + std::to_string(tid) + "/comm";
     std::ifstream in(path);
     if (!in)
-        return std::nullopt;
+        return unexpected(std::error_code(errno, std::generic_category()));
 
     std::string current;
     std::getline(in, current);
+    if (in.bad())
+        return unexpected(std::error_code(errno, std::generic_category()));
     if (!current.empty() && current.back() == '\n')
         current.pop_back();
     return current;

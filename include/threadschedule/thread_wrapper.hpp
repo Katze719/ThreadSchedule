@@ -13,6 +13,9 @@
 #include <thread>
 
 #ifdef _WIN32
+#    ifndef NOMINMAX
+#        define NOMINMAX
+#    endif
 #    include <libloaderapi.h>
 #    include <windows.h>
 #else
@@ -163,9 +166,14 @@ inline auto configure_thread(ThreadLike& thread, ThreadConfig const& config) -> 
  * @par set_name()
  * - **Linux**: uses @c pthread_setname_np; names are limited to 15 characters
  *   (returns @c errc::invalid_argument if exceeded).
- * - **Windows**: dynamically loads @c SetThreadDescription from kernel32.dll.
+ * - **Windows**: dynamically loads @c SetThreadDescription from Kernel32.dll
+ *   or KernelBase.dll.
  *   Names may be longer. Returns @c errc::function_not_supported if the API is
  *   unavailable (pre-Windows 10 1607).
+ *
+ * @par get_name()
+ * Returns @c expected<std::string, std::error_code> so unavailable APIs,
+ * invalid handles, OS failures, and UTF conversion failures remain diagnosable.
  *
  * @par set_priority()
  * Maps through SchedulerParams::create_for_policy(). On Linux, uses
@@ -243,7 +251,7 @@ class BaseThreadWrapper : protected detail::ThreadStorage<ThreadType, OwnershipT
         return detail::apply_name(native_handle(), name);
     }
 
-    [[nodiscard]] auto get_name() const -> std::optional<std::string>
+    [[nodiscard]] auto get_name() const -> expected<std::string, std::error_code>
     {
         return detail::read_name(const_cast<BaseThreadWrapper*>(this)->native_handle());
     }
@@ -774,7 +782,7 @@ class ThreadByNameView
 #endif
     }
 
-    [[nodiscard]] auto set_name(std::string const& name) const -> expected<void, std::error_code>
+    [[nodiscard]] auto set_name([[maybe_unused]] std::string const& name) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         return unexpected(std::make_error_code(std::errc::function_not_supported));
@@ -785,13 +793,13 @@ class ThreadByNameView
 #endif
     }
 
-    [[nodiscard]] auto get_name() const -> std::optional<std::string>
+    [[nodiscard]] auto get_name() const -> expected<std::string, std::error_code>
     {
 #ifdef _WIN32
-        return std::nullopt;
+        return unexpected(std::make_error_code(std::errc::function_not_supported));
 #else
         if (!found())
-            return std::nullopt;
+            return unexpected(std::make_error_code(std::errc::no_such_process));
         return detail::read_name(handle_);
 #endif
     }
@@ -801,7 +809,7 @@ class ThreadByNameView
         return handle_;
     }
 
-    [[nodiscard]] auto set_priority(ThreadPriority priority) const -> expected<void, std::error_code>
+    [[nodiscard]] auto set_priority([[maybe_unused]] ThreadPriority priority) const -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         return unexpected(std::make_error_code(std::errc::function_not_supported));
@@ -812,7 +820,8 @@ class ThreadByNameView
 #endif
     }
 
-    [[nodiscard]] auto set_scheduling_policy(SchedulingPolicy policy, ThreadPriority priority) const
+    [[nodiscard]] auto set_scheduling_policy([[maybe_unused]] SchedulingPolicy policy,
+                                              [[maybe_unused]] ThreadPriority priority) const
         -> expected<void, std::error_code>
     {
 #ifdef _WIN32
@@ -835,7 +844,8 @@ class ThreadByNameView
         return detail::configure_thread(*this, config);
     }
 
-    [[nodiscard]] auto set_affinity(ThreadAffinity const& affinity) const -> expected<void, std::error_code>
+    [[nodiscard]] auto set_affinity([[maybe_unused]] ThreadAffinity const& affinity) const
+        -> expected<void, std::error_code>
     {
 #ifdef _WIN32
         return unexpected(std::make_error_code(std::errc::function_not_supported));
@@ -907,7 +917,7 @@ class ThreadInfo
         return detail::apply_name(tid_, name);
     }
 
-    [[nodiscard]] auto get_name() const -> std::optional<std::string>
+    [[nodiscard]] auto get_name() const -> expected<std::string, std::error_code>
     {
         if (has_native_handle())
             return detail::read_name(native_handle());

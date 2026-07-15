@@ -1,5 +1,7 @@
 #include <atomic>
 #include <chrono>
+#include <cstring>
+#include <cwchar>
 #include <gtest/gtest.h>
 #include <thread>
 #include <threadschedule/threadschedule.hpp>
@@ -19,6 +21,115 @@ class ThreadWrapperTest : public ::testing::Test
         // Cleanup code if needed
     }
 };
+
+#ifdef _WIN32
+namespace
+{
+enum class ResolverMode
+{
+    all_exports,
+    no_exports,
+    set_only,
+    kernelbase_only,
+    no_modules
+};
+
+ResolverMode resolver_mode = ResolverMode::all_exports;
+
+HMODULE WINAPI fake_module_lookup(LPCWSTR name)
+{
+    if (resolver_mode == ResolverMode::no_modules)
+        return nullptr;
+    if (resolver_mode == ResolverMode::kernelbase_only && std::wcscmp(name, L"kernel32.dll") == 0)
+        return nullptr;
+    return reinterpret_cast<HMODULE>(&resolver_mode);
+}
+
+INT_PTR WINAPI fake_export()
+{
+    return 0;
+}
+
+FARPROC WINAPI fake_proc_lookup(HMODULE, LPCSTR name)
+{
+    if (resolver_mode == ResolverMode::no_exports)
+        return nullptr;
+    if (std::strcmp(name, "SetThreadDescription") == 0)
+        return fake_export;
+    return resolver_mode == ResolverMode::all_exports || resolver_mode == ResolverMode::kernelbase_only ? fake_export
+                                                                                                        : nullptr;
+}
+} // namespace
+
+TEST_F(ThreadWrapperTest, ThreadDescriptionResolverFindsKernelExports)
+{
+    resolver_mode = ResolverMode::all_exports;
+    auto const resolved = detail::resolve_thread_description_api(fake_module_lookup, fake_proc_lookup);
+    EXPECT_TRUE(resolved.found_module);
+    EXPECT_NE(resolved.set, nullptr);
+    EXPECT_NE(resolved.get, nullptr);
+}
+
+TEST_F(ThreadWrapperTest, ThreadDescriptionResolverReportsMissingExports)
+{
+    resolver_mode = ResolverMode::no_exports;
+    auto const resolved = detail::resolve_thread_description_api(fake_module_lookup, fake_proc_lookup);
+    EXPECT_TRUE(resolved.found_module);
+    EXPECT_EQ(resolved.set, nullptr);
+    EXPECT_EQ(resolved.get, nullptr);
+}
+
+TEST_F(ThreadWrapperTest, ThreadDescriptionResolverDistinguishesModuleLookupFailure)
+{
+    resolver_mode = ResolverMode::no_modules;
+    auto const resolved = detail::resolve_thread_description_api(fake_module_lookup, fake_proc_lookup);
+    EXPECT_FALSE(resolved.found_module);
+    EXPECT_EQ(resolved.set, nullptr);
+    EXPECT_EQ(resolved.get, nullptr);
+    EXPECT_EQ(resolved.lookup_error.category(), std::system_category());
+}
+
+TEST_F(ThreadWrapperTest, ThreadDescriptionResolverAllowsPartiallyAvailableApis)
+{
+    resolver_mode = ResolverMode::set_only;
+    auto const resolved = detail::resolve_thread_description_api(fake_module_lookup, fake_proc_lookup);
+    EXPECT_TRUE(resolved.found_module);
+    EXPECT_NE(resolved.set, nullptr);
+    EXPECT_EQ(resolved.get, nullptr);
+}
+
+TEST_F(ThreadWrapperTest, ThreadDescriptionResolverFallsBackToKernelBase)
+{
+    resolver_mode = ResolverMode::kernelbase_only;
+    auto const resolved = detail::resolve_thread_description_api(fake_module_lookup, fake_proc_lookup);
+    EXPECT_TRUE(resolved.found_module);
+    EXPECT_NE(resolved.set, nullptr);
+    EXPECT_NE(resolved.get, nullptr);
+}
+
+TEST_F(ThreadWrapperTest, HResultErrorsRetainTheirOriginalCategory)
+{
+    auto const win32_error = detail::error_from_hresult(HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER));
+    auto const hresult_error = detail::error_from_hresult(E_FAIL);
+    EXPECT_EQ(win32_error.value(), ERROR_INVALID_PARAMETER);
+    EXPECT_EQ(win32_error.category(), std::system_category());
+    EXPECT_NE(hresult_error.category(), std::system_category());
+    EXPECT_NE(hresult_error.message().find("0x80004005"), std::string::npos);
+}
+
+TEST_F(ThreadWrapperTest, Utf8ConversionRejectsInvalidInputAndRoundTripsUnicode)
+{
+    std::string const name = "worker-\xC3\xA4";
+    auto const wide = detail::utf8_to_utf16(name);
+    ASSERT_TRUE(wide.has_value()) << wide.error().message();
+    auto const roundtrip = detail::utf16_to_utf8(wide.value().c_str());
+    ASSERT_TRUE(roundtrip.has_value()) << roundtrip.error().message();
+    EXPECT_EQ(roundtrip.value(), name);
+
+    auto const invalid = detail::utf8_to_utf16(std::string{"\xC3"});
+    EXPECT_FALSE(invalid.has_value());
+}
+#endif
 
 // Test basic thread creation and execution
 TEST_F(ThreadWrapperTest, BasicThreadCreation)
@@ -136,33 +247,65 @@ TEST_F(ThreadWrapperTest, ThreadNaming)
     ThreadWrapper thread([]() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
 
     auto set_name_result = thread.set_name("test_thread");
-    bool const name_set = set_name_result.has_value();
-
 #ifdef _WIN32
-    // On Windows, naming might fail if not Windows 10+
-    // We just check that the function doesn't crash
-    if (name_set)
-    {
-        auto name = thread.get_name();
-        EXPECT_TRUE(name.has_value());
-        if (name.has_value())
-        {
-            EXPECT_EQ(name.value(), "test_thread");
-        }
-    }
+    if (!set_name_result.has_value() && set_name_result.error() == std::make_error_code(std::errc::function_not_supported))
+        GTEST_SKIP() << "SetThreadDescription is unavailable on this Windows version";
+    ASSERT_TRUE(set_name_result.has_value()) << set_name_result.error().message();
+    auto name = thread.get_name();
+    ASSERT_TRUE(name.has_value()) << name.error().message();
+    EXPECT_EQ(name.value(), "test_thread");
 #else
     // On Linux, naming should work
-    EXPECT_TRUE(name_set);
+    ASSERT_TRUE(set_name_result.has_value());
     auto name = thread.get_name();
-    EXPECT_TRUE(name.has_value());
-    if (name.has_value())
-    {
-        EXPECT_EQ(name.value(), "test_thread");
-    }
+    ASSERT_TRUE(name.has_value()) << name.error().message();
+    EXPECT_EQ(name.value(), "test_thread");
 #endif
 
     thread.join();
 }
+
+#ifdef _WIN32
+TEST_F(ThreadWrapperTest, ThreadNamingRoundTripsUtf8)
+{
+    ThreadWrapper thread([]() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
+    std::string const name = "worker-\xC3\xA4";
+
+    auto const set_result = thread.set_name(name);
+    if (!set_result.has_value() && set_result.error() == std::make_error_code(std::errc::function_not_supported))
+        GTEST_SKIP() << "SetThreadDescription is unavailable on this Windows version";
+    ASSERT_TRUE(set_result.has_value()) << set_result.error().message();
+
+    auto const read_result = thread.get_name();
+    ASSERT_TRUE(read_result.has_value()) << read_result.error().message();
+    EXPECT_EQ(read_result.value(), name);
+    thread.join();
+}
+
+TEST_F(ThreadWrapperTest, ThreadNamingRejectsInvalidUtf8)
+{
+    ThreadWrapper thread([]() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
+    std::string const invalid_utf8{"worker-\xC3"};
+    auto const result = thread.set_name(invalid_utf8);
+    EXPECT_FALSE(result.has_value());
+    if (!result.has_value())
+        EXPECT_NE(result.error(), std::make_error_code(std::errc::function_not_supported));
+    thread.join();
+}
+
+TEST_F(ThreadWrapperTest, ThreadNamingAllowsEmptyName)
+{
+    ThreadWrapper thread([]() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
+    auto const result = thread.set_name("");
+    if (!result.has_value() && result.error() == std::make_error_code(std::errc::function_not_supported))
+        GTEST_SKIP() << "SetThreadDescription is unavailable on this Windows version";
+    ASSERT_TRUE(result.has_value()) << result.error().message();
+    auto const read_result = thread.get_name();
+    ASSERT_TRUE(read_result.has_value()) << read_result.error().message();
+    EXPECT_EQ(read_result.value(), "");
+    thread.join();
+}
+#endif
 
 #ifndef _WIN32
 // POSIX: long names (>15) should fail with invalid_argument
