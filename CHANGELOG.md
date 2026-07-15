@@ -8,6 +8,11 @@
 
 ### Breaking Changes
 
+- **Thread-name query errors are now observable** -- `get_name()` returns
+  `expected<std::string, std::error_code>` instead of `optional<std::string>`.
+  Windows preserves Win32/HRESULT and UTF conversion failures instead of
+  collapsing them into an empty optional.
+
 - **Stable ABI becomes the runtime boundary** -- exported runtime APIs move
   to C-compatible `threadschedule_abi_*` functions using opaque handles, POD
   config structs, fixed-width status codes, and function-pointer callbacks.

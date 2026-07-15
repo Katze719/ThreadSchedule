@@ -202,6 +202,7 @@ endif()
 if(WIN32)
     target_compile_definitions(ThreadSchedule INTERFACE
         $<BUILD_INTERFACE:_WIN32_WINNT=0x0A00>
+        $<BUILD_INTERFACE:NOMINMAX>
     )
 endif()
 

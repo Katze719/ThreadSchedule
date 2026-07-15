@@ -362,7 +362,8 @@ TEST_F(ThreadConfigTest, ThreadInfoDefaultConstructorTargetsCurrentThread)
     {
         Tid fromConstructor{};
         Tid fromStatic{};
-        std::optional<std::string> name;
+        expected<std::string, std::error_code> name{
+            unexpected(std::make_error_code(std::errc::state_not_recoverable))};
         std::optional<SchedulingPolicy> policy;
         std::optional<int> priority;
     };
