@@ -114,17 +114,12 @@ inline auto
 apply_profile_to(T& t, thread_profile const& p)
     -> expected<void, std::error_code>
 {
-  bool ok = true;
-  if (!t.set_scheduling_policy(p.policy, p.priority).has_value())
-    ok = false;
+  auto scheduled = t.set_scheduling_policy(p.policy, p.priority);
+  if (!scheduled)
+    return unexpected(scheduled.error());
   if (p.affinity.has_value())
-    {
-      if (!t.set_affinity(*p.affinity).has_value())
-        ok = false;
-    }
-  if (ok)
-    return {};
-  return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+    return t.set_affinity(*p.affinity);
+  return {};
 }
 
 /**
@@ -136,17 +131,12 @@ apply_profile_to_pool(PoolType& pool, std::string const& name_prefix,
                       thread_profile const& p)
     -> expected<void, std::error_code>
 {
-  bool ok = true;
-  if (!pool.configure_threads(name_prefix, p.policy, p.priority).has_value())
-    ok = false;
+  auto configured = pool.configure_threads(name_prefix, p.policy, p.priority);
+  if (!configured)
+    return unexpected(configured.error());
   if (p.affinity.has_value())
-    {
-      if (!pool.set_affinity(*p.affinity).has_value())
-        ok = false;
-    }
-  if (ok)
-    return {};
-  return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+    return pool.set_affinity(*p.affinity);
+  return {};
 }
 
 } // namespace detail
@@ -185,6 +175,8 @@ inline auto
 apply_profile(registered_thread_info_backend& t, thread_profile const& p)
     -> expected<void, std::error_code>
 {
+  if (!t.control)
+    return unexpected(std::make_error_code(std::errc::no_such_process));
   return apply_profile(*t.control, p);
 }
 
@@ -225,17 +217,12 @@ inline auto
 apply_profile(thread_registry_backend& reg, native_thread_id tid,
               thread_profile const& p) -> expected<void, std::error_code>
 {
-  bool ok = true;
-  if (!reg.set_scheduling_policy(tid, p.policy, p.priority).has_value())
-    ok = false;
+  auto scheduled = reg.set_scheduling_policy(tid, p.policy, p.priority);
+  if (!scheduled)
+    return unexpected(scheduled.error());
   if (p.affinity.has_value())
-    {
-      if (!reg.set_affinity(tid, *p.affinity).has_value())
-        ok = false;
-    }
-  if (ok)
-    return {};
-  return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+    return reg.set_affinity(tid, *p.affinity);
+  return {};
 }
 
 /**

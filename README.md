@@ -171,12 +171,15 @@ Performance specialists can select a backend explicitly without expanding the
 default learning surface:
 
 ```cpp
+#include <threadschedule/advanced.hpp>
+
 threadschedule::advanced::work_stealing_pool pool(8);
 auto future = pool.submit(expensive_work);
 ```
 
 The advanced namespace is public and follows semantic versioning. See
-[Advanced APIs](docs/ADVANCED.md).
+[Advanced APIs](docs/ADVANCED.md) for native controls, profiles, topology,
+future combinators, task groups, chaos testing, and lower-level error handling.
 
 ## Optional shared registry runtime
 

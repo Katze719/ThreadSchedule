@@ -16,7 +16,7 @@ USE_MDFILE_AS_MAINPAGE = README.md
 FULL_PATH_NAMES        = NO
 STRIP_FROM_PATH        = @CMAKE_SOURCE_DIR@
 
-INPUT                  = README.md include docs
+INPUT                  = README.md LICENSE include docs
 FILE_PATTERNS          = *.hpp *.md
 RECURSIVE              = YES
 EXCLUDE_PATTERNS       = */build/* */.git/* */install/*
@@ -92,4 +92,3 @@ MAX_DOT_GRAPH_DEPTH    = 0
 DOT_MULTI_TARGETS      = YES
 GENERATE_LEGEND        = YES
 DOT_CLEANUP            = YES
-

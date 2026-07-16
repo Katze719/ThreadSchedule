@@ -685,18 +685,18 @@ public:
   configure(native_thread_id tid, native_thread_config const& config) const
       -> expected<void, std::error_code>
   {
-    bool success = true;
-    if (!config.name.empty() && !set_name(tid, config.name).has_value())
-      success = false;
-    if (!configure(tid, config.scheduling).has_value())
-      success = false;
-    if (config.affinity.has_value()
-        && !set_affinity(tid, *config.affinity).has_value())
-      success = false;
-    if (success)
-      return {};
-    return unexpected(
-        std::make_error_code(std::errc::operation_not_permitted));
+    if (!config.name.empty())
+      {
+        auto named = set_name(tid, config.name);
+        if (!named)
+          return unexpected(named.error());
+      }
+    auto scheduled = configure(tid, config.scheduling);
+    if (!scheduled)
+      return unexpected(scheduled.error());
+    if (config.affinity.has_value())
+      return set_affinity(tid, *config.affinity);
+    return {};
   }
 
   [[nodiscard]] auto

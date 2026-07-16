@@ -4,6 +4,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <future>
+#include <string>
 #include <type_traits>
 
 using namespace std::chrono_literals;
@@ -38,6 +40,38 @@ TEST(V3Api, ThreadConfigurationConstructor)
   EXPECT_TRUE(ran.load());
 }
 
+TEST(V3Api, EmptyThreadReportsJoinAndDetachErrors)
+{
+  threadschedule::thread worker;
+
+  auto joined = worker.join();
+  ASSERT_FALSE(joined.has_value());
+  EXPECT_EQ(joined.error(), std::make_error_code(std::errc::invalid_argument));
+
+  auto detached = worker.detach();
+  ASSERT_FALSE(detached.has_value());
+  EXPECT_EQ(detached.error(),
+            std::make_error_code(std::errc::invalid_argument));
+  EXPECT_THROW(worker.join_or_throw(), std::system_error);
+  EXPECT_THROW(worker.detach_or_throw(), std::system_error);
+}
+
+#ifndef _WIN32
+TEST(V3Api, FailedThreadConfigurationDoesNotRunCallable)
+{
+  threadschedule::thread_config config;
+  config.name = "this-name-is-longer-than-fifteen-characters";
+  std::atomic<bool> ran{ false };
+
+  auto worker
+      = threadschedule::thread::create(config, [&ran] { ran.store(true); });
+
+  ASSERT_FALSE(worker.has_value());
+  EXPECT_EQ(worker.error(), std::make_error_code(std::errc::invalid_argument));
+  EXPECT_FALSE(ran.load());
+}
+#endif
+
 #if defined(__cpp_lib_jthread) && __cpp_lib_jthread >= 201911L
 TEST(V3Api, JThreadInjectsStopToken)
 {
@@ -67,6 +101,22 @@ TEST(V3Api, JThreadConfigurationConstructor)
   threadschedule::jthread worker(config, [](std::stop_token) {});
   ASSERT_TRUE(worker.join().has_value());
 }
+
+#  ifndef _WIN32
+TEST(V3Api, FailedJThreadConfigurationDoesNotRunCallable)
+{
+  threadschedule::thread_config config;
+  config.name = "this-name-is-longer-than-fifteen-characters";
+  std::atomic<bool> ran{ false };
+
+  auto worker = threadschedule::jthread::create(config, [&ran](std::stop_token)
+                                                  { ran.store(true); });
+
+  ASSERT_FALSE(worker.has_value());
+  EXPECT_EQ(worker.error(), std::make_error_code(std::errc::invalid_argument));
+  EXPECT_FALSE(ran.load());
+}
+#  endif
 #endif
 
 TEST(V3Api, OptionalFactoriesReturnExpected)
@@ -105,6 +155,75 @@ TEST(V3Api, ScheduledPoolReportsShutdown)
   EXPECT_EQ(scheduled.error(),
             std::make_error_code(std::errc::operation_canceled));
 }
+
+TEST(V3Api, ScheduledPoolValidatesPeriodicIntervals)
+{
+  threadschedule::scheduled_pool scheduler(1);
+
+  auto zero = scheduler.schedule_periodic(0ms, [] {});
+  ASSERT_FALSE(zero.has_value());
+  EXPECT_EQ(zero.error(), std::make_error_code(std::errc::invalid_argument));
+
+  auto negative = scheduler.schedule_periodic_after(1ms, -1ms, [] {});
+  ASSERT_FALSE(negative.has_value());
+  EXPECT_EQ(negative.error(),
+            std::make_error_code(std::errc::invalid_argument));
+}
+
+TEST(V3Api, ScheduledPoolSupportsDelayedPeriodicTasks)
+{
+  threadschedule::scheduled_pool scheduler(1);
+  std::promise<void> first_run;
+  auto ready = first_run.get_future();
+  std::atomic<bool> reported{ false };
+
+  auto scheduled
+      = scheduler.schedule_periodic_after(40ms, 20ms,
+                                          [&first_run, &reported]
+                                            {
+                                              if (!reported.exchange(true))
+                                                first_run.set_value();
+                                            });
+
+  ASSERT_TRUE(scheduled.has_value());
+  EXPECT_EQ(ready.wait_for(10ms), std::future_status::timeout);
+  EXPECT_EQ(ready.wait_for(500ms), std::future_status::ready);
+  scheduled->cancel();
+}
+
+TEST(V3Api, ScheduledPoolReportsTaskExceptions)
+{
+  std::promise<std::string> reported;
+  auto report = reported.get_future();
+  threadschedule::scheduled_pool_config config;
+  config.worker_count = 1;
+  config.workers.name = "v3-worker";
+  config.scheduler.name = "v3-scheduler";
+  config.on_task_error = [&reported](threadschedule::task_error const& error)
+    { reported.set_value(error.what()); };
+
+  threadschedule::scheduled_pool scheduler(std::move(config));
+  auto scheduled = scheduler.schedule_after(
+      0ms, [] { throw std::runtime_error("scheduled boom"); });
+
+  ASSERT_TRUE(scheduled.has_value());
+  EXPECT_EQ(report.get(), "scheduled boom");
+}
+
+#ifndef _WIN32
+TEST(V3Api, ScheduledPoolCreationPreservesConfigurationError)
+{
+  threadschedule::scheduled_pool_config config;
+  config.worker_count = 1;
+  config.workers.name = "this-name-is-longer-than-fifteen-characters";
+
+  auto scheduler = threadschedule::scheduled_pool::create(std::move(config));
+
+  ASSERT_FALSE(scheduler.has_value());
+  EXPECT_EQ(scheduler.error(),
+            std::make_error_code(std::errc::invalid_argument));
+}
+#endif
 
 TEST(V3Api, PoolReportsTaskExceptionsAndPreservesFutureException)
 {
@@ -181,6 +300,11 @@ TEST(V3Api, RegistryUsesLowercaseSnapshots)
   ASSERT_EQ(snapshot->size(), 1u);
   EXPECT_EQ(snapshot->front().name, "test");
   EXPECT_EQ(snapshot->front().component, "v3");
+
+  threadschedule::thread_config config;
+  config.name = "v3-control";
+  EXPECT_TRUE(
+      registry.configure(snapshot->front().native_id, config).has_value());
 
   EXPECT_TRUE(registry.unregister_current_thread().has_value());
   EXPECT_TRUE(registry.empty());

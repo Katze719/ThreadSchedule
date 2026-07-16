@@ -144,9 +144,8 @@ using future_error_callback = detail::move_callable<void(std::exception_ptr)>;
  *
  * @par Callback execution
  * - Callbacks are invoked in the order they were registered (FIFO).
- * - Callbacks run **under the lock** - keep them short and non-blocking to
- *   avoid contention with other threads that may call handle_error() or
- *   add_callback() concurrently.
+ * - The callback list is copied under the lock, then callbacks run without
+ *   holding the handler mutex.
  * - If a callback itself throws, the exception is silently swallowed so that
  *   remaining callbacks still execute.
  *
@@ -322,10 +321,9 @@ template <typename Func>
 class error_handled_task
 {
 public:
-  error_handled_task(Func&& func,
-                     std::shared_ptr<error_handler_backend> handler,
+  error_handled_task(Func func, std::shared_ptr<error_handler_backend> handler,
                      std::string description = "")
-      : func_(std::forward<Func>(func)), handler_(std::move(handler)),
+      : func_(std::move(func)), handler_(std::move(handler)),
         description_(std::move(description))
   {
   }
@@ -360,7 +358,7 @@ private:
  * receive errors.
  * @param description Optional human-readable label stored in
  * task_error_backend::task_description.
- * @return An error_handled_task<Func> ready to be submitted to a thread pool.
+ * @return An error_handled_task containing a decayed copy of @p func.
  */
 template <typename Func>
 auto
@@ -368,8 +366,10 @@ make_error_handled_task(Func&& func,
                         std::shared_ptr<error_handler_backend> handler,
                         std::string description = "")
 {
-  return error_handled_task<Func>(std::forward<Func>(func), std::move(handler),
-                                  std::move(description));
+  using function_type = std::decay_t<Func>;
+  return error_handled_task<function_type>(
+      function_type(std::forward<Func>(func)), std::move(handler),
+      std::move(description));
 }
 
 /**
