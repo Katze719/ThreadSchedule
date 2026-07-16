@@ -73,21 +73,44 @@ target_link_libraries(my_app PRIVATE ThreadSchedule::ThreadSchedule)
 
 int main()
 {
-    threadschedule::thread_pool_config config;
-    config.worker_count = 4;
-    config.workers.name = "worker";
-    config.workers.scheduling = threadschedule::schedule::normal();
+    threadschedule::thread_config config;
+    config.name = "metrics";
+    config.scheduling = threadschedule::schedule::background();
+    config.affinity = threadschedule::thread_affinity({ 0 });
 
-    threadschedule::thread_pool pool(std::move(config));
-
-    auto answer = pool.submit([] { return 42; });
-    if (!answer) {
-        std::cerr << answer.error().message() << '\n';
+    if (auto worker = threadschedule::thread::create(config, [] {
+            // Collect metrics on the configured thread.
+        });
+        !worker) {
+        std::cerr << worker.error().message() << '\n';
+        return 1;
+    } else if (auto result = worker->join(); !result) {
+        std::cerr << result.error().message() << '\n';
         return 1;
     }
-
-    std::cout << answer->get() << '\n';
 }
+```
+
+CPU indices identify logical processors. Naming, affinity, and scheduling can
+fail when the requested CPU is unavailable or the operating system denies the
+operation; use `create(...)` when those failures should be reported as an
+error value.
+
+## Thread pools
+
+```cpp
+threadschedule::thread_pool_config config;
+config.worker_count = 4;
+config.workers.name = "worker";
+config.workers.scheduling = threadschedule::schedule::normal();
+
+threadschedule::thread_pool pool(std::move(config));
+
+auto answer = pool.submit([] { return 42; });
+if (!answer)
+    report(answer.error());
+else
+    std::cout << answer->get() << '\n';
 ```
 
 Submission itself is non-throwing. If the task throws, the exception is

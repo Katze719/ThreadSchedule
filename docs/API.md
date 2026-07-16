@@ -31,17 +31,72 @@ can observe the same exception as a `task_error` without consuming it.
 ## Threads
 
 ```cpp
-threadschedule::thread_config config;
-config.name = "worker";
-config.scheduling = threadschedule::schedule::background();
+#include <future>
 
-threadschedule::thread worker(config, [] { do_work(); });
+std::promise<void> release;
+auto ready_to_finish = release.get_future().share();
+
+threadschedule::thread worker([ready_to_finish] { ready_to_finish.wait(); });
+
+if (auto result = worker.set_name("worker"); !result)
+    {
+        report(result.error());
+    }
+if (auto result = worker.set_affinity(threadschedule::thread_affinity({ 0 })); !result)
+    {
+        report(result.error());
+    }
+
+threadschedule::thread_config config;
+config.scheduling = threadschedule::schedule::background();
+if (auto result = worker.configure(config); !result)
+    {
+        report(result.error());
+    }
+
+release.set_value();
+if (auto result = worker.join(); !result)
+    {
+        report(result.error());
+    }
 ```
 
 `thread` owns a `std::thread` and joins it on destruction. `join`, `detach`,
 and `configure` return `result<void>`; `join_or_throw` is the explicit throwing
 form. `thread_view` configures an existing `std::thread` without taking
 ownership.
+
+### Thread configuration
+
+For error-returning construction, pass `thread_config` to `create(...)` to
+apply a name, portable scheduling priority, and CPU affinity before the thread
+runs:
+
+```cpp
+threadschedule::thread_config config;
+config.name = "metrics";
+config.scheduling = threadschedule::schedule::background();
+config.affinity = threadschedule::thread_affinity({ 0, 1 });
+
+if (auto worker = threadschedule::thread::create(config, [] {
+        // Collect metrics on the configured thread.
+    });
+    !worker)
+    {
+        report(worker.error());
+    }
+else if (auto result = worker->join(); !result)
+    {
+        report(result.error());
+    }
+```
+
+`thread_affinity` contains logical CPU indices. The portable scheduling
+factories include `background`, `normal`, `interactive`, and `low_latency`.
+The operating system can reject a name, scheduling request, or CPU mask, for
+example because a CPU is unavailable or the process lacks permission.
+`create(...)` reports initial-configuration failures as an error value; the
+direct constructor reports them like `std::thread` construction.
 
 Under C++20, `jthread` mirrors `std::jthread` construction and cancellation:
 
