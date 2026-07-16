@@ -129,14 +129,10 @@ configure_thread(ThreadLike& thread, std::string const& name,
                  native_thread_priority priority)
     -> expected<void, std::error_code>
 {
-  bool success = true;
-  if (!thread.set_name(name).has_value())
-    success = false;
-  if (!thread.set_scheduling_policy(policy, priority).has_value())
-    success = false;
-  if (success)
-    return {};
-  return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+  auto named = thread.set_name(name);
+  if (!named)
+    return unexpected(named.error());
+  return thread.set_scheduling_policy(policy, priority);
 }
 
 template <typename ThreadLike>
@@ -144,19 +140,20 @@ inline auto
 configure_thread(ThreadLike& thread, native_thread_config const& config)
     -> expected<void, std::error_code>
 {
-  bool success = true;
-  if (!config.name.empty() && !thread.set_name(config.name).has_value())
-    success = false;
+  if (!config.name.empty())
+    {
+      auto named = thread.set_name(config.name);
+      if (!named)
+        return unexpected(named.error());
+    }
   auto const scheduling = resolve_scheduling_config(config.scheduling);
-  if (!thread.set_scheduling_policy(scheduling.policy, scheduling.priority)
-           .has_value())
-    success = false;
-  if (config.affinity.has_value()
-      && !thread.set_affinity(*config.affinity).has_value())
-    success = false;
-  if (success)
-    return {};
-  return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+  auto scheduled
+      = thread.set_scheduling_policy(scheduling.policy, scheduling.priority);
+  if (!scheduled)
+    return unexpected(scheduled.error());
+  if (config.affinity.has_value())
+    return thread.set_affinity(*config.affinity);
+  return {};
 }
 } // namespace detail
 

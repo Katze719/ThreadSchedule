@@ -62,9 +62,10 @@ if (auto result = worker.join(); !result)
 ```
 
 `thread` owns a `std::thread` and joins it on destruction. `join`, `detach`,
-and `configure` return `result<void>`; `join_or_throw` is the explicit throwing
-form. `thread_view` configures an existing `std::thread` without taking
-ownership.
+and `configure` return `result<void>`; `join_or_throw` and `detach_or_throw`
+are the explicit throwing forms. Joining or detaching a non-joinable thread
+returns `std::errc::invalid_argument`. `thread_view` configures an existing
+`std::thread` without taking ownership.
 
 ### Thread configuration
 
@@ -96,7 +97,10 @@ factories include `background`, `normal`, `interactive`, and `low_latency`.
 The operating system can reject a name, scheduling request, or CPU mask, for
 example because a CPU is unavailable or the process lacks permission.
 `create(...)` reports initial-configuration failures as an error value; the
-direct constructor reports them like `std::thread` construction.
+direct constructor reports them like `std::thread` construction. If initial
+configuration fails, the callable is not started. Configuration operations
+preserve the specific error from the first failed name, scheduling, or
+affinity step.
 
 Under C++20, `jthread` mirrors `std::jthread` construction and cancellation:
 
@@ -134,13 +138,34 @@ work, while `drop_pending` discards work that has not started.
 ## Scheduled work
 
 ```cpp
-threadschedule::scheduled_pool scheduler(2);
+threadschedule::scheduled_pool_config config;
+config.worker_count = 2;
+config.register_workers = true;
+config.workers.name = "scheduled-worker";
+config.scheduler.name = "scheduler";
+config.shutdown = threadschedule::shutdown_policy::drain;
+config.on_task_error = [](threadschedule::task_error const& error) {
+    report(error.what());
+};
+
+threadschedule::scheduled_pool scheduler(std::move(config));
 auto once = scheduler.schedule_after(250ms, [] { refresh(); });
 auto periodic = scheduler.schedule_periodic(1s, [] { sample(); });
+auto delayed = scheduler.schedule_periodic_after(
+    5s, 1s, [] { sample_after_warmup(); });
 periodic->cancel();
 ```
 
-Scheduling after shutdown returns `std::errc::operation_canceled`.
+Periodic intervals must be positive. Periodic tasks use fixed-rate scheduling:
+each next deadline is based on the preceding deadline, not task completion.
+Cancellation is cooperative and does not interrupt a running task. Scheduling
+after shutdown returns `std::errc::operation_canceled`.
+
+`scheduled_pool_config` supports the same worker registration, worker
+configuration, shutdown policy, and task-error callback as `thread_pool_config`,
+plus an independent `scheduler` thread configuration. Shutdown stops accepting
+and dispatching scheduled entries; the selected policy controls work already
+queued in the worker pool.
 
 ## Registry
 
@@ -158,6 +183,10 @@ ownership. `global_registry()` returns the active process registry.
 `use_global_registry(pointer)` injects an application-owned registry.
 Header-only builds have one instance per linked image; the optional runtime
 supplies one instance to compatible DSOs that link it.
+
+Entries added by `register_current_thread` retain a native control block, so
+their `native_id` can be passed to `thread_registry::configure` while the
+registered thread remains alive.
 
 ## Scheduling
 

@@ -47,7 +47,12 @@ only when that policy is intentional.
 
 `PoolWithErrors` and its aliases were removed. Set
 `thread_pool_config::on_task_error` instead; task exceptions remain available
-through the returned future.
+through the returned future. `scheduled_pool_config::on_task_error` provides
+the same reporting hook for scheduled fire-and-forget work.
+
+Optional profiles, topology helpers, future combinators, task groups, chaos
+testing, and lower-level error handling are supported through
+`<threadschedule/advanced.hpp>` and `threadschedule::advanced`.
 
 ## Removed features
 

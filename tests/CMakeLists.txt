@@ -90,6 +90,17 @@ if(TARGET gtest)
         PROPERTIES TIMEOUT 120
     )
 
+    add_executable(advanced_api_test advanced_api_test.cpp)
+    target_link_libraries(advanced_api_test
+        ThreadSchedule::ThreadSchedule
+        gtest
+        gtest_main
+    )
+    gtest_discover_tests(advanced_api_test
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES TIMEOUT 120
+    )
+
     add_executable(thread_registry_stress_test thread_registry_stress_test.cpp)
     target_link_libraries(thread_registry_stress_test 
         ThreadSchedule::ThreadSchedule 

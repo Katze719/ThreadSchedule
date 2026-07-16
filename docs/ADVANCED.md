@@ -4,6 +4,12 @@
 main getting-started path because its choices require workload or platform
 knowledge.
 
+Include the complete advanced surface explicitly:
+
+```cpp
+#include <threadschedule/advanced.hpp>
+```
+
 ## Pool backends
 
 | Type | Use case |
@@ -36,6 +42,26 @@ For a portable owning thread, use `schedule::background()`,
 
 `composite_thread_registry` can merge independent header-only registries when
 using the shared runtime is not appropriate.
+
+## Optional utilities
+
+`advanced.hpp` is also the supported entry point for the following optional
+facilities:
+
+- future combinators: `when_all`, `when_any`, and `when_all_settled`
+- scoped backend work through `task_group<Pool>`
+- native scheduling presets through `thread_profile`, `profiles::*`, and
+  `apply_profile`
+- hardware discovery through `cpu_topology`, `read_topology`, and the NUMA
+  affinity helpers
+- test-only scheduling perturbation through `chaos_controller`
+- lower-level callback dispatch through `error_handler`,
+  `error_handled_task`, and `future_with_error_handler`
+
+These names live in `threadschedule::advanced`. Their backing implementation
+types are not an additional canonical core API. `task_group` is intended for
+advanced pool backends whose `submit` operation directly returns a
+`std::future`.
 
 Advanced APIs use the same C++17 public type policy as the core API. Feature
 detection may optimize implementation details but must not change a public

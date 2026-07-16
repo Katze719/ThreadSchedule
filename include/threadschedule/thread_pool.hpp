@@ -39,18 +39,20 @@ configure_worker_threads(WorkerRange& workers, std::string const& name_prefix,
                          native_thread_priority priority)
     -> expected<void, std::error_code>
 {
-  bool success = true;
+  std::error_code first_error;
   for (size_t i = 0; i < workers.size(); ++i)
     {
       std::string const thread_name = name_prefix + "_" + std::to_string(i);
-      if (!workers[i].set_name(thread_name).has_value())
-        success = false;
-      if (!workers[i].set_scheduling_policy(policy, priority).has_value())
-        success = false;
+      auto named = workers[i].set_name(thread_name);
+      if (!named && !first_error)
+        first_error = named.error();
+      auto scheduled = workers[i].set_scheduling_policy(policy, priority);
+      if (!scheduled && !first_error)
+        first_error = scheduled.error();
     }
-  if (success)
-    return {};
-  return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+  if (first_error)
+    return unexpected(first_error);
+  return {};
 }
 
 template <typename WorkerRange>
@@ -59,7 +61,7 @@ configure_worker_threads(WorkerRange& workers,
                          native_thread_config const& config)
     -> expected<void, std::error_code>
 {
-  bool success = true;
+  std::error_code first_error;
   auto const scheduling = resolve_scheduling_config(config.scheduling);
   for (size_t i = 0; i < workers.size(); ++i)
     {
@@ -67,20 +69,24 @@ configure_worker_threads(WorkerRange& workers,
         {
           std::string const thread_name
               = config.name + "_" + std::to_string(i);
-          if (!workers[i].set_name(thread_name).has_value())
-            success = false;
+          auto named = workers[i].set_name(thread_name);
+          if (!named && !first_error)
+            first_error = named.error();
         }
-      if (!workers[i]
-               .set_scheduling_policy(scheduling.policy, scheduling.priority)
-               .has_value())
-        success = false;
-      if (config.affinity.has_value()
-          && !workers[i].set_affinity(*config.affinity).has_value())
-        success = false;
+      auto scheduled = workers[i].set_scheduling_policy(scheduling.policy,
+                                                        scheduling.priority);
+      if (!scheduled && !first_error)
+        first_error = scheduled.error();
+      if (config.affinity.has_value())
+        {
+          auto affinity = workers[i].set_affinity(*config.affinity);
+          if (!affinity && !first_error)
+            first_error = affinity.error();
+        }
     }
-  if (success)
-    return {};
-  return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+  if (first_error)
+    return unexpected(first_error);
+  return {};
 }
 
 template <typename WorkerRange>
@@ -89,15 +95,16 @@ set_worker_affinity(WorkerRange& workers,
                     native_thread_affinity const& affinity)
     -> expected<void, std::error_code>
 {
-  bool success = true;
+  std::error_code first_error;
   for (auto& worker : workers)
     {
-      if (!worker.set_affinity(affinity).has_value())
-        success = false;
+      auto configured = worker.set_affinity(affinity);
+      if (!configured && !first_error)
+        first_error = configured.error();
     }
-  if (success)
-    return {};
-  return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+  if (first_error)
+    return unexpected(first_error);
+  return {};
 }
 
 template <typename WorkerRange>
@@ -109,16 +116,17 @@ distribute_workers_across_cpus(WorkerRange& workers)
   if (cpu_count == 0)
     return unexpected(std::make_error_code(std::errc::invalid_argument));
 
-  bool success = true;
+  std::error_code first_error;
   for (size_t i = 0; i < workers.size(); ++i)
     {
       native_thread_affinity affinity({ static_cast<int>(i % cpu_count) });
-      if (!workers[i].set_affinity(affinity).has_value())
-        success = false;
+      auto configured = workers[i].set_affinity(affinity);
+      if (!configured && !first_error)
+        first_error = configured.error();
     }
-  if (success)
-    return {};
-  return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+  if (first_error)
+    return unexpected(first_error);
+  return {};
 }
 
 template <typename Pool, typename Iterator, typename F>

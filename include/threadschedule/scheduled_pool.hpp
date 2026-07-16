@@ -15,7 +15,9 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <thread>
+#include <type_traits>
 
 namespace threadschedule
 {
@@ -173,18 +175,15 @@ public:
                                        = std::thread::hardware_concurrency())
       : pool_(worker_threads), stop_(false), next_task_id_(1)
   {
-    std::promise<native_thread_id> scheduler_started;
-    auto scheduler_ready = scheduler_started.get_future();
+    start_scheduler();
+  }
 
-    scheduler_thread_ = detail::thread_backend(
-        [this, started = std::move(scheduler_started)]() mutable
-          {
-            started.set_value(thread_info::get_thread_id());
-            scheduler_loop();
-          });
-
-    scheduler_tid_ = scheduler_ready.get();
-    (void)thread_info(scheduler_tid_).set_name("ts_sched_pool");
+  template <typename T = PoolType,
+            std::enable_if_t<std::is_same_v<T, thread_pool_backend>, int> = 0>
+  scheduled_pool_backend_base(size_t worker_threads, bool register_workers)
+      : pool_(worker_threads, register_workers), stop_(false), next_task_id_(1)
+  {
+    start_scheduler();
   }
 
   scheduled_pool_backend_base(scheduled_pool_backend_base const&) = delete;
@@ -285,6 +284,9 @@ public:
   schedule_periodic_after(duration initial_delay, duration interval,
                           task_type task) -> scheduled_task_backend
   {
+    if (interval <= duration::zero())
+      throw std::invalid_argument(
+          "scheduled_pool periodic interval must be positive");
     auto const run_time = std::chrono::steady_clock::now() + initial_delay;
     return insert_periodic_task(
         run_time, interval,
@@ -299,6 +301,9 @@ public:
   schedule_periodic_after(duration initial_delay, duration interval, F&& task)
       -> scheduled_task_backend
   {
+    if (interval <= duration::zero())
+      throw std::invalid_argument(
+          "scheduled_pool periodic interval must be positive");
     auto const run_time = std::chrono::steady_clock::now() + initial_delay;
     return insert_periodic_task(
         run_time, interval,
@@ -340,7 +345,7 @@ public:
    * @brief Shutdown the scheduler and wait for completion
    */
   void
-  shutdown()
+  shutdown(shutdown_policy_backend policy = shutdown_policy_backend::drain)
   {
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -356,7 +361,7 @@ public:
         scheduler_thread_.join();
       }
 
-    pool_.shutdown();
+    pool_.shutdown(policy);
   }
 
   /**
@@ -372,6 +377,13 @@ public:
                     = native_thread_priority::normal())
   {
     return pool_.configure_threads(name_prefix, policy, priority);
+  }
+
+  auto
+  configure_threads(native_thread_config const& config)
+      -> expected<void, std::error_code>
+  {
+    return pool_.configure_threads(config);
   }
 
   [[nodiscard]] auto
@@ -396,6 +408,16 @@ public:
     return detail::configure_thread(info.value(), name, policy, priority);
   }
 
+  auto
+  configure_scheduler_thread(native_thread_config const& config)
+      -> expected<void, std::error_code>
+  {
+    auto info = scheduler_thread_info();
+    if (!info.has_value())
+      return unexpected(std::make_error_code(std::errc::no_such_process));
+    return info->configure(config);
+  }
+
 private:
   PoolType pool_;
   detail::thread_backend scheduler_thread_;
@@ -407,6 +429,23 @@ private:
 
   std::multimap<time_point, scheduled_task_info> scheduled_tasks_;
   std::atomic<uint64_t> next_task_id_;
+
+  void
+  start_scheduler()
+  {
+    std::promise<native_thread_id> scheduler_started;
+    auto scheduler_ready = scheduler_started.get_future();
+
+    scheduler_thread_ = detail::thread_backend(
+        [this, started = std::move(scheduler_started)]() mutable
+          {
+            started.set_value(thread_info::get_thread_id());
+            scheduler_loop();
+          });
+
+    scheduler_tid_ = scheduler_ready.get();
+    (void)thread_info(scheduler_tid_).set_name("ts_sched_pool");
+  }
 
   auto
   insert_one_shot_task(time_point run_time, one_shot_task_type task)

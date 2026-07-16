@@ -10,9 +10,13 @@ main()
   config.scheduling = threadschedule::schedule::background();
   config.affinity = threadschedule::thread_affinity({ 0 });
 
-  if (auto worker = threadschedule::thread::create(config, [] {
-        // Collect metrics on the configured thread.
-      });
+  if (auto worker = threadschedule::thread::create(config,
+                                                   []
+                                                     {
+                                                       // Collect metrics on
+                                                       // the configured
+                                                       // thread.
+                                                     });
       !worker)
     {
       std::cerr << "Could not configure the thread: "

@@ -73,7 +73,9 @@ struct chaos_config
  *
  * @par Example
  * @code
- * chaos_config cfg{.interval = 100ms, .priority_jitter = 5};
+ * chaos_config cfg;
+ * cfg.interval = 100ms;
+ * cfg.priority_jitter = 5;
  * chaos_controller chaos(cfg, [](auto const& info) {
  *     return info.name.starts_with("worker");
  * });

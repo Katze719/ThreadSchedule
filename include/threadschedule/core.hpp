@@ -217,19 +217,21 @@ namespace detail
 class thread_start_gate
 {
 public:
-  void
-  wait()
+  [[nodiscard]] auto
+  wait() -> bool
   {
     std::unique_lock<std::mutex> lock(mutex_);
-    ready_.wait(lock, [this] { return open_; });
+    ready_.wait(lock, [this] { return ready_to_start_; });
+    return run_;
   }
 
   void
-  open()
+  release(bool run)
   {
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      open_ = true;
+      run_ = run;
+      ready_to_start_ = true;
     }
     ready_.notify_all();
   }
@@ -237,7 +239,8 @@ public:
 private:
   std::mutex mutex_;
   std::condition_variable ready_;
-  bool open_{ false };
+  bool ready_to_start_{ false };
+  bool run_{ false };
 };
 
 [[nodiscard]] inline auto
@@ -297,6 +300,14 @@ to_native(thread_config const& config) -> native_thread_config
   if (config.affinity)
     native.affinity = to_native(*config.affinity);
   return native;
+}
+
+[[nodiscard]] inline auto
+has_thread_configuration(thread_config const& config) noexcept -> bool
+{
+  return !config.name.empty() || config.affinity.has_value()
+         || config.scheduling.intent != scheduling_intent::normal
+         || config.scheduling.priority != 0;
 }
 
 [[nodiscard]] constexpr auto
@@ -379,6 +390,8 @@ public:
   auto
   join() -> result<void>
   {
+    if (!impl_.joinable())
+      return unexpected(std::make_error_code(std::errc::invalid_argument));
     try
       {
         impl_.join();
@@ -393,12 +406,17 @@ public:
   void
   join_or_throw()
   {
+    if (!impl_.joinable())
+      throw std::system_error(
+          std::make_error_code(std::errc::invalid_argument), "thread::join");
     impl_.join();
   }
 
   auto
   detach() -> result<void>
   {
+    if (!impl_.joinable())
+      return unexpected(std::make_error_code(std::errc::invalid_argument));
     try
       {
         impl_.detach();
@@ -408,6 +426,15 @@ public:
       {
         return unexpected(detail::current_exception_error_code());
       }
+  }
+
+  void
+  detach_or_throw()
+  {
+    if (!impl_.joinable())
+      throw std::system_error(
+          std::make_error_code(std::errc::invalid_argument), "thread::detach");
+    impl_.detach();
   }
 
   [[nodiscard]] auto
@@ -499,20 +526,26 @@ private:
          callable = detail::bind_args(std::forward<F>(function),
                                       std::forward<Args>(args)...)]() mutable
           {
-            gate->wait();
-            callable();
+            if (gate->wait())
+              callable();
           });
 
     try
       {
         auto configured = value.configure(detail::to_native(config));
-        gate->open();
         if (!configured)
-          throw std::system_error(configured.error(), "thread configuration");
+          {
+            gate->release(false);
+            throw std::system_error(configured.error(),
+                                    "thread configuration");
+          }
+        gate->release(true);
       }
     catch (...)
       {
-        gate->open();
+        gate->release(false);
+        if (value.joinable())
+          value.join();
         throw;
       }
     return value;
@@ -588,6 +621,8 @@ public:
   auto
   join() -> result<void>
   {
+    if (!impl_.joinable())
+      return unexpected(std::make_error_code(std::errc::invalid_argument));
     try
       {
         impl_.join();
@@ -602,12 +637,17 @@ public:
   void
   join_or_throw()
   {
+    if (!impl_.joinable())
+      throw std::system_error(
+          std::make_error_code(std::errc::invalid_argument), "jthread::join");
     impl_.join();
   }
 
   auto
   detach() -> result<void>
   {
+    if (!impl_.joinable())
+      return unexpected(std::make_error_code(std::errc::invalid_argument));
     try
       {
         impl_.detach();
@@ -617,6 +657,16 @@ public:
       {
         return unexpected(detail::current_exception_error_code());
       }
+  }
+
+  void
+  detach_or_throw()
+  {
+    if (!impl_.joinable())
+      throw std::system_error(
+          std::make_error_code(std::errc::invalid_argument),
+          "jthread::detach");
+    impl_.detach();
   }
 
   [[nodiscard]] auto
@@ -741,7 +791,8 @@ private:
          arguments = std::make_tuple(std::forward<Args>(args)...)](
             std::stop_token token) mutable
           {
-            gate->wait();
+            if (!gate->wait())
+              return;
             std::apply(
                 [&callable, &token](auto&&... stored)
                   {
@@ -761,13 +812,17 @@ private:
       {
         native_view_type view(value);
         auto configured = view.configure(detail::to_native(config));
-        gate->open();
         if (!configured)
-          throw std::system_error(configured.error(), "jthread configuration");
+          {
+            gate->release(false);
+            throw std::system_error(configured.error(),
+                                    "jthread configuration");
+          }
+        gate->release(true);
       }
     catch (...)
       {
-        gate->open();
+        gate->release(false);
         throw;
       }
     return value;
@@ -883,7 +938,8 @@ public:
   {
     try
       {
-        native().register_current_thread(std::move(name),
+        auto control = thread_control_block::create_for_current_thread();
+        native().register_current_thread(control, std::move(name),
                                          std::move(component));
         return {};
       }
@@ -1019,8 +1075,7 @@ public:
         impl_(std::make_unique<thread_pool_backend>(config_.worker_count,
                                                     config_.register_workers))
   {
-    if (!config_.workers.name.empty() || config_.workers.affinity.has_value()
-        || config_.workers.scheduling.intent != scheduling_intent::normal)
+    if (detail::has_thread_configuration(config_.workers))
       {
         auto configured
             = impl_->configure_threads(detail::to_native(config_.workers));
@@ -1268,6 +1323,11 @@ private:
 struct scheduled_pool_config
 {
   std::size_t worker_count{ std::thread::hardware_concurrency() };
+  bool register_workers{ false };
+  thread_config workers{};
+  thread_config scheduler{};
+  shutdown_policy shutdown{ shutdown_policy::drain };
+  error_callback on_task_error{};
 };
 
 class scheduled_pool
@@ -1281,12 +1341,31 @@ public:
   }
 
   explicit scheduled_pool(scheduled_pool_config config)
-      : impl_(std::make_unique<scheduled_pool_backend>(config.worker_count))
+      : config_(std::move(config)),
+        impl_(std::make_unique<scheduled_pool_backend>(
+            config_.worker_count, config_.register_workers))
   {
+    if (detail::has_thread_configuration(config_.workers))
+      {
+        auto configured
+            = impl_->configure_threads(detail::to_native(config_.workers));
+        if (!configured)
+          throw std::system_error(configured.error(),
+                                  "scheduled_pool worker configuration");
+      }
+
+    if (detail::has_thread_configuration(config_.scheduler))
+      {
+        auto configured = impl_->configure_scheduler_thread(
+            detail::to_native(config_.scheduler));
+        if (!configured)
+          throw std::system_error(configured.error(),
+                                  "scheduled_pool scheduler configuration");
+      }
   }
 
   scheduled_pool(scheduled_pool&& other) noexcept
-      : impl_(std::move(other.impl_)),
+      : config_(std::move(other.config_)), impl_(std::move(other.impl_)),
         stopped_(other.stopped_.load(std::memory_order_acquire))
   {
     other.stopped_.store(true, std::memory_order_release);
@@ -1297,6 +1376,17 @@ public:
   {
     if (this != &other)
       {
+        if (impl_)
+          {
+            try
+              {
+                impl_->shutdown(detail::to_native(config_.shutdown));
+              }
+            catch (...)
+              {
+              }
+          }
+        config_ = std::move(other.config_);
         impl_ = std::move(other.impl_);
         stopped_.store(other.stopped_.load(std::memory_order_acquire),
                        std::memory_order_release);
@@ -1307,12 +1397,25 @@ public:
   scheduled_pool(scheduled_pool const&) = delete;
   auto operator=(scheduled_pool const&) -> scheduled_pool& = delete;
 
+  ~scheduled_pool()
+  {
+    if (!impl_)
+      return;
+    try
+      {
+        impl_->shutdown(detail::to_native(config_.shutdown));
+      }
+    catch (...)
+      {
+      }
+  }
+
   static auto
   create(scheduled_pool_config config = {}) -> result<scheduled_pool>
   {
     try
       {
-        return scheduled_pool(config);
+        return scheduled_pool(std::move(config));
       }
     catch (...)
       {
@@ -1332,7 +1435,7 @@ public:
         auto handle = impl_->schedule_after(
             std::chrono::duration_cast<scheduled_pool_backend::duration>(
                 delay),
-            std::forward<F>(function));
+            wrap_task(std::forward<F>(function)));
         return scheduled_task(std::move(handle));
       }
     catch (...)
@@ -1351,7 +1454,7 @@ public:
     try
       {
         return scheduled_task(
-            impl_->schedule_at(time, std::forward<F>(function)));
+            impl_->schedule_at(time, wrap_task(std::forward<F>(function))));
       }
     catch (...)
       {
@@ -1366,12 +1469,44 @@ public:
   {
     if (stopped_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
+    auto const native_interval
+        = std::chrono::duration_cast<scheduled_pool_backend::duration>(
+            interval);
+    if (native_interval <= scheduled_pool_backend::duration::zero())
+      return unexpected(std::make_error_code(std::errc::invalid_argument));
     try
       {
         auto handle = impl_->schedule_periodic(
+            native_interval, wrap_task(std::forward<F>(function)));
+        return scheduled_task(std::move(handle));
+      }
+    catch (...)
+      {
+        return unexpected(detail::current_exception_error_code());
+      }
+  }
+
+  template <typename InitialRep, typename InitialPeriod, typename IntervalRep,
+            typename IntervalPeriod, typename F>
+  auto
+  schedule_periodic_after(
+      std::chrono::duration<InitialRep, InitialPeriod> initial_delay,
+      std::chrono::duration<IntervalRep, IntervalPeriod> interval,
+      F&& function) -> result<scheduled_task>
+  {
+    if (stopped_.load(std::memory_order_acquire))
+      return unexpected(std::make_error_code(std::errc::operation_canceled));
+    auto const native_interval
+        = std::chrono::duration_cast<scheduled_pool_backend::duration>(
+            interval);
+    if (native_interval <= scheduled_pool_backend::duration::zero())
+      return unexpected(std::make_error_code(std::errc::invalid_argument));
+    try
+      {
+        auto handle = impl_->schedule_periodic_after(
             std::chrono::duration_cast<scheduled_pool_backend::duration>(
-                interval),
-            std::forward<F>(function));
+                initial_delay),
+            native_interval, wrap_task(std::forward<F>(function)));
         return scheduled_task(std::move(handle));
       }
     catch (...)
@@ -1381,12 +1516,12 @@ public:
   }
 
   auto
-  shutdown() -> result<void>
+  shutdown(shutdown_policy policy = shutdown_policy::drain) -> result<void>
   {
     try
       {
         if (!stopped_.exchange(true, std::memory_order_acq_rel))
-          impl_->shutdown();
+          impl_->shutdown(detail::to_native(policy));
         return {};
       }
     catch (...)
@@ -1398,10 +1533,40 @@ public:
   [[nodiscard]] auto
   scheduled_count() const -> std::size_t
   {
-    return impl_->scheduled_count();
+    return impl_ ? impl_->scheduled_count() : 0;
   }
 
 private:
+  template <typename F>
+  auto
+  wrap_task(F&& function)
+  {
+    using function_type = std::decay_t<F>;
+    auto callback = config_.on_task_error;
+    return [function = function_type(std::forward<F>(function)),
+            callback = std::move(callback)]() mutable
+      {
+        try
+          {
+            std::invoke(function);
+          }
+        catch (...)
+          {
+            if (callback)
+              {
+                try
+                  {
+                    callback(task_error::capture());
+                  }
+                catch (...)
+                  {
+                  }
+              }
+          }
+      };
+  }
+
+  scheduled_pool_config config_{};
   std::unique_ptr<scheduled_pool_backend> impl_;
   std::atomic<bool> stopped_{ false };
 };
