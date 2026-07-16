@@ -29,5 +29,9 @@ target_link_libraries(scheduled_tasks_example ThreadSchedule::ThreadSchedule)
 add_executable(error_handling_example error_handling_example.cpp)
 target_link_libraries(error_handling_example ThreadSchedule::ThreadSchedule)
 
+add_executable(thread_configuration_example thread_configuration_example.cpp)
+target_link_libraries(thread_configuration_example
+                      ThreadSchedule::ThreadSchedule)
+
 # Runtime shared registry example (requires THREADSCHEDULE_RUNTIME)
 add_subdirectory(runtime_shared)

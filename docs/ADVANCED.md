@@ -26,6 +26,14 @@ the canonical `thread_pool` remains the recommended default.
 configuration may require `CAP_SYS_NICE`, root privileges, or an elevated
 Windows process.
 
+`threadschedule::thread` deliberately exposes portable scheduling intent
+through `thread_config::scheduling` and `schedule::*`; it has no direct setter
+for an exact `native_thread_priority`. Native values differ between POSIX and
+Windows and should be used only where an advanced API explicitly accepts them.
+For a portable owning thread, use `schedule::background()`,
+`schedule::normal()`, `schedule::interactive()`, or
+`schedule::low_latency()` and handle a configuration failure.
+
 `composite_thread_registry` can merge independent header-only registries when
 using the shared runtime is not appropriate.
 
