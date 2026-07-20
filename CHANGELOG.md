@@ -33,6 +33,15 @@
 
 ### Configuration and Scheduling
 
+- **Portable non-realtime priority** -- added the five-level
+  `priority_level`, `schedule::priority`, and the full `schedule::nice(-20..19)`
+  input. Linux now applies real per-thread nice values instead of discarding
+  them through `SCHED_OTHER`; MSVC and MinGW map them to safe Win32 thread
+  priorities without using `TIME_CRITICAL`.
+- **Priority control and readback** -- `thread`, C++20 `jthread`,
+  `thread_view`, and `thread_registry` can change normal priority after startup
+  and read back an effective portable level. Library-owned threads retain the
+  Linux TID needed for race-free configured startup and later control.
 - **Configured startup is transactional** -- a configured `thread` or
   `jthread` does not invoke its callable when initial name, scheduling, or
   affinity configuration fails.

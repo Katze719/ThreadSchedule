@@ -6,7 +6,12 @@
 #include <chrono>
 #include <future>
 #include <string>
+#include <system_error>
 #include <type_traits>
+
+#ifndef _WIN32
+#  include <sys/resource.h>
+#endif
 
 using namespace std::chrono_literals;
 
@@ -39,6 +44,99 @@ TEST(V3Api, ThreadConfigurationConstructor)
   ASSERT_TRUE(worker.join().has_value());
   EXPECT_TRUE(ran.load());
 }
+
+TEST(V3Api, PortablePriorityFactoriesExposeLevelsAndNiceValues)
+{
+  constexpr auto high = threadschedule::schedule::priority(
+      threadschedule::priority_level::high);
+  constexpr auto nice = threadschedule::schedule::nice(10);
+
+  static_assert(high.intent == threadschedule::scheduling_intent::nice);
+  static_assert(high.priority == -5);
+  static_assert(nice.intent == threadschedule::scheduling_intent::nice);
+  static_assert(nice.priority == 10);
+}
+
+TEST(V3Api, ThreadSetsAndReadsPortablePriority)
+{
+  std::promise<void> release;
+  auto ready = release.get_future().share();
+  threadschedule::thread worker([ready] { ready.wait(); });
+
+  auto set = worker.set_priority(threadschedule::priority_level::low);
+  auto priority = worker.get_priority();
+  release.set_value();
+  auto joined = worker.join();
+
+  ASSERT_TRUE(set.has_value()) << set.error().message();
+  ASSERT_TRUE(priority.has_value()) << priority.error().message();
+  EXPECT_EQ(priority.value(), threadschedule::priority_level::low);
+  EXPECT_TRUE(joined.has_value());
+}
+
+TEST(V3Api, InvalidNiceValueDoesNotRunConfiguredThread)
+{
+  threadschedule::thread_config config;
+  config.scheduling = threadschedule::schedule::nice(20);
+  std::atomic<bool> ran{ false };
+
+  auto worker
+      = threadschedule::thread::create(config, [&ran] { ran.store(true); });
+
+  ASSERT_FALSE(worker.has_value());
+  EXPECT_EQ(worker.error(), std::make_error_code(std::errc::invalid_argument));
+  EXPECT_FALSE(ran.load());
+}
+
+#ifndef _WIN32
+TEST(V3Api, ConfiguredThreadObservesExactLinuxNiceValueBeforeCallable)
+{
+  threadschedule::thread_config config;
+  config.scheduling = threadschedule::schedule::nice(10);
+  std::promise<int> observed;
+
+  threadschedule::thread worker(config,
+                                [&observed]
+                                  {
+                                    errno = 0;
+                                    observed.set_value(
+                                        getpriority(PRIO_PROCESS, 0));
+                                  });
+
+  EXPECT_EQ(observed.get_future().get(), 10);
+  ASSERT_TRUE(worker.join().has_value());
+}
+
+TEST(V3Api, ThreadViewRequiresTidForLinuxNiceControl)
+{
+  std::promise<threadschedule::native_thread_id> started;
+  std::promise<void> release;
+  auto ready = release.get_future().share();
+  std::thread value(
+      [&started, ready]
+        {
+          started.set_value(threadschedule::thread_info::get_thread_id());
+          ready.wait();
+        });
+  auto const tid = started.get_future().get();
+
+  threadschedule::thread_view unknown(value);
+  auto unsupported = unknown.set_nice(10);
+  threadschedule::thread_view known(value, static_cast<std::uint64_t>(tid));
+  auto set = known.set_nice(10);
+  auto priority = known.get_priority();
+
+  release.set_value();
+  value.join();
+
+  ASSERT_FALSE(unsupported.has_value());
+  EXPECT_EQ(unsupported.error(),
+            std::make_error_code(std::errc::operation_not_supported));
+  ASSERT_TRUE(set.has_value()) << set.error().message();
+  ASSERT_TRUE(priority.has_value()) << priority.error().message();
+  EXPECT_EQ(priority.value(), threadschedule::priority_level::lowest);
+}
+#endif
 
 TEST(V3Api, EmptyThreadReportsJoinAndDetachErrors)
 {
@@ -101,6 +199,26 @@ TEST(V3Api, JThreadConfigurationConstructor)
   threadschedule::jthread worker(config, [](std::stop_token) {});
   ASSERT_TRUE(worker.join().has_value());
 }
+
+#  ifndef _WIN32
+TEST(V3Api, ConfiguredJThreadObservesExactLinuxNiceValue)
+{
+  threadschedule::thread_config config;
+  config.scheduling = threadschedule::schedule::nice(10);
+  std::promise<int> observed;
+
+  threadschedule::jthread worker(config,
+                                 [&observed](std::stop_token)
+                                   {
+                                     errno = 0;
+                                     observed.set_value(
+                                         getpriority(PRIO_PROCESS, 0));
+                                   });
+
+  EXPECT_EQ(observed.get_future().get(), 10);
+  ASSERT_TRUE(worker.join().has_value());
+}
+#  endif
 
 #  ifndef _WIN32
 TEST(V3Api, FailedJThreadConfigurationDoesNotRunCallable)
@@ -309,3 +427,62 @@ TEST(V3Api, RegistryUsesLowercaseSnapshots)
   EXPECT_TRUE(registry.unregister_current_thread().has_value());
   EXPECT_TRUE(registry.empty());
 }
+
+TEST(V3Api, RegistrySetsAndReadsPortablePriority)
+{
+  threadschedule::thread_registry registry;
+  std::promise<bool> registered;
+  std::promise<void> release;
+  auto ready = release.get_future().share();
+  threadschedule::thread worker(
+      [&registry, &registered, ready]
+        {
+          registered.set_value(
+              registry.register_current_thread("priority", "v3").has_value());
+          ready.wait();
+          (void)registry.unregister_current_thread();
+        });
+
+  bool const registered_ok = registered.get_future().get();
+  auto snapshot = registry.snapshot();
+  threadschedule::result<void> set = threadschedule::unexpected(
+      std::make_error_code(std::errc::no_such_process));
+  threadschedule::result<threadschedule::priority_level> priority
+      = threadschedule::unexpected(
+          std::make_error_code(std::errc::no_such_process));
+  if (registered_ok && snapshot.has_value() && snapshot->size() == 1)
+    {
+      auto const native_id = snapshot->front().native_id;
+      set = registry.set_nice(native_id, 10);
+      priority = registry.get_priority(native_id);
+    }
+  release.set_value();
+  auto joined = worker.join();
+
+  ASSERT_TRUE(registered_ok);
+  ASSERT_TRUE(snapshot.has_value());
+  ASSERT_EQ(snapshot->size(), 1u);
+  ASSERT_TRUE(set.has_value()) << set.error().message();
+  ASSERT_TRUE(priority.has_value()) << priority.error().message();
+  EXPECT_EQ(priority.value(), threadschedule::priority_level::lowest);
+  EXPECT_TRUE(joined.has_value());
+}
+
+#ifndef _WIN32
+TEST(V3Api, PoolWorkersReceiveExactLinuxNiceValue)
+{
+  threadschedule::thread_pool_config config;
+  config.worker_count = 1;
+  config.workers.scheduling = threadschedule::schedule::nice(10);
+  threadschedule::thread_pool pool(config);
+
+  auto observed = pool.submit(
+      []
+        {
+          errno = 0;
+          return getpriority(PRIO_PROCESS, 0);
+        });
+  ASSERT_TRUE(observed.has_value());
+  EXPECT_EQ(observed->get(), 10);
+}
+#endif

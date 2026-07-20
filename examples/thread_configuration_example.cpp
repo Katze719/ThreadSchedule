@@ -7,7 +7,8 @@ main()
 {
   threadschedule::thread_config config;
   config.name = "metrics";
-  config.scheduling = threadschedule::schedule::background();
+  config.scheduling = threadschedule::schedule::priority(
+      threadschedule::priority_level::low);
   config.affinity = threadschedule::thread_affinity({ 0 });
 
   if (auto worker = threadschedule::thread::create(config,

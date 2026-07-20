@@ -46,7 +46,18 @@ enum class scheduling_intent : std::uint8_t
   interactive,
   low_latency,
   realtime_fifo,
-  realtime_round_robin
+  realtime_round_robin,
+  nice
+};
+
+/** @brief Portable non-realtime priority levels. */
+enum class priority_level : std::int8_t
+{
+  lowest = 19,
+  low = 5,
+  normal = 0,
+  high = -5,
+  highest = -20
 };
 
 struct scheduling_config
@@ -91,6 +102,18 @@ realtime_fifo(int priority = 80) noexcept -> scheduling_config
 realtime_rr(int priority = 80) noexcept -> scheduling_config
 {
   return { scheduling_intent::realtime_round_robin, priority };
+}
+
+[[nodiscard]] constexpr auto
+nice(int value) noexcept -> scheduling_config
+{
+  return { scheduling_intent::nice, value };
+}
+
+[[nodiscard]] constexpr auto
+priority(priority_level level) noexcept -> scheduling_config
+{
+  return nice(static_cast<int>(level));
 }
 } // namespace schedule
 
@@ -214,6 +237,20 @@ using error_callback = std::function<void(task_error const&)>;
 
 namespace detail
 {
+[[nodiscard]] constexpr auto
+to_priority_level(int nice_value) noexcept -> priority_level
+{
+  if (nice_value <= -10)
+    return priority_level::highest;
+  if (nice_value < 0)
+    return priority_level::high;
+  if (nice_value == 0)
+    return priority_level::normal;
+  if (nice_value < 10)
+    return priority_level::low;
+  return priority_level::lowest;
+}
+
 class thread_start_gate
 {
 public:
@@ -279,6 +316,8 @@ to_native(scheduling_config config) noexcept -> native_scheduling_config
       return native_schedule::realtime_fifo(config.priority);
     case scheduling_intent::realtime_round_robin:
       return native_schedule::realtime_rr(config.priority);
+    case scheduling_intent::nice:
+      return native_schedule::posix_nice(config.priority);
     case scheduling_intent::normal:
     default:
       return native_schedule::normal();
@@ -332,6 +371,10 @@ public:
 
   thread() = default;
   explicit thread(std::thread&& value) noexcept : impl_(std::move(value)) {}
+  thread(std::thread&& value, std::uint64_t native_id) noexcept
+      : impl_(std::move(value), static_cast<native_thread_id>(native_id))
+  {
+  }
 
   template <
       typename F, typename... Args,
@@ -475,6 +518,28 @@ public:
   }
 
   auto
+  set_priority(priority_level level) -> result<void>
+  {
+    return impl_.configure(
+        detail::native_schedule::posix_nice(static_cast<int>(level)));
+  }
+
+  auto
+  set_nice(int nice_value) -> result<void>
+  {
+    return impl_.configure(detail::native_schedule::posix_nice(nice_value));
+  }
+
+  [[nodiscard]] auto
+  get_priority() const -> result<priority_level>
+  {
+    auto value = impl_.get_nice_value();
+    if (!value)
+      return unexpected(value.error());
+    return detail::to_priority_level(value.value());
+  }
+
+  auto
   set_name(std::string const& name) -> result<void>
   {
     return impl_.set_name(name);
@@ -562,6 +627,11 @@ public:
 
   jthread() noexcept = default;
   explicit jthread(std::jthread&& value) noexcept : impl_(std::move(value)) {}
+  jthread(std::jthread&& value, std::uint64_t native_id) noexcept
+      : native_id_(static_cast<native_thread_id>(native_id)),
+        impl_(std::move(value))
+  {
+  }
 
   template <typename F, typename... Args,
             std::enable_if_t<
@@ -570,13 +640,15 @@ public:
                     && std::is_constructible_v<std::jthread, F, Args...>,
                 int> = 0>
   explicit jthread(F&& function, Args&&... args)
-      : impl_(std::forward<F>(function), std::forward<Args>(args)...)
+      : impl_(make_impl(native_id_, std::forward<F>(function),
+                        std::forward<Args>(args)...))
   {
   }
 
   template <typename F, typename... Args>
   jthread(thread_config const& config, F&& function, Args&&... args)
-      : impl_(make_configured_impl(config, std::forward<F>(function),
+      : impl_(make_configured_impl(config, native_id_,
+                                   std::forward<F>(function),
                                    std::forward<Args>(args)...))
   {
   }
@@ -726,6 +798,31 @@ public:
   }
 
   auto
+  set_priority(priority_level level) -> result<void>
+  {
+    auto view = native_view();
+    return view.configure(
+        detail::native_schedule::posix_nice(static_cast<int>(level)));
+  }
+
+  auto
+  set_nice(int nice_value) -> result<void>
+  {
+    auto view = native_view();
+    return view.configure(detail::native_schedule::posix_nice(nice_value));
+  }
+
+  [[nodiscard]] auto
+  get_priority() const -> result<priority_level>
+  {
+    auto view = native_view();
+    auto value = view.get_nice_value();
+    if (!value)
+      return unexpected(value.error());
+    return detail::to_priority_level(value.value());
+  }
+
+  auto
   set_name(std::string const& name) -> result<void>
   {
     auto view = native_view();
@@ -766,7 +863,9 @@ public:
   [[nodiscard]] auto
   release() noexcept -> std::jthread
   {
-    return std::move(impl_);
+    auto value = std::move(impl_);
+    native_id_ = {};
+    return value;
   }
 
 private:
@@ -776,21 +875,55 @@ private:
   [[nodiscard]] auto
   native_view() const -> native_view_type
   {
-    return native_view_type(const_cast<std::jthread&>(impl_));
+    return native_view_type(const_cast<std::jthread&>(impl_), native_id_);
   }
 
   template <typename F, typename... Args>
   static auto
-  make_configured_impl(thread_config const& config, F&& function,
+  make_impl(native_thread_id& native_id, F&& function, Args&&... args)
+      -> std::jthread
+  {
+    using function_type = std::decay_t<F>;
+    auto identity = std::make_shared<detail::thread_identity_state>();
+    std::jthread value(
+        [identity, callable = function_type(std::forward<F>(function)),
+         arguments = std::make_tuple(std::forward<Args>(args)...)](
+            std::stop_token token) mutable
+          {
+            identity->publish(detail::current_native_thread_id());
+            std::apply(
+                [&callable, &token](auto&&... stored)
+                  {
+                    if constexpr (std::is_invocable_v<function_type,
+                                                      std::stop_token,
+                                                      decltype(stored)...>)
+                      std::invoke(std::move(callable), std::move(token),
+                                  std::forward<decltype(stored)>(stored)...);
+                    else
+                      std::invoke(std::move(callable),
+                                  std::forward<decltype(stored)>(stored)...);
+                  },
+                std::move(arguments));
+          });
+    native_id = identity->wait();
+    return value;
+  }
+
+  template <typename F, typename... Args>
+  static auto
+  make_configured_impl(thread_config const& config,
+                       native_thread_id& native_id, F&& function,
                        Args&&... args) -> std::jthread
   {
     using function_type = std::decay_t<F>;
     auto gate = std::make_shared<detail::thread_start_gate>();
+    auto identity = std::make_shared<detail::thread_identity_state>();
     std::jthread value(
-        [gate, callable = function_type(std::forward<F>(function)),
+        [gate, identity, callable = function_type(std::forward<F>(function)),
          arguments = std::make_tuple(std::forward<Args>(args)...)](
             std::stop_token token) mutable
           {
+            identity->publish(detail::current_native_thread_id());
             if (!gate->wait())
               return;
             std::apply(
@@ -799,7 +932,7 @@ private:
                     if constexpr (std::is_invocable_v<function_type,
                                                       std::stop_token,
                                                       decltype(stored)...>)
-                      std::invoke(std::move(callable), token,
+                      std::invoke(std::move(callable), std::move(token),
                                   std::forward<decltype(stored)>(stored)...);
                     else
                       std::invoke(std::move(callable),
@@ -808,9 +941,10 @@ private:
                 std::move(arguments));
           });
 
+    native_id = identity->wait();
     try
       {
-        native_view_type view(value);
+        native_view_type view(value, native_id);
         auto configured = view.configure(detail::to_native(config));
         if (!configured)
           {
@@ -828,6 +962,7 @@ private:
     return value;
   }
 
+  native_thread_id native_id_{};
   std::jthread impl_;
 };
 #endif
@@ -836,6 +971,10 @@ class thread_view
 {
 public:
   explicit thread_view(std::thread& value) noexcept : impl_(value) {}
+  thread_view(std::thread& value, std::uint64_t native_id) noexcept
+      : impl_(value, static_cast<native_thread_id>(native_id))
+  {
+  }
 
   [[nodiscard]] auto
   joinable() const noexcept -> bool
@@ -860,6 +999,28 @@ public:
       {
         return unexpected(detail::current_exception_error_code());
       }
+  }
+
+  auto
+  set_priority(priority_level level) -> result<void>
+  {
+    return impl_.configure(
+        detail::native_schedule::posix_nice(static_cast<int>(level)));
+  }
+
+  auto
+  set_nice(int nice_value) -> result<void>
+  {
+    return impl_.configure(detail::native_schedule::posix_nice(nice_value));
+  }
+
+  [[nodiscard]] auto
+  get_priority() const -> result<priority_level>
+  {
+    auto value = impl_.get_nice_value();
+    if (!value)
+      return unexpected(value.error());
+    return detail::to_priority_level(value.value());
   }
 
   auto
@@ -1005,6 +1166,44 @@ public:
       {
         return native().configure(static_cast<native_thread_id>(native_id),
                                   detail::to_native(config));
+      }
+    catch (...)
+      {
+        return unexpected(detail::current_exception_error_code());
+      }
+  }
+
+  auto
+  set_priority(std::uint64_t native_id, priority_level level) -> result<void>
+  {
+    return set_nice(native_id, static_cast<int>(level));
+  }
+
+  auto
+  set_nice(std::uint64_t native_id, int nice_value) -> result<void>
+  {
+    try
+      {
+        return native().configure(
+            static_cast<native_thread_id>(native_id),
+            detail::native_schedule::posix_nice(nice_value));
+      }
+    catch (...)
+      {
+        return unexpected(detail::current_exception_error_code());
+      }
+  }
+
+  [[nodiscard]] auto
+  get_priority(std::uint64_t native_id) const -> result<priority_level>
+  {
+    try
+      {
+        auto value = native().get_nice_value(
+            static_cast<native_thread_id>(native_id));
+        if (!value)
+          return unexpected(value.error());
+        return detail::to_priority_level(value.value());
       }
     catch (...)
       {

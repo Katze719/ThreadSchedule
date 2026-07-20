@@ -182,11 +182,34 @@ public:
   }
 
   [[nodiscard]] auto
+  set_nice_value(int nice_value) const -> expected<void, std::error_code>
+  {
+#ifdef _WIN32
+    return detail::apply_nice_value(native_handle(), nice_value);
+#else
+    return detail::apply_nice_value(tid_, nice_value);
+#endif
+  }
+
+  [[nodiscard]] auto
+  get_nice_value() const -> expected<int, std::error_code>
+  {
+    return detail::read_effective_nice(native_handle(), tid_);
+  }
+
+  [[nodiscard]] auto
   set_scheduling_policy(native_scheduling_policy policy,
                         native_thread_priority priority) const
       -> expected<void, std::error_code>
   {
     return detail::apply_scheduling_policy(native_handle(), policy, priority);
+  }
+
+  [[nodiscard]] auto
+  configure(native_scheduling_config const& config) const
+      -> expected<void, std::error_code>
+  {
+    return detail::apply_scheduling_config(native_handle(), tid_, config);
   }
 
   [[nodiscard]] auto
@@ -663,6 +686,25 @@ public:
   }
 
   [[nodiscard]] auto
+  set_nice_value(native_thread_id tid, int nice_value) const
+      -> expected<void, std::error_code>
+  {
+    auto blk = lock_block(tid);
+    if (!blk)
+      return unexpected(std::make_error_code(std::errc::no_such_process));
+    return blk->set_nice_value(nice_value);
+  }
+
+  [[nodiscard]] auto
+  get_nice_value(native_thread_id tid) const -> expected<int, std::error_code>
+  {
+    auto blk = lock_block(tid);
+    if (!blk)
+      return unexpected(std::make_error_code(std::errc::no_such_process));
+    return blk->get_nice_value();
+  }
+
+  [[nodiscard]] auto
   set_scheduling_policy(native_thread_id tid, native_scheduling_policy policy,
                         native_thread_priority priority) const
       -> expected<void, std::error_code>
@@ -677,8 +719,10 @@ public:
   configure(native_thread_id tid, native_scheduling_config const& config) const
       -> expected<void, std::error_code>
   {
-    auto const scheduling = detail::resolve_scheduling_config(config);
-    return set_scheduling_policy(tid, scheduling.policy, scheduling.priority);
+    auto blk = lock_block(tid);
+    if (!blk)
+      return unexpected(std::make_error_code(std::errc::no_such_process));
+    return blk->configure(config);
   }
 
   [[nodiscard]] auto

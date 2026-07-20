@@ -251,12 +251,15 @@ struct native_scheduling_config
   native_scheduling_policy policy{ native_scheduling_policy::other };
   native_thread_priority priority{ native_thread_priority::normal() };
   native_priority_model model{ native_priority_model::intent };
+  bool valid{ true };
 };
 
 struct resolved_scheduling
 {
   native_scheduling_policy policy{ native_scheduling_policy::other };
   native_thread_priority priority{ native_thread_priority::normal() };
+  native_priority_model model{ native_priority_model::intent };
+  bool valid{ true };
 };
 
 namespace detail
@@ -275,7 +278,8 @@ background() noexcept -> native_scheduling_config
 normal() noexcept -> native_scheduling_config
 {
   return { native_scheduling_intent::normal, native_scheduling_policy::other,
-           native_thread_priority::normal(), native_priority_model::intent };
+           native_thread_priority::normal(),
+           native_priority_model::posix_nice };
 }
 
 [[nodiscard]] constexpr auto
@@ -283,7 +287,7 @@ interactive() noexcept -> native_scheduling_config
 {
   return { native_scheduling_intent::interactive,
            native_scheduling_policy::other, native_thread_priority{ -5 },
-           native_priority_model::intent };
+           native_priority_model::posix_nice };
 }
 
 [[nodiscard]] constexpr auto
@@ -291,7 +295,7 @@ low_latency() noexcept -> native_scheduling_config
 {
   return { native_scheduling_intent::low_latency,
            native_scheduling_policy::other, native_thread_priority::highest(),
-           native_priority_model::intent };
+           native_priority_model::posix_nice };
 }
 
 [[nodiscard]] constexpr auto
@@ -315,7 +319,8 @@ posix_nice(int nice_value) noexcept -> native_scheduling_config
 {
   return { native_scheduling_intent::normal, native_scheduling_policy::other,
            native_thread_priority{ nice_value },
-           native_priority_model::posix_nice };
+           native_priority_model::posix_nice,
+           nice_value >= -20 && nice_value <= 19 };
 }
 
 [[nodiscard]] constexpr auto
@@ -354,31 +359,32 @@ resolve_scheduling_config(native_scheduling_config const& config) noexcept
       auto policy = is_realtime_policy(config.policy)
                         ? config.policy
                         : native_scheduling_policy::rr;
-      return { policy, config.priority };
+      return { policy, config.priority, config.model, config.valid };
     }
 
   if (config.model != native_priority_model::intent)
-    return { config.policy, config.priority };
+    return { config.policy, config.priority, config.model, config.valid };
 
   switch (config.intent)
     {
     case native_scheduling_intent::background:
       return { native_scheduling_policy::idle,
-               native_thread_priority::lowest() };
+               native_thread_priority::lowest(), config.model, config.valid };
     case native_scheduling_intent::interactive:
-      return { native_scheduling_policy::other, native_thread_priority{ -5 } };
+      return { native_scheduling_policy::other, native_thread_priority{ -5 },
+               config.model, config.valid };
     case native_scheduling_intent::low_latency:
       return { native_scheduling_policy::other,
-               native_thread_priority::highest() };
+               native_thread_priority::highest(), config.model, config.valid };
     case native_scheduling_intent::realtime:
       return { is_realtime_policy(config.policy)
                    ? config.policy
                    : native_scheduling_policy::rr,
-               config.priority };
+               config.priority, config.model, config.valid };
     case native_scheduling_intent::normal:
     default:
       return { native_scheduling_policy::other,
-               native_thread_priority::normal() };
+               native_thread_priority::normal(), config.model, config.valid };
     }
 }
 
@@ -386,17 +392,15 @@ resolve_scheduling_config(native_scheduling_config const& config) noexcept
 inline auto
 map_priority_to_win32(int prio_val) -> int
 {
-  if (prio_val <= -15)
-    return THREAD_PRIORITY_TIME_CRITICAL;
   if (prio_val <= -10)
     return THREAD_PRIORITY_HIGHEST;
   if (prio_val < 0)
     return THREAD_PRIORITY_ABOVE_NORMAL;
   if (prio_val == 0)
     return THREAD_PRIORITY_NORMAL;
-  if (prio_val <= 5)
+  if (prio_val < 10)
     return THREAD_PRIORITY_BELOW_NORMAL;
-  if (prio_val <= 10)
+  if (prio_val < 19)
     return THREAD_PRIORITY_LOWEST;
   return THREAD_PRIORITY_IDLE;
 }
@@ -809,7 +813,17 @@ apply_priority(HANDLE handle, native_thread_priority priority)
     return unexpected(std::make_error_code(std::errc::no_such_process));
   if (SetThreadPriority(handle, map_priority_to_win32(priority.value())) != 0)
     return {};
-  return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+  return unexpected(std::error_code(static_cast<int>(GetLastError()),
+                                    std::system_category()));
+}
+
+inline auto
+apply_nice_value(HANDLE handle, int nice_value)
+    -> expected<void, std::error_code>
+{
+  if (nice_value < -20 || nice_value > 19)
+    return unexpected(std::make_error_code(std::errc::invalid_argument));
+  return apply_priority(handle, native_thread_priority{ nice_value });
 }
 
 inline auto
@@ -825,7 +839,8 @@ apply_scheduling_policy(HANDLE handle, native_scheduling_policy policy,
     return unexpected(params_result.error());
   if (SetThreadPriority(handle, params_result.value().sched_priority) != 0)
     return {};
-  return unexpected(std::make_error_code(std::errc::operation_not_permitted));
+  return unexpected(std::error_code(static_cast<int>(GetLastError()),
+                                    std::system_category()));
 }
 
 inline auto
@@ -1120,6 +1135,27 @@ read_priority(HANDLE handle) -> std::optional<int>
 }
 
 inline auto
+read_nice_value(HANDLE handle) -> expected<int, std::error_code>
+{
+  if (!handle)
+    return unexpected(std::make_error_code(std::errc::no_such_process));
+  int const priority = GetThreadPriority(handle);
+  if (priority == THREAD_PRIORITY_ERROR_RETURN)
+    return unexpected(last_win32_error());
+  if (priority >= THREAD_PRIORITY_HIGHEST)
+    return -20;
+  if (priority == THREAD_PRIORITY_ABOVE_NORMAL)
+    return -5;
+  if (priority == THREAD_PRIORITY_NORMAL)
+    return 0;
+  if (priority == THREAD_PRIORITY_BELOW_NORMAL)
+    return 5;
+  if (priority == THREAD_PRIORITY_LOWEST)
+    return 10;
+  return 19;
+}
+
+inline auto
 read_scheduling_policy(HANDLE handle)
     -> std::optional<native_scheduling_policy>
 {
@@ -1137,6 +1173,18 @@ apply_priority(native_thread_id tid, native_thread_priority priority)
     return unexpected(std::make_error_code(std::errc::no_such_process));
 
   auto result = apply_priority(handle, priority);
+  CloseHandle(handle);
+  return result;
+}
+
+inline auto
+apply_nice_value(native_thread_id tid, int nice_value)
+    -> expected<void, std::error_code>
+{
+  HANDLE handle = OpenThread(THREAD_SET_INFORMATION, FALSE, tid);
+  if (!handle)
+    return unexpected(last_win32_error());
+  auto result = apply_nice_value(handle, nice_value);
   CloseHandle(handle);
   return result;
 }
@@ -1218,6 +1266,17 @@ read_priority(native_thread_id tid) -> std::optional<int>
 }
 
 inline auto
+read_nice_value(native_thread_id tid) -> expected<int, std::error_code>
+{
+  HANDLE handle = OpenThread(THREAD_QUERY_INFORMATION, FALSE, tid);
+  if (!handle)
+    return unexpected(last_win32_error());
+  auto result = read_nice_value(handle);
+  CloseHandle(handle);
+  return result;
+}
+
+inline auto
 read_scheduling_policy(native_thread_id tid)
     -> std::optional<native_scheduling_policy>
 {
@@ -1266,6 +1325,16 @@ apply_priority(pthread_t thread, native_thread_priority priority)
 }
 
 inline auto
+apply_nice_value(pthread_t thread, int nice_value)
+    -> expected<void, std::error_code>
+{
+  auto const handle = win32_handle_from_pthread(thread);
+  if (!handle.has_value())
+    return unexpected(handle.error());
+  return apply_nice_value(handle.value(), nice_value);
+}
+
+inline auto
 apply_affinity(pthread_t thread, native_thread_affinity const& affinity)
     -> expected<void, std::error_code>
 {
@@ -1311,6 +1380,15 @@ read_priority(pthread_t thread) -> std::optional<int>
 {
   auto const handle = win32_handle_from_pthread(thread);
   return handle.has_value() ? read_priority(handle.value()) : std::nullopt;
+}
+
+inline auto
+read_nice_value(pthread_t thread) -> expected<int, std::error_code>
+{
+  auto const handle = win32_handle_from_pthread(thread);
+  if (!handle.has_value())
+    return unexpected(handle.error());
+  return read_nice_value(handle.value());
 }
 
 inline auto
@@ -1455,6 +1533,18 @@ apply_priority(pid_t tid, native_thread_priority priority)
 }
 
 inline auto
+apply_nice_value(pid_t tid, int nice_value) -> expected<void, std::error_code>
+{
+  if (nice_value < -20 || nice_value > 19)
+    return unexpected(std::make_error_code(std::errc::invalid_argument));
+  if (tid <= 0)
+    return unexpected(std::make_error_code(std::errc::no_such_process));
+  if (setpriority(PRIO_PROCESS, static_cast<id_t>(tid), nice_value) == 0)
+    return {};
+  return unexpected(std::error_code(errno, std::generic_category()));
+}
+
+inline auto
 apply_affinity(pid_t tid, native_thread_affinity const& affinity)
     -> expected<void, std::error_code>
 {
@@ -1529,6 +1619,18 @@ read_priority(pid_t tid) -> std::optional<int>
 }
 
 inline auto
+read_nice_value(pid_t tid) -> expected<int, std::error_code>
+{
+  if (tid <= 0)
+    return unexpected(std::make_error_code(std::errc::no_such_process));
+  errno = 0;
+  int const value = getpriority(PRIO_PROCESS, static_cast<id_t>(tid));
+  if (errno == 0)
+    return value;
+  return unexpected(std::error_code(errno, std::generic_category()));
+}
+
+inline auto
 read_scheduling_policy(pid_t tid) -> std::optional<native_scheduling_policy>
 {
   int const policy = sched_getscheduler(tid);
@@ -1538,6 +1640,62 @@ read_scheduling_policy(pid_t tid) -> std::optional<native_scheduling_policy>
 }
 
 #endif
+
+template <typename NativeHandle>
+inline auto
+apply_scheduling_config(NativeHandle handle, native_thread_id tid,
+                        native_scheduling_config const& config)
+    -> expected<void, std::error_code>
+{
+  auto const scheduling = resolve_scheduling_config(config);
+  if (!scheduling.valid)
+    return unexpected(std::make_error_code(std::errc::invalid_argument));
+
+  if (scheduling.model == native_priority_model::posix_nice)
+    {
+#ifdef _WIN32
+      (void)tid;
+      return apply_nice_value(handle, scheduling.priority.value());
+#else
+      if (tid <= 0)
+        return unexpected(
+            std::make_error_code(std::errc::operation_not_supported));
+      auto policy_result
+          = apply_scheduling_policy(handle, native_scheduling_policy::other,
+                                    native_thread_priority::normal());
+      if (!policy_result)
+        return policy_result;
+      return apply_nice_value(tid, scheduling.priority.value());
+#endif
+    }
+
+  return apply_scheduling_policy(handle, scheduling.policy,
+                                 scheduling.priority);
+}
+
+template <typename NativeHandle>
+inline auto
+read_effective_nice(NativeHandle handle, native_thread_id tid)
+    -> expected<int, std::error_code>
+{
+#ifdef _WIN32
+  (void)tid;
+  return read_nice_value(handle);
+#else
+  if (tid <= 0)
+    return unexpected(
+        std::make_error_code(std::errc::operation_not_supported));
+  auto const policy = read_scheduling_policy(handle);
+  if (!policy.has_value())
+    return unexpected(std::make_error_code(std::errc::no_such_process));
+  if (policy.value() == native_scheduling_policy::idle)
+    return 19;
+  if (is_realtime_policy(policy.value()))
+    return unexpected(
+        std::make_error_code(std::errc::operation_not_supported));
+  return read_nice_value(tid);
+#endif
+}
 
 } // namespace detail
 

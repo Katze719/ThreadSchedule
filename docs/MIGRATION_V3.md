@@ -45,6 +45,18 @@ only when that policy is intentional.
 | `PThreadWrapper` | Removed; use `thread` (`std::thread` internally) |
 | `ThreadPriority` / `SchedulingPolicy` | `advanced::native_thread_priority` / `advanced::native_scheduling_policy` |
 
+For ordinary non-realtime priority, prefer the new core API instead of the
+native replacements:
+
+```cpp
+config.scheduling
+    = threadschedule::schedule::priority(threadschedule::priority_level::low);
+config.scheduling = threadschedule::schedule::nice(10);
+```
+
+The five-level form is portable. Nice values are exact per-thread values on
+Linux and map to safe, discrete Win32 thread priorities on MSVC and MinGW.
+
 `PoolWithErrors` and its aliases were removed. Set
 `thread_pool_config::on_task_error` instead; task exceptions remain available
 through the returned future. `scheduled_pool_config::on_task_error` provides

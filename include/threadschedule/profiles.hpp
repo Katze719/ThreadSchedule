@@ -48,6 +48,9 @@ struct thread_profile
   native_scheduling_policy policy;
   native_thread_priority priority;
   std::optional<native_thread_affinity> affinity;
+  native_priority_model priority_model{
+    native_priority_model::platform_native
+  };
 };
 
 namespace profiles
@@ -78,7 +81,7 @@ low_latency() -> thread_profile
   auto const config = detail::native_schedule::low_latency();
   auto const scheduling = detail::resolve_scheduling_config(config);
   return thread_profile{ "low_latency", scheduling.policy, scheduling.priority,
-                         std::nullopt };
+                         std::nullopt, scheduling.model };
 }
 
 /**
@@ -114,7 +117,10 @@ inline auto
 apply_profile_to(T& t, thread_profile const& p)
     -> expected<void, std::error_code>
 {
-  auto scheduled = t.set_scheduling_policy(p.policy, p.priority);
+  native_scheduling_config scheduling{ native_scheduling_intent::normal,
+                                       p.policy, p.priority,
+                                       p.priority_model };
+  auto scheduled = t.configure(scheduling);
   if (!scheduled)
     return unexpected(scheduled.error());
   if (p.affinity.has_value())
@@ -131,7 +137,11 @@ apply_profile_to_pool(PoolType& pool, std::string const& name_prefix,
                       thread_profile const& p)
     -> expected<void, std::error_code>
 {
-  auto configured = pool.configure_threads(name_prefix, p.policy, p.priority);
+  native_thread_config config;
+  config.name = name_prefix;
+  config.scheduling = { native_scheduling_intent::normal, p.policy, p.priority,
+                        p.priority_model };
+  auto configured = pool.configure_threads(config);
   if (!configured)
     return unexpected(configured.error());
   if (p.affinity.has_value())
