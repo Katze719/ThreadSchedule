@@ -62,7 +62,6 @@ configure_worker_threads(WorkerRange& workers,
     -> expected<void, std::error_code>
 {
   std::error_code first_error;
-  auto const scheduling = resolve_scheduling_config(config.scheduling);
   for (size_t i = 0; i < workers.size(); ++i)
     {
       if (!config.name.empty())
@@ -73,8 +72,7 @@ configure_worker_threads(WorkerRange& workers,
           if (!named && !first_error)
             first_error = named.error();
         }
-      auto scheduled = workers[i].set_scheduling_policy(scheduling.policy,
-                                                        scheduling.priority);
+      auto scheduled = workers[i].configure(config.scheduling);
       if (!scheduled && !first_error)
         first_error = scheduled.error();
       if (config.affinity.has_value())

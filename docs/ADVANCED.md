@@ -33,12 +33,17 @@ configuration may require `CAP_SYS_NICE`, root privileges, or an elevated
 Windows process.
 
 `threadschedule::thread` deliberately exposes portable scheduling intent
-through `thread_config::scheduling` and `schedule::*`; it has no direct setter
-for an exact `native_thread_priority`. Native values differ between POSIX and
-Windows and should be used only where an advanced API explicitly accepts them.
-For a portable owning thread, use `schedule::background()`,
-`schedule::normal()`, `schedule::interactive()`, or
-`schedule::low_latency()` and handle a configuration failure.
+through `thread_config::scheduling`, `schedule::*`, `priority_level`, and the
+direct `set_priority` / `set_nice` operations. Native values differ between
+POSIX and Windows and should be used only where an advanced API explicitly
+accepts them. `advanced::native_schedule::posix_nice()` applies a real
+per-thread nice value on Linux and the documented safe Win32 mapping on
+Windows. Exact native realtime priority remains separate.
+
+Normal Windows priority configuration does not alter the process priority
+class and does not select `THREAD_PRIORITY_TIME_CRITICAL`. Under MinGW-w64,
+the implementation obtains the Win32 `HANDLE` with `pthread_gethandle()`; a
+`pthread_t` is never reinterpreted as a handle or thread ID.
 
 `composite_thread_registry` can merge independent header-only registries when
 using the shared runtime is not appropriate.

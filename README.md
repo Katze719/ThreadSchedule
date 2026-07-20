@@ -159,8 +159,18 @@ Portable intent factories cover normal use:
 auto background = threadschedule::schedule::background();
 auto interactive = threadschedule::schedule::interactive();
 auto low_latency = threadschedule::schedule::low_latency();
+auto lower_priority = threadschedule::schedule::priority(
+    threadschedule::priority_level::low);
+auto exact_nice = threadschedule::schedule::nice(10);
 auto realtime = threadschedule::schedule::realtime_fifo(80);
 ```
+
+The five `priority_level` values are the simplest cross-platform choice.
+`schedule::nice(-20..19)` uses the exact per-thread nice value on Linux and a
+documented, non-realtime Win32 thread-priority mapping on Windows. Priorities
+can also be changed later with `thread::set_priority()` or
+`thread::set_nice()` and read back portably with `thread::get_priority()`.
+Negative nice values normally require elevated privileges on Linux.
 
 Realtime policies normally require elevated privileges. Native priority and
 policy controls remain available through `threadschedule::advanced`.

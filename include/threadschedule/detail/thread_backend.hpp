@@ -7,10 +7,14 @@
 
 #include "../expected.hpp"
 #include "../scheduler_policy.hpp"
+#include <condition_variable>
+#include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
+#include <tuple>
 
 #ifdef _WIN32
 #  ifndef NOMINMAX
@@ -32,6 +36,45 @@ namespace threadschedule
 
 namespace detail
 {
+class thread_identity_state
+{
+public:
+  void
+  publish(native_thread_id tid)
+  {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      tid_ = tid;
+      ready_ = true;
+    }
+    ready_condition_.notify_all();
+  }
+
+  [[nodiscard]] auto
+  wait() -> native_thread_id
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    ready_condition_.wait(lock, [this] { return ready_; });
+    return tid_;
+  }
+
+private:
+  std::mutex mutex_;
+  std::condition_variable ready_condition_;
+  native_thread_id tid_{};
+  bool ready_{ false };
+};
+
+[[nodiscard]] inline auto
+current_native_thread_id() noexcept -> native_thread_id
+{
+#ifdef _WIN32
+  return GetCurrentThreadId();
+#else
+  return static_cast<pid_t>(syscall(SYS_gettid));
+#endif
+}
+
 /** @brief Tag type selecting owning (value) storage in thread_storage. */
 struct owning_tag
 {
@@ -146,9 +189,7 @@ configure_thread(ThreadLike& thread, native_thread_config const& config)
       if (!named)
         return unexpected(named.error());
     }
-  auto const scheduling = resolve_scheduling_config(config.scheduling);
-  auto scheduled
-      = thread.set_scheduling_policy(scheduling.policy, scheduling.priority);
+  auto scheduled = thread.configure(config.scheduling);
   if (!scheduled)
     return unexpected(scheduled.error());
   if (config.affinity.has_value())
@@ -204,14 +245,13 @@ configure_thread(ThreadLike& thread, native_thread_config const& config)
  * aware) and falls back to @c SetThreadAffinityMask on single-group systems.
  *
  * @par set_nice_value() / get_nice_value()
- * @b Process-level operation - affects **all** threads in the process.
- * On Linux calls @c setpriority(PRIO_PROCESS, ...).
- * On Windows maps to @c SetPriorityClass / @c GetPriorityClass.
+ * Per-thread operation. On Linux, calls @c setpriority(PRIO_PROCESS, tid, ...)
+ * using the captured kernel TID. On Windows, maps to @c SetThreadPriority /
+ * @c GetThreadPriority without changing the process priority class.
  *
  * @par Return Values
- * All @c set_* methods (except set_nice_value) return
- * @c expected<void, std::error_code>. Always check the return value;
- * failures are silent unless inspected.
+ * All @c set_* methods return @c expected<void, std::error_code>. Always check
+ * the return value; failures are silent unless inspected.
  *
  * @par Thread Safety
  * Individual method calls are safe if the underlying OS call is safe, but
@@ -232,6 +272,10 @@ public:
   basic_thread_backend() = default;
   explicit basic_thread_backend(ThreadType& t)
       : detail::thread_storage<ThreadType, OwnershipTag>(t)
+  {
+  }
+  basic_thread_backend(ThreadType& t, native_thread_id tid)
+      : detail::thread_storage<ThreadType, OwnershipTag>(t), native_id_(tid)
   {
   }
   virtual ~basic_thread_backend() = default;
@@ -303,8 +347,28 @@ public:
   configure(native_scheduling_config const& config)
       -> expected<void, std::error_code>
   {
-    auto const scheduling = detail::resolve_scheduling_config(config);
-    return set_scheduling_policy(scheduling.policy, scheduling.priority);
+    return detail::apply_scheduling_config(native_handle(), native_id_,
+                                           config);
+  }
+
+  [[nodiscard]] auto
+  set_nice_value(int nice_value) -> expected<void, std::error_code>
+  {
+#ifdef _WIN32
+    return detail::apply_nice_value(native_handle(), nice_value);
+#else
+    if (native_id_ <= 0)
+      return unexpected(
+          std::make_error_code(std::errc::operation_not_supported));
+    return detail::apply_nice_value(native_id_, nice_value);
+#endif
+  }
+
+  [[nodiscard]] auto
+  get_nice_value() const -> expected<int, std::error_code>
+  {
+    return detail::read_effective_nice(
+        const_cast<basic_thread_backend*>(this)->native_handle(), native_id_);
   }
 
   [[nodiscard]] auto
@@ -328,81 +392,23 @@ public:
         const_cast<basic_thread_backend*>(this)->native_handle());
   }
 
-  // Nice value (process-level, affects all threads)
-  static auto
-  set_nice_value(int nice_value) -> bool
+  [[nodiscard]] auto
+  native_id() const noexcept -> native_thread_id
   {
-#ifdef _WIN32
-    // Windows has process priority classes, not nice values
-    // We'll use SetPriorityClass for the process
-    DWORD priority_class;
-    if (nice_value <= -15)
-      {
-        priority_class = HIGH_PRIORITY_CLASS;
-      }
-    else if (nice_value <= -10)
-      {
-        priority_class = ABOVE_NORMAL_PRIORITY_CLASS;
-      }
-    else if (nice_value < 10)
-      {
-        priority_class = NORMAL_PRIORITY_CLASS;
-      }
-    else if (nice_value < 19)
-      {
-        priority_class = BELOW_NORMAL_PRIORITY_CLASS;
-      }
-    else
-      {
-        priority_class = IDLE_PRIORITY_CLASS;
-      }
-    return SetPriorityClass(GetCurrentProcess(), priority_class) != 0;
-#else
-    return setpriority(PRIO_PROCESS, 0, nice_value) == 0;
-#endif
-  }
-
-  static auto
-  get_nice_value() -> std::optional<int>
-  {
-#ifdef _WIN32
-    // Get Windows process priority class and map to nice value
-    DWORD priority_class = GetPriorityClass(GetCurrentProcess());
-    if (priority_class == 0)
-      {
-        return std::nullopt;
-      }
-
-    // Map Windows priority class to nice value
-    switch (priority_class)
-      {
-      case HIGH_PRIORITY_CLASS:
-        return -15;
-      case ABOVE_NORMAL_PRIORITY_CLASS:
-        return -10;
-      case NORMAL_PRIORITY_CLASS:
-        return 0;
-      case BELOW_NORMAL_PRIORITY_CLASS:
-        return 10;
-      case IDLE_PRIORITY_CLASS:
-        return 19;
-      default:
-        return 0;
-      }
-#else
-    errno = 0;
-    int const nice = getpriority(PRIO_PROCESS, 0);
-    if (errno == 0)
-      {
-        return nice;
-      }
-    return std::nullopt;
-#endif
+    return native_id_;
   }
 
 protected:
+  void
+  set_native_id(native_thread_id tid) noexcept
+  {
+    native_id_ = tid;
+  }
+
   using detail::thread_storage<ThreadType, OwnershipTag>::underlying;
   using detail::thread_storage<ThreadType, OwnershipTag>::thread_storage;
+
+  native_thread_id native_id_{};
 };
 
 /**
@@ -454,11 +460,32 @@ public:
     this->underlying() = std::move(t);
   }
 
+  thread_backend(std::thread&& t, native_thread_id tid) noexcept
+  {
+    this->underlying() = std::move(t);
+    this->set_native_id(tid);
+  }
+
   template <typename F, typename... Args>
   explicit thread_backend(F&& f, Args&&... args) : basic_thread_backend()
   {
-    this->underlying()
-        = std::thread(std::forward<F>(f), std::forward<Args>(args)...);
+    auto identity = std::make_shared<thread_identity_state>();
+    using function_type = std::decay_t<F>;
+    auto arguments = std::make_tuple(std::forward<Args>(args)...);
+    this->underlying() = std::thread(
+        [identity, function = function_type(std::forward<F>(f)),
+         arguments = std::move(arguments)]() mutable
+          {
+            identity->publish(current_native_thread_id());
+            std::apply(
+                [&function](auto&&... stored)
+                  {
+                    std::invoke(std::move(function),
+                                std::forward<decltype(stored)>(stored)...);
+                  },
+                std::move(arguments));
+          });
+    this->set_native_id(identity->wait());
   }
 
   thread_backend(thread_backend const&) = delete;
@@ -467,6 +494,8 @@ public:
   thread_backend(thread_backend&& other) noexcept
   {
     this->underlying() = std::move(other.underlying());
+    this->set_native_id(other.native_id());
+    other.set_native_id({});
   }
 
   auto
@@ -479,6 +508,8 @@ public:
             this->underlying().join();
           }
         this->underlying() = std::move(other.underlying());
+        this->set_native_id(other.native_id());
+        other.set_native_id({});
       }
     return *this;
   }
@@ -554,6 +585,11 @@ class thread_view_backend
 public:
   thread_view_backend(std::thread& t)
       : basic_thread_backend<std::thread, detail::non_owning_tag>(t)
+  {
+  }
+
+  thread_view_backend(std::thread& t, native_thread_id tid)
+      : basic_thread_backend<std::thread, detail::non_owning_tag>(t, tid)
   {
   }
 
@@ -720,8 +756,12 @@ public:
   configure(native_scheduling_config const& config) const
       -> expected<void, std::error_code>
   {
-    auto const scheduling = detail::resolve_scheduling_config(config);
-    return set_scheduling_policy(scheduling.policy, scheduling.priority);
+#ifdef _WIN32
+    (void)config;
+    return unexpected(std::make_error_code(std::errc::function_not_supported));
+#else
+    return detail::apply_scheduling_config(handle_, handle_, config);
+#endif
   }
 
   [[nodiscard]] auto
@@ -839,8 +879,9 @@ public:
   configure(native_scheduling_config const& config) const
       -> expected<void, std::error_code>
   {
-    auto const scheduling = detail::resolve_scheduling_config(config);
-    return set_scheduling_policy(scheduling.policy, scheduling.priority);
+    if (has_native_handle())
+      return detail::apply_scheduling_config(native_handle(), tid_, config);
+    return detail::apply_scheduling_config(tid_, tid_, config);
   }
 
   [[nodiscard]] auto

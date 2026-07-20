@@ -191,6 +191,28 @@ registered thread remains alive.
 ## Scheduling
 
 The portable factories are `background`, `normal`, `interactive`,
-`low_latency`, `realtime_fifo`, and `realtime_rr`. Applying realtime policies
-can fail with `permission_denied` or `operation_not_permitted`. Platform-native
-policies and priority values are advanced APIs.
+`low_latency`, `priority`, `nice`, `realtime_fifo`, and `realtime_rr`.
+
+`schedule::priority(priority_level)` provides `lowest`, `low`, `normal`,
+`high`, and `highest`. Their Linux nice values are respectively 19, 5, 0, -5,
+and -20. `schedule::nice(value)` exposes the full -20 through 19 scale. Values
+outside that range fail with `invalid_argument` when the configuration is
+applied.
+
+On Windows, normal priorities map to `IDLE`, `BELOW_NORMAL`, `NORMAL`,
+`ABOVE_NORMAL`, or `HIGHEST`. Exact nice values use the same safe mapping and
+never select `TIME_CRITICAL`; that level remains exclusive to explicit
+realtime scheduling. MinGW-w64 uses the same Win32 behavior through its
+pthread-to-`HANDLE` adapter.
+
+`thread`, C++20 `jthread`, and `thread_view` provide `set_priority`,
+`set_nice`, and `get_priority`. A Linux `thread_view` over an external
+`std::thread` needs the constructor overload taking its native TID for nice
+control; without it, nice operations report `operation_not_supported`.
+Registry-managed threads expose matching operations by `native_id`, and pool
+workers use the same settings through `thread_config`.
+
+Increasing priority with a negative nice value usually requires privileges on
+Linux. Applying realtime policies can likewise fail with `permission_denied`
+or `operation_not_permitted`. Platform-native policies and priority values are
+advanced APIs.

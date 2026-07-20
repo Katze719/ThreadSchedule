@@ -93,17 +93,24 @@ TEST_F(ThreadConfigTest, ThreadPriorityMinMax)
 #ifdef _WIN32
 TEST_F(ThreadConfigTest, WindowsPriorityMappingUsesNiceSemantics)
 {
+  EXPECT_EQ(detail::map_priority_to_win32(-20), THREAD_PRIORITY_HIGHEST);
+  EXPECT_EQ(detail::map_priority_to_win32(-10), THREAD_PRIORITY_HIGHEST);
+  EXPECT_EQ(detail::map_priority_to_win32(-9), THREAD_PRIORITY_ABOVE_NORMAL);
   EXPECT_EQ(
       detail::map_priority_to_win32(native_thread_priority::highest().value()),
-      THREAD_PRIORITY_TIME_CRITICAL);
+      THREAD_PRIORITY_HIGHEST);
   EXPECT_EQ(
       detail::map_priority_to_win32(native_thread_priority{ -5 }.value()),
       THREAD_PRIORITY_ABOVE_NORMAL);
   EXPECT_EQ(
       detail::map_priority_to_win32(native_thread_priority::normal().value()),
       THREAD_PRIORITY_NORMAL);
+  EXPECT_EQ(detail::map_priority_to_win32(1), THREAD_PRIORITY_BELOW_NORMAL);
   EXPECT_EQ(detail::map_priority_to_win32(native_thread_priority{ 5 }.value()),
             THREAD_PRIORITY_BELOW_NORMAL);
+  EXPECT_EQ(detail::map_priority_to_win32(9), THREAD_PRIORITY_BELOW_NORMAL);
+  EXPECT_EQ(detail::map_priority_to_win32(10), THREAD_PRIORITY_LOWEST);
+  EXPECT_EQ(detail::map_priority_to_win32(18), THREAD_PRIORITY_LOWEST);
   EXPECT_EQ(
       detail::map_priority_to_win32(native_thread_priority::lowest().value()),
       THREAD_PRIORITY_IDLE);
@@ -111,7 +118,7 @@ TEST_F(ThreadConfigTest, WindowsPriorityMappingUsesNiceSemantics)
   auto params = scheduler_parameters::create_for_policy(
       native_scheduling_policy::other, native_thread_priority::highest());
   ASSERT_TRUE(params.has_value());
-  EXPECT_EQ(params.value().sched_priority, THREAD_PRIORITY_TIME_CRITICAL);
+  EXPECT_EQ(params.value().sched_priority, THREAD_PRIORITY_HIGHEST);
 
   auto realtime_params = scheduler_parameters::create_for_policy(
       native_scheduling_policy::fifo,
@@ -335,6 +342,12 @@ TEST_F(ThreadConfigTest, SchedulingFactoriesResolveToUnifiedSemantics)
       detail::native_schedule::posix_nice(19));
   EXPECT_EQ(nice.policy, native_scheduling_policy::other);
   EXPECT_EQ(nice.priority.value(), native_thread_priority::lowest().value());
+  EXPECT_EQ(nice.model, native_priority_model::posix_nice);
+  EXPECT_TRUE(nice.valid);
+
+  auto const invalid = detail::resolve_scheduling_config(
+      detail::native_schedule::posix_nice(20));
+  EXPECT_FALSE(invalid.valid);
 }
 
 TEST_F(ThreadConfigTest, ThreadConfigAppliesThroughThreadAndPool)
@@ -484,16 +497,17 @@ TEST_F(ThreadConfigTest, ThreadInfoInvalidTargetReturnsNoProcess)
 
 TEST_F(ThreadConfigTest, NiceValue)
 {
-  // Get current nice value
-  auto current_nice = detail::thread_backend::get_nice_value();
-  EXPECT_TRUE(current_nice.has_value());
+  std::promise<void> release;
+  auto ready = release.get_future().share();
+  threadschedule::thread worker([ready] { ready.wait(); });
 
-  // Try to set nice value (may fail without permissions)
-  bool result = detail::thread_backend::set_nice_value(0);
+  auto set = worker.set_nice(10);
+  auto priority = worker.get_priority();
+  release.set_value();
+  auto joined = worker.join();
 
-  // Restore if we changed it
-  if (result && current_nice.has_value())
-    {
-      detail::thread_backend::set_nice_value(current_nice.value());
-    }
+  ASSERT_TRUE(set.has_value()) << set.error().message();
+  ASSERT_TRUE(priority.has_value()) << priority.error().message();
+  EXPECT_EQ(priority.value(), threadschedule::priority_level::lowest);
+  EXPECT_TRUE(joined.has_value());
 }
