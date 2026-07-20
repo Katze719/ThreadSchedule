@@ -1,25 +1,27 @@
+#include <threadschedule/threadschedule.hpp>
+
 #include <chrono>
-#include <threadschedule/registered_threads.hpp>
-#include <threadschedule/thread_registry.hpp>
+#include <thread>
 
-using namespace threadschedule;
-
-int main()
+int
+main()
 {
-    // App creates and injects a global registry
-    ThreadRegistry appReg;
-    set_external_registry(&appReg);
+  threadschedule::thread_registry registry;
+  threadschedule::use_global_registry(&registry);
 
-    ThreadWrapper t([] {
-        AutoRegisterCurrentThread guard("ext-1", "ext");
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    });
+  threadschedule::thread worker(
+      []
+        {
+          auto& global = threadschedule::global_registry();
+          (void)global.register_current_thread("external-worker",
+                                               "application");
+          std::this_thread::sleep_for(std::chrono::milliseconds(60));
+          (void)global.unregister_current_thread();
+        });
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
-
-    appReg.apply([](RegisteredThreadInfo const& e) { return e.componentTag == "ext"; },
-                 [&](RegisteredThreadInfo const& e) { (void)appReg.set_priority(e.tid, ThreadPriority{0}); });
-
-    t.join();
-    return 0;
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  auto entries = registry.snapshot();
+  auto joined = worker.join();
+  threadschedule::use_global_registry(nullptr);
+  return entries && entries->size() == 1 && joined ? 0 : 3;
 }

@@ -22,18 +22,9 @@ TIME_TO_NS = {
     "s": 1_000_000_000.0,
 }
 
-POOL_NAMES = ("ThreadPool", "FastThreadPool", "HighPerformancePool", "LightweightPool")
+POOL_NAMES = ("thread_pool_backend", "polling_pool_backend", "work_stealing_pool_backend", "lightweight_pool_backend")
 
-EXPLICIT_GROUPS: dict[str, tuple[str, str, str]] = {
-    "BM_QueryView_FilterMapName": ("Reflection query: name projection", "filter + map", "filter + map"),
-    "BM_QueryView_ReflectionWhereProjectName": (
-        "Reflection query: name projection",
-        "reflection where + project",
-        "filter + map",
-    ),
-    "BM_QueryView_FindIf": ("Reflection query: lookup", "find_if", "find_if"),
-    "BM_QueryView_ReflectionFindBy": ("Reflection query: lookup", "reflection find_by", "find_if"),
-}
+EXPLICIT_GROUPS: dict[str, tuple[str, str, str]] = {}
 
 
 @dataclass
@@ -158,7 +149,7 @@ def detect_group(run: Run) -> tuple[str, str, str] | None:
         task_match = re.search(r"tasks=(\d+)", run.label)
         pool_name = next((name for name in POOL_NAMES if name in run.label), run.label)
         tasks = task_match.group(1) if task_match else (run.args[0] if run.args else "unknown")
-        return (f"Pool comparison: light workload ({tasks} tasks)", pool_name, "ThreadPool")
+        return (f"Pool comparison: light workload ({tasks} tasks)", pool_name, "thread_pool_backend")
 
     if run.family == "BM_PostVsSubmit":
         tasks = run.args[0] if run.args else "unknown"

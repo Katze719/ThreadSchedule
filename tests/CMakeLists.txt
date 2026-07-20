@@ -8,7 +8,7 @@ add_test(NAME CompileTest COMMAND compile_test)
 # Google Test based tests
 if(TARGET gtest)
     include(GoogleTest)
-    # ThreadWrapper tests
+    # detail::thread_backend tests
     add_executable(callable_test callable_test.cpp)
     target_link_libraries(callable_test
         ThreadSchedule::ThreadSchedule
@@ -20,30 +20,30 @@ if(TARGET gtest)
         PROPERTIES TIMEOUT 120
     )
 
-    add_executable(thread_wrapper_test thread_wrapper_test.cpp)
-    target_link_libraries(thread_wrapper_test 
+    add_executable(thread_backend_test thread_backend_test.cpp)
+    target_link_libraries(thread_backend_test
         ThreadSchedule::ThreadSchedule 
         gtest 
         gtest_main
     )
-    gtest_discover_tests(thread_wrapper_test 
+    gtest_discover_tests(thread_backend_test
         DISCOVERY_TIMEOUT 60
         PROPERTIES TIMEOUT 120
     )
 
-    # ThreadWrapperView tests
-    add_executable(thread_wrapper_view_test thread_wrapper_view_test.cpp)
-    target_link_libraries(thread_wrapper_view_test 
+    # detail::thread_view_backend tests
+    add_executable(thread_view_backend_test thread_view_backend_test.cpp)
+    target_link_libraries(thread_view_backend_test
         ThreadSchedule::ThreadSchedule 
         gtest 
         gtest_main
     )
-    gtest_discover_tests(thread_wrapper_view_test 
+    gtest_discover_tests(thread_view_backend_test
         DISCOVERY_TIMEOUT 60
         PROPERTIES TIMEOUT 120
     )
 
-    # ThreadConfig tests (Priority, Affinity, SchedulingPolicy)
+    # native_thread_config tests (Priority, Affinity, native_scheduling_policy)
     add_executable(thread_config_test thread_config_test.cpp)
     target_link_libraries(thread_config_test 
         ThreadSchedule::ThreadSchedule 
@@ -55,7 +55,7 @@ if(TARGET gtest)
         PROPERTIES TIMEOUT 120
     )
 
-    # ThreadPool tests
+    # thread_pool_backend tests
     add_executable(thread_pool_test thread_pool_test.cpp)
     target_link_libraries(thread_pool_test 
         ThreadSchedule::ThreadSchedule 
@@ -79,23 +79,24 @@ if(TARGET gtest)
         PROPERTIES TIMEOUT 120
     )
 
-    add_executable(abi_test abi_test.cpp)
-    target_link_libraries(abi_test
+    add_executable(v3_api_test v3_api_test.cpp)
+    target_link_libraries(v3_api_test
         ThreadSchedule::ThreadSchedule
         gtest
         gtest_main
     )
-    if(THREADSCHEDULE_RUNTIME)
-        target_link_libraries(abi_test ThreadSchedule::Runtime)
-        if(WIN32)
-            add_custom_command(TARGET abi_test POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    $<TARGET_FILE:ThreadScheduleRuntime>
-                    $<TARGET_FILE_DIR:abi_test>
-            )
-        endif()
-    endif()
-    gtest_discover_tests(abi_test
+    gtest_discover_tests(v3_api_test
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES TIMEOUT 120
+    )
+
+    add_executable(advanced_api_test advanced_api_test.cpp)
+    target_link_libraries(advanced_api_test
+        ThreadSchedule::ThreadSchedule
+        gtest
+        gtest_main
+    )
+    gtest_discover_tests(advanced_api_test
         DISCOVERY_TIMEOUT 60
         PROPERTIES TIMEOUT 120
     )
@@ -111,7 +112,7 @@ if(TARGET gtest)
         PROPERTIES TIMEOUT 120
     )
 
-    # ThreadRegistry tests
+    # thread_registry_backend tests
     add_executable(thread_registry_test thread_registry_test.cpp)
     target_link_libraries(thread_registry_test 
         ThreadSchedule::ThreadSchedule 
@@ -123,14 +124,14 @@ if(TARGET gtest)
         PROPERTIES TIMEOUT 120
     )
 
-    # Thread pool v2 API tests
-    add_executable(thread_pool_v2_test thread_pool_v2_test.cpp)
-    target_link_libraries(thread_pool_v2_test
+    # Internal pool backend tests
+    add_executable(pool_backend_test pool_backend_test.cpp)
+    target_link_libraries(pool_backend_test
         ThreadSchedule::ThreadSchedule
         gtest
         gtest_main
     )
-    gtest_discover_tests(thread_pool_v2_test
+    gtest_discover_tests(pool_backend_test
         DISCOVERY_TIMEOUT 60
         PROPERTIES TIMEOUT 120
     )
@@ -159,19 +160,6 @@ if(TARGET gtest)
         PROPERTIES TIMEOUT 120
     )
 
-    if(THREADSCHEDULE_HAS_REFLECTION)
-        add_executable(reflection_test reflection_test.cpp)
-        target_link_libraries(reflection_test
-            ThreadSchedule::ThreadSchedule
-            gtest
-            gtest_main
-        )
-        gtest_discover_tests(reflection_test
-            DISCOVERY_TIMEOUT 60
-            PROPERTIES TIMEOUT 120
-        )
-    endif()
-
     if(THREADSCHEDULE_RUNTIME)
         add_executable(runtime_registry_test runtime_registry_test.cpp)
         target_link_libraries(runtime_registry_test 
@@ -195,100 +183,6 @@ if(TARGET gtest)
                     $<TARGET_FILE_DIR:runtime_registry_test>
             )
         endif()
-    endif()
-
-    # Coroutine tests (C++20)
-    include(CheckCXXCompilerFlag)
-    include(CheckCXXSourceCompiles)
-    set(_THREADSCHEDULE_SAVED_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
-    set(_THREADSCHEDULE_SAVED_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES}")
-    set(CMAKE_REQUIRED_INCLUDES "${PROJECT_SOURCE_DIR}/include")
-    check_cxx_compiler_flag("-Werror=deprecated-declarations" THREADSCHEDULE_HAS_WERROR_DEPRECATED)
-    set(_THREADSCHEDULE_DEPRECATED_AS_ERROR_FLAG "")
-    if(THREADSCHEDULE_HAS_WERROR_DEPRECATED)
-        set(_THREADSCHEDULE_DEPRECATED_AS_ERROR_FLAG " -Werror=deprecated-declarations")
-    endif()
-    set(CMAKE_REQUIRED_FLAGS
-        "${CMAKE_REQUIRED_FLAGS} -DTHREADSCHEDULE_RUNTIME -DTHREADSCHEDULE_STABLE_ABI=1${_THREADSCHEDULE_DEPRECATED_AS_ERROR_FLAG}"
-    )
-    check_cxx_source_compiles("
-        #include <threadschedule/thread_registry.hpp>
-        int main() {
-            auto& reg = threadschedule::registry();
-            return static_cast<int>(reg.count());
-        }
-    " THREADSCHEDULE_STABLE_ABI_DEPRECATED_RUNTIME_REGISTRY)
-    if(THREADSCHEDULE_HAS_WERROR_DEPRECATED AND THREADSCHEDULE_STABLE_ABI_DEPRECATED_RUNTIME_REGISTRY)
-        message(FATAL_ERROR "THREADSCHEDULE_STABLE_ABI must deprecate threadschedule::registry() in runtime mode")
-    endif()
-
-    set(CMAKE_REQUIRED_FLAGS
-        "${CMAKE_REQUIRED_FLAGS} -DTHREADSCHEDULE_RUNTIME -DTHREADSCHEDULE_STABLE_ABI=1 -DTHREADSCHEDULE_STABLE_ABI_STRICT=1"
-    )
-    check_cxx_source_compiles("
-        #include <threadschedule/thread_registry.hpp>
-        int main() {
-            auto& reg = threadschedule::registry();
-            return static_cast<int>(reg.count());
-        }
-    " THREADSCHEDULE_STRICT_RUNTIME_REGISTRY_AVAILABLE)
-    if(THREADSCHEDULE_STRICT_RUNTIME_REGISTRY_AVAILABLE)
-        message(FATAL_ERROR "THREADSCHEDULE_STABLE_ABI_STRICT must reject threadschedule::registry() in runtime mode")
-    endif()
-
-    check_cxx_source_compiles("
-        #include <threadschedule/thread_registry.hpp>
-        THREADSCHEDULE_VALIDATE_STABLE_ABI_EXPORT(void, ::threadschedule::ThreadRegistry*);
-        int main() { return 0; }
-    " THREADSCHEDULE_UNSAFE_SIGNATURE_ALLOWED)
-    if(THREADSCHEDULE_UNSAFE_SIGNATURE_ALLOWED)
-        message(FATAL_ERROR "Stable ABI signature validation must reject ThreadRegistry* exports")
-    endif()
-
-    check_cxx_source_compiles("
-        #include <threadschedule/abi.hpp>
-        THREADSCHEDULE_VALIDATE_STABLE_ABI_EXPORT(void, ::threadschedule::abi::registry_handle);
-        int main() { return 0; }
-    " THREADSCHEDULE_SAFE_SIGNATURE_ALLOWED)
-    if(NOT THREADSCHEDULE_SAFE_SIGNATURE_ALLOWED)
-        message(FATAL_ERROR "Stable ABI signature validation must accept registry_handle exports")
-    endif()
-
-    set(CMAKE_REQUIRED_FLAGS "${_THREADSCHEDULE_SAVED_REQUIRED_FLAGS}")
-    set(CMAKE_REQUIRED_INCLUDES "${_THREADSCHEDULE_SAVED_REQUIRED_INCLUDES}")
-
-    set(CMAKE_REQUIRED_FLAGS "${CMAKE_CXX_FLAGS}")
-    check_cxx_source_compiles("
-        #include <coroutine>
-        struct promise { auto get_return_object() { return std::coroutine_handle<promise>::from_promise(*this); }
-        auto initial_suspend() { return std::suspend_always{}; }
-        auto final_suspend() noexcept { return std::suspend_always{}; }
-        void return_void() {} void unhandled_exception() {} };
-        int main() {}
-    " THREADSCHEDULE_HAS_COROUTINES)
-
-    if(THREADSCHEDULE_HAS_COROUTINES)
-        add_executable(coroutine_test coroutine_test.cpp)
-        target_link_libraries(coroutine_test
-            ThreadSchedule::ThreadSchedule
-            gtest
-            gtest_main
-        )
-        gtest_discover_tests(coroutine_test
-            DISCOVERY_TIMEOUT 60
-            PROPERTIES TIMEOUT 120
-        )
-
-        add_executable(coroutine_pool_test coroutine_pool_test.cpp)
-        target_link_libraries(coroutine_pool_test
-            ThreadSchedule::ThreadSchedule
-            gtest
-            gtest_main
-        )
-        gtest_discover_tests(coroutine_pool_test
-            DISCOVERY_TIMEOUT 60
-            PROPERTIES TIMEOUT 120
-        )
     endif()
 
     # Discovered tests already carry TIMEOUT=120 via PROPERTIES above

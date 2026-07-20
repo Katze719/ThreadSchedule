@@ -1,5 +1,78 @@
 # Changelog
 
+## v3.0.0
+
+> A deliberate C++17 API reset focused on one approachable default surface,
+> explicit errors, and stable behavior across consumer language modes.
+
+### Breaking Changes
+
+- **Small canonical API** -- added `thread`, `thread_view`, `thread_pool`,
+  `scheduled_pool`, `thread_registry`, and matching lowercase config types.
+  These are independent value/composition types rather than aliases or public
+  subclasses of the former PascalCase surface.
+- **Standard-style construction** -- core objects are directly constructible.
+  Optional `create(...)` factories return the library-owned
+  `expected<T, std::error_code>` when an error-value path is preferred.
+- **Standard thread state errors** -- joining or detaching a non-joinable
+  `thread` or `jthread` reports `std::errc::invalid_argument`; explicit
+  `join_or_throw` and `detach_or_throw` forms mirror standard exceptions.
+- **Portable scheduling intent** -- common use goes through
+  `schedule::{background, normal, interactive, low_latency, realtime_fifo,
+  realtime_rr}`; backend and native controls live under `advanced`.
+- **One thread implementation** -- managed threads use `std::thread`.
+  Platform-specific pthread and Windows operations remain behind native
+  control boundaries.
+- **Focused C++20 support** -- `threadschedule::jthread` is available only
+  when `std::jthread` is detected and supports standard-style callable
+  forwarding and stop-token injection.
+- **Removed compatibility and portable ABI claims** -- the PascalCase wrapper
+  families, experimental C ABI, `StableAbi` target, modules, coroutine
+  helpers, ranges-only overloads, and reflection surface are removed. The
+  optional runtime is a same-toolchain shared C++ registry.
+
+### Configuration and Scheduling
+
+- **Portable non-realtime priority** -- added the five-level
+  `priority_level`, `schedule::priority`, and the full `schedule::nice(-20..19)`
+  input. Linux now applies real per-thread nice values instead of discarding
+  them through `SCHED_OTHER`; MSVC and MinGW map them to safe Win32 thread
+  priorities without using `TIME_CRITICAL`.
+- **Priority control and readback** -- `thread`, C++20 `jthread`,
+  `thread_view`, and `thread_registry` can change normal priority after startup
+  and read back an effective portable level. Library-owned threads retain the
+  Linux TID needed for race-free configured startup and later control.
+- **Configured startup is transactional** -- a configured `thread` or
+  `jthread` does not invoke its callable when initial name, scheduling, or
+  affinity configuration fails.
+- **Specific native errors are preserved** -- thread, pool, profile, registry,
+  and scheduler configuration returns the first concrete platform error
+  instead of replacing it with a generic permission error.
+- **Controllable registry entries** -- `thread_registry::register_current_thread`
+  now retains a native control block, allowing later `configure(native_id,
+  ...)` calls for the live registered thread.
+- **Scheduled pool configuration** -- `scheduled_pool_config` now supports
+  worker registration, independent worker and scheduler thread settings,
+  shutdown policy, and an error callback. It also adds delayed-first periodic
+  scheduling and rejects non-positive periods.
+- **Integrated task reporting** -- `thread_pool_config::on_task_error` and
+  `scheduled_pool_config::on_task_error` observe task failures without
+  requiring the former adapter family.
+
+### Advanced API
+
+- **Supported advanced umbrella** -- `<threadschedule/advanced.hpp>` exposes
+  specialized pools and native controls together with future combinators,
+  task groups, profiles, topology helpers, chaos testing, and lower-level
+  error handling under `threadschedule::advanced`.
+
+### Compatibility and Release Hygiene
+
+- **Stable C++17 core surface** -- public callable and inline implementation
+  storage remains stable under C++17, C++20, C++23, and C++26.
+- **Documentation and CI reset** -- examples, migration guidance, packaging,
+  integrations, and compiler matrices describe and test the actual v3 API.
+
 ## v2.4.0
 
 > This release adds an explicit stable-ABI subset for shared-runtime / DSO

@@ -10,7 +10,7 @@ endif()
 
 project(ThreadSchedule
     VERSION ${THREADSCHEDULE_VERSION}
-    DESCRIPTION "Modern C++17/20/23/26 thread management library"
+    DESCRIPTION "C++17 thread management and scheduling library"
     HOMEPAGE_URL "https://github.com/Katze719/ThreadSchedule"
     LANGUAGES CXX
 )
@@ -61,16 +61,8 @@ option(THREADSCHEDULE_BUILD_EXAMPLES "Build examples" OFF)
 option(THREADSCHEDULE_BUILD_TESTS "Build tests" OFF)
 option(THREADSCHEDULE_BUILD_BENCHMARKS "Build benchmarks" OFF)
 option(THREADSCHEDULE_INSTALL "Generate install target" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
-option(THREADSCHEDULE_RUNTIME "Build shared runtime for global registry (non header-only)" ON)
-option(THREADSCHEDULE_STABLE_ABI "Expose the stable ABI subset helpers" OFF)
-option(THREADSCHEDULE_STABLE_ABI_STRICT "Reject non-stable runtime ABI usage at compile time" OFF)
-option(THREADSCHEDULE_MODULE "Build C++20 module target (requires CMake >= 3.28 and C++20+)" OFF)
-option(THREADSCHEDULE_BUILD_DOCS "Build API documentation with Doxygen" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
-option(THREADSCHEDULE_ENABLE_REFLECTION "Enable GCC 16 C++26 reflection APIs when supported" OFF)
-
-if(THREADSCHEDULE_STABLE_ABI_STRICT AND NOT THREADSCHEDULE_STABLE_ABI)
-    set(THREADSCHEDULE_STABLE_ABI ON)
-endif()
+option(THREADSCHEDULE_RUNTIME "Build the optional C++ shared registry runtime" OFF)
+option(THREADSCHEDULE_BUILD_DOCS "Build API documentation with Doxygen" OFF)
 
 # CPM support (optional, download if building tests or benchmarks)
 if(THREADSCHEDULE_BUILD_TESTS OR THREADSCHEDULE_BUILD_BENCHMARKS)
@@ -126,55 +118,11 @@ endif()
 # Platform-specific requirements
 find_package(Threads REQUIRED)
 
-set(THREADSCHEDULE_HAS_REFLECTION OFF)
-if(THREADSCHEDULE_ENABLE_REFLECTION
-   AND CMAKE_CXX_STANDARD GREATER_EQUAL 26
-   AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    include(CheckCXXSourceCompiles)
-    set(_threadschedule_saved_required_flags "${CMAKE_REQUIRED_FLAGS}")
-    set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -std=c++26 -freflection")
-    check_cxx_source_compiles(
-        "
-        #include <meta>
-        using namespace std::meta;
-        struct probe_type { int value; bool ready; };
-        consteval bool probe() {
-            auto fields = std::define_static_array(nonstatic_data_members_of(^^probe_type, access_context::current()));
-            return fields.size() == 2 && identifier_of(fields[0]) == \"value\";
-        }
-        static_assert(probe());
-        int main() { return 0; }
-        "
-        THREADSCHEDULE_REFLECTION_PROBE_OK
-    )
-    set(CMAKE_REQUIRED_FLAGS "${_threadschedule_saved_required_flags}")
-    if(THREADSCHEDULE_REFLECTION_PROBE_OK)
-        set(THREADSCHEDULE_HAS_REFLECTION ON)
-    endif()
-endif()
-
 # Create the interface library target (header-only API)
 add_library(ThreadSchedule INTERFACE)
 add_library(ThreadSchedule::ThreadSchedule ALIAS ThreadSchedule)
 
-# Set target properties based on selected C++ standard
-if(CMAKE_CXX_STANDARD GREATER_EQUAL 26)
-    set_target_properties(ThreadSchedule PROPERTIES
-        INTERFACE_COMPILE_FEATURES cxx_std_26
-    )
-elseif(CMAKE_CXX_STANDARD GREATER_EQUAL 23)
-    set_target_properties(ThreadSchedule PROPERTIES
-        INTERFACE_COMPILE_FEATURES cxx_std_23
-    )
-elseif(CMAKE_CXX_STANDARD GREATER_EQUAL 20)
-    set_target_properties(ThreadSchedule PROPERTIES
-        INTERFACE_COMPILE_FEATURES cxx_std_20
-    )
-else()
-    set_target_properties(ThreadSchedule PROPERTIES
-        INTERFACE_COMPILE_FEATURES cxx_std_17
-    )
-endif()
+target_compile_features(ThreadSchedule INTERFACE cxx_std_17)
 
 # Include directories
 target_include_directories(ThreadSchedule INTERFACE
@@ -182,26 +130,14 @@ target_include_directories(ThreadSchedule INTERFACE
     $<INSTALL_INTERFACE:include>
 )
 
-if(THREADSCHEDULE_STABLE_ABI)
-    target_compile_definitions(ThreadSchedule INTERFACE THREADSCHEDULE_STABLE_ABI=1)
-endif()
-
-if(THREADSCHEDULE_STABLE_ABI_STRICT)
-    target_compile_definitions(ThreadSchedule INTERFACE THREADSCHEDULE_STABLE_ABI_STRICT=1)
-endif()
-
 # Link libraries
 target_link_libraries(ThreadSchedule INTERFACE Threads::Threads)
-
-if(THREADSCHEDULE_HAS_REFLECTION)
-    target_compile_definitions(ThreadSchedule INTERFACE THREADSCHEDULE_HAS_REFLECTION=1)
-    target_compile_options(ThreadSchedule INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-freflection>)
-endif()
 
 # Windows: ensure modern API availability macros
 if(WIN32)
     target_compile_definitions(ThreadSchedule INTERFACE
         $<BUILD_INTERFACE:_WIN32_WINNT=0x0A00>
+        $<BUILD_INTERFACE:NOMINMAX>
     )
 endif()
 
@@ -232,7 +168,13 @@ if(THREADSCHEDULE_IS_TOPLEVEL_PROJECT)
 endif()
 
 # Copy compile_commands.json to project root for clangd (single-config generators only)
-if(THREADSCHEDULE_IS_TOPLEVEL_PROJECT AND CMAKE_EXPORT_COMPILE_COMMANDS AND NOT CMAKE_CONFIGURATION_TYPES)
+if(THREADSCHEDULE_IS_TOPLEVEL_PROJECT
+   AND CMAKE_EXPORT_COMPILE_COMMANDS
+   AND NOT CMAKE_CONFIGURATION_TYPES
+   AND (THREADSCHEDULE_BUILD_EXAMPLES
+        OR THREADSCHEDULE_BUILD_TESTS
+        OR THREADSCHEDULE_BUILD_BENCHMARKS
+        OR THREADSCHEDULE_RUNTIME))
     add_custom_target(copy-compile-commands ALL
         ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_BINARY_DIR}/compile_commands.json
@@ -265,75 +207,21 @@ if(THREADSCHEDULE_RUNTIME)
     )
     target_compile_definitions(ThreadScheduleRuntime PRIVATE THREADSCHEDULE_EXPORTS THREADSCHEDULE_RUNTIME
                                                              THREADSCHEDULE_INTERNAL_RUNTIME_BUILD=1)
-    if(THREADSCHEDULE_HAS_REFLECTION)
-        target_compile_definitions(ThreadScheduleRuntime PUBLIC THREADSCHEDULE_HAS_REFLECTION=1)
-        target_compile_options(ThreadScheduleRuntime PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-freflection>)
-    endif()
     # Propagate the THREADSCHEDULE_RUNTIME define to consumers so headers call into the DLL
     target_compile_definitions(ThreadScheduleRuntime INTERFACE THREADSCHEDULE_RUNTIME)
-    if(THREADSCHEDULE_STABLE_ABI)
-        target_compile_definitions(ThreadScheduleRuntime PUBLIC THREADSCHEDULE_STABLE_ABI=1)
-    endif()
-    if(THREADSCHEDULE_STABLE_ABI_STRICT)
-        target_compile_definitions(ThreadScheduleRuntime PUBLIC THREADSCHEDULE_STABLE_ABI_STRICT=1)
-    endif()
     target_include_directories(ThreadScheduleRuntime
         PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
     )
-    target_link_libraries(ThreadScheduleRuntime PUBLIC Threads::Threads)
-    if(UNIX AND NOT APPLE AND NOT WIN32)
-        target_link_libraries(ThreadScheduleRuntime PUBLIC pthread rt)
-    endif()
+    target_link_libraries(ThreadScheduleRuntime PUBLIC ThreadSchedule)
     set_target_properties(ThreadScheduleRuntime PROPERTIES
+        EXPORT_NAME Runtime
         OUTPUT_NAME "threadschedule"
         OUTPUT_NAME_DEBUG "threadscheduled"
     )
     add_library(ThreadSchedule::Runtime ALIAS ThreadScheduleRuntime)
-endif()
 
-# Optional C++20 module target (requires CMake >= 3.28 and C++20 or later)
-if(THREADSCHEDULE_MODULE)
-    if(CMAKE_VERSION VERSION_LESS "3.28")
-        message(FATAL_ERROR "THREADSCHEDULE_MODULE requires CMake >= 3.28 for C++20 module support")
-    endif()
-    if(CMAKE_CXX_STANDARD LESS 20)
-        message(FATAL_ERROR "THREADSCHEDULE_MODULE requires at least C++20 (CMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD})")
-    endif()
-
-    add_library(ThreadScheduleModule)
-    add_library(ThreadSchedule::Module ALIAS ThreadScheduleModule)
-
-    target_sources(ThreadScheduleModule
-        PUBLIC
-        FILE_SET CXX_MODULES FILES
-        src/threadschedule.cppm
-    )
-
-    target_include_directories(ThreadScheduleModule
-        PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
-    )
-
-    target_link_libraries(ThreadScheduleModule PUBLIC Threads::Threads)
-    if(UNIX AND NOT APPLE AND NOT WIN32)
-        target_link_libraries(ThreadScheduleModule PUBLIC pthread rt)
-    endif()
-
-    if(CMAKE_CXX_STANDARD GREATER_EQUAL 26)
-        target_compile_features(ThreadScheduleModule PUBLIC cxx_std_26)
-    elseif(CMAKE_CXX_STANDARD GREATER_EQUAL 23)
-        target_compile_features(ThreadScheduleModule PUBLIC cxx_std_23)
-    else()
-        target_compile_features(ThreadScheduleModule PUBLIC cxx_std_20)
-    endif()
-
-    if(THREADSCHEDULE_HAS_REFLECTION)
-        target_compile_definitions(ThreadScheduleModule PUBLIC THREADSCHEDULE_HAS_REFLECTION=1)
-        target_compile_options(ThreadScheduleModule PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-freflection>)
-    endif()
 endif()
 
 # Documentation (Doxygen + Awesome theme)
@@ -453,16 +341,6 @@ if(THREADSCHEDULE_INSTALL)
         )
     endif()
 
-    if(THREADSCHEDULE_MODULE)
-        install(TARGETS ThreadScheduleModule
-            EXPORT ThreadScheduleTargets
-            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            FILE_SET CXX_MODULES DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ThreadSchedule/modules
-            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-        )
-    endif()
-
     # Export configuration
     install(EXPORT ThreadScheduleTargets
         FILE ThreadScheduleTargets.cmake
@@ -481,7 +359,7 @@ if(THREADSCHEDULE_INSTALL)
     write_basic_package_version_file(
         ${CMAKE_CURRENT_BINARY_DIR}/ThreadScheduleConfigVersion.cmake
         VERSION ${PROJECT_VERSION}
-        COMPATIBILITY AnyNewerVersion
+        COMPATIBILITY SameMajorVersion
     )
 
     # Install package config files

@@ -1,9 +1,9 @@
 #pragma once
 
 #if defined(_WIN32) && defined(BUILD_RUNTIME_LIBA_SHARED)
-#define RUNTIME_LIBA_API __declspec(dllexport)
+#  define RUNTIME_LIBA_API __declspec(dllexport)
 #else
-#define RUNTIME_LIBA_API
+#  define RUNTIME_LIBA_API
 #endif
 
 namespace runtime_libA

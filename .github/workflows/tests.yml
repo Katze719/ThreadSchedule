@@ -2,365 +2,153 @@ name: Tests
 
 on:
   push:
-    branches: [ main, dev ]
+    branches: [main, dev]
   pull_request:
-    branches: [ main, dev ]
+    branches: [main, dev]
   workflow_dispatch:
 
 jobs:
-  # ── Linux x86_64 ──────────────────────────────────────────────────
   linux:
-    name: Linux (${{ matrix.os }}, C++${{ matrix.cpp_standard }}, ${{ matrix.compiler }})
-    runs-on: ${{ matrix.os }}
+    name: Linux GCC ${{ matrix.gcc }} / C++${{ matrix.standard }}
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # ── Ubuntu 22.04 (pre-installed: GCC 10/11/12, Clang 13/14/15) ──
-          - { os: ubuntu-22.04, compiler: GCC 11,   cc: gcc-11,   cxx: g++-11,     cpp_standard: 17 }
-          - { os: ubuntu-22.04, compiler: GCC 11,   cc: gcc-11,   cxx: g++-11,     cpp_standard: 20 }
-          - { os: ubuntu-22.04, compiler: GCC 11,   cc: gcc-11,   cxx: g++-11,     cpp_standard: 23 }
-          - { os: ubuntu-22.04, compiler: GCC 12,   cc: gcc-12,   cxx: g++-12,     cpp_standard: 20 }
-          - { os: ubuntu-22.04, compiler: Clang 14, cc: clang-14, cxx: clang++-14, cpp_standard: 17 }
-          - { os: ubuntu-22.04, compiler: Clang 14, cc: clang-14, cxx: clang++-14, cpp_standard: 20 }
-          - { os: ubuntu-22.04, compiler: Clang 14, cc: clang-14, cxx: clang++-14, cpp_standard: 23 }
-          - { os: ubuntu-22.04, compiler: Clang 15, cc: clang-15, cxx: clang++-15, cpp_standard: 20 }
-          - { os: ubuntu-22.04, compiler: Clang 15, cc: clang-15, cxx: clang++-15, cpp_standard: 23 }
-          # ── Ubuntu 24.04 (pre-installed: GCC 12/13/14, Clang 16-19) ─────
-          - { os: ubuntu-24.04, compiler: GCC 13,   cc: gcc-13,   cxx: g++-13,     cpp_standard: 17 }
-          - { os: ubuntu-24.04, compiler: GCC 13,   cc: gcc-13,   cxx: g++-13,     cpp_standard: 20 }
-          - { os: ubuntu-24.04, compiler: GCC 13,   cc: gcc-13,   cxx: g++-13,     cpp_standard: 23 }
-          - { os: ubuntu-24.04, compiler: GCC 14,   cc: gcc-14,   cxx: g++-14,     cpp_standard: 17 }
-          - { os: ubuntu-24.04, compiler: GCC 14,   cc: gcc-14,   cxx: g++-14,     cpp_standard: 20 }
-          - { os: ubuntu-24.04, compiler: GCC 14,   cc: gcc-14,   cxx: g++-14,     cpp_standard: 23 }
-          - { os: ubuntu-24.04, compiler: GCC 14,   cc: gcc-14,   cxx: g++-14,     cpp_standard: 26 }
-          - { os: ubuntu-24.04, compiler: GCC 15,   cc: gcc-15,   cxx: g++-15,     cpp_standard: 20 }
-          - { os: ubuntu-24.04, compiler: GCC 15,   cc: gcc-15,   cxx: g++-15,     cpp_standard: 23 }
-          - { os: ubuntu-24.04, compiler: GCC 15,   cc: gcc-15,   cxx: g++-15,     cpp_standard: 26 }
-          - { os: ubuntu-24.04, compiler: GCC 16,   cc: gcc-16,   cxx: g++-16,     cpp_standard: 26 }
-          - { os: ubuntu-24.04, compiler: Clang 16, cc: clang-16, cxx: clang++-16, cpp_standard: 17 }
-          - { os: ubuntu-24.04, compiler: Clang 16, cc: clang-16, cxx: clang++-16, cpp_standard: 20 }
-          - { os: ubuntu-24.04, compiler: Clang 18, cc: clang-18, cxx: clang++-18, cpp_standard: 17 }
-          - { os: ubuntu-24.04, compiler: Clang 18, cc: clang-18, cxx: clang++-18, cpp_standard: 20 }
-          - { os: ubuntu-24.04, compiler: Clang 19, cc: clang-19, cxx: clang++-19, cpp_standard: 20 }
-          - { os: ubuntu-24.04, compiler: Clang 19, cc: clang-19, cxx: clang++-19, cpp_standard: 23 }
-          - { os: ubuntu-24.04, compiler: Clang 19, cc: clang-19, cxx: clang++-19, cpp_standard: 26 }
-          - { os: ubuntu-24.04, compiler: Clang 21, cc: clang-21, cxx: clang++-21, cpp_standard: 20 }
-          - { os: ubuntu-24.04, compiler: Clang 21, cc: clang-21, cxx: clang++-21, cpp_standard: 23 }
-          - { os: ubuntu-24.04, compiler: Clang 21, cc: clang-21, cxx: clang++-21, cpp_standard: 26 }
-          - { os: ubuntu-24.04, compiler: Clang 22, cc: clang-22, cxx: clang++-22, cpp_standard: 26 }
-
+          - { runner: ubuntu-22.04, gcc: 11, standard: 17 }
+          - { runner: ubuntu-22.04, gcc: 11, standard: 20 }
+          - { runner: ubuntu-22.04, gcc: 11, standard: 23 }
+          - { runner: ubuntu-24.04, gcc: 13, standard: 17 }
+          - { runner: ubuntu-24.04, gcc: 13, standard: 20 }
+          - { runner: ubuntu-24.04, gcc: 13, standard: 23 }
+          - { runner: ubuntu-24.04, gcc: 14, standard: 17 }
+          - { runner: ubuntu-24.04, gcc: 14, standard: 20 }
+          - { runner: ubuntu-24.04, gcc: 14, standard: 23 }
+          - { runner: ubuntu-24.04, gcc: 14, standard: 26 }
+          - { runner: ubuntu-24.04, gcc: 15, standard: 17 }
+          - { runner: ubuntu-24.04, gcc: 15, standard: 20 }
+          - { runner: ubuntu-24.04, gcc: 15, standard: 23 }
+          - { runner: ubuntu-24.04, gcc: 15, standard: 26 }
+          - { runner: ubuntu-24.04, gcc: 16, standard: 17 }
+          - { runner: ubuntu-24.04, gcc: 16, standard: 20 }
+          - { runner: ubuntu-24.04, gcc: 16, standard: 23 }
+          - { runner: ubuntu-24.04, gcc: 16, standard: 26 }
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Add toolchain PPA (GCC 15/16)
-      if: matrix.cc == 'gcc-15' || matrix.cc == 'gcc-16'
-      run: |
-        sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-        sudo apt-get update
-
-    - name: Add LLVM repo (Clang 21/22)
-      if: matrix.cc == 'clang-21' || matrix.cc == 'clang-22'
-      run: |
-        wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-        if [ "${{ matrix.cc }}" = "clang-22" ]; then
-          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" | sudo tee /etc/apt/sources.list.d/llvm-22.list
-        else
-          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
-        fi
-        sudo apt-get update
-
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        case "${{ matrix.cxx }}" in
-          g++*)     sudo apt-get install -y cmake ninja-build ${{ matrix.cxx }} ;;
-          clang++*) sudo apt-get install -y cmake ninja-build ${{ matrix.cc }} ;;
-        esac
-
-    - name: Configure CMake
-      env:
-        CC: ${{ matrix.cc }}
-        CXX: ${{ matrix.cxx }}
-      run: |
-        cmake -B build -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }} \
-          -DTHREADSCHEDULE_BUILD_EXAMPLES=ON \
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          if [ "${{ matrix.gcc }}" -ge 15 ]; then
+            sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          fi
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++-${{ matrix.gcc }}
+      - name: Record toolchain
+        run: |
+          g++-${{ matrix.gcc }} --version
+          g++-${{ matrix.gcc }} -print-file-name=libstdc++.so
+      - name: Configure
+        env:
+          CC: gcc-${{ matrix.gcc }}
+          CXX: g++-${{ matrix.gcc }}
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_STANDARD=${{ matrix.standard }}
+          -DTHREADSCHEDULE_BUILD_EXAMPLES=ON
           -DTHREADSCHEDULE_BUILD_TESTS=ON
+          -DTHREADSCHEDULE_BUILD_DOCS=OFF
+      - run: cmake --build build --parallel
+      - run: ctest --test-dir build --output-on-failure --parallel 2
 
-    - name: Build
-      run: cmake --build build --parallel
-
-    - name: Run tests
-      run: |
-        cd build
-        ctest --output-on-failure --parallel
-
-  # ── Windows ────────────────────────────────────────────────────────
-  windows:
-    name: Windows (C++${{ matrix.cpp_standard }}, ${{ matrix.compiler }}, ${{ matrix.image }})
-    runs-on: ${{ matrix.image }}
-    strategy:
-      fail-fast: false
-      matrix:
-        cpp_standard: [17, 20, 23]
-        compiler: [msvc, mingw]
-        image: [windows-latest, windows-2025]
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup MSVC (Developer Command Prompt)
-      if: matrix.compiler == 'msvc'
-      uses: ilammy/msvc-dev-cmd@v1
-
-    - name: Setup MinGW
-      if: matrix.compiler == 'mingw'
-      uses: msys2/setup-msys2@v2
-      with:
-        msystem: MINGW64
-        update: true
-        install: >-
-          mingw-w64-x86_64-gcc
-          mingw-w64-x86_64-cmake
-          mingw-w64-x86_64-ninja
-
-    - name: Install Ninja (MSVC)
-      if: matrix.compiler == 'msvc'
-      run: choco install ninja --no-progress --yes
-
-    - name: Configure CMake (MSVC)
-      if: matrix.compiler == 'msvc'
-      run: |
-        cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }} -DTHREADSCHEDULE_BUILD_EXAMPLES=ON -DTHREADSCHEDULE_BUILD_TESTS=ON -Dgtest_force_shared_crt=ON
-
-    - name: Configure CMake (MinGW)
-      if: matrix.compiler == 'mingw'
-      shell: msys2 {0}
-      run: |
-        cmake -B build -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }} \
-          -DTHREADSCHEDULE_BUILD_EXAMPLES=ON \
-          -DTHREADSCHEDULE_BUILD_TESTS=ON
-
-    - name: Build (MSVC)
-      if: matrix.compiler == 'msvc'
-      run: cmake --build build --parallel
-
-    - name: Build (MinGW)
-      if: matrix.compiler == 'mingw'
-      shell: msys2 {0}
-      run: cmake --build build --parallel
-
-    - name: Run tests (MSVC)
-      if: matrix.compiler == 'msvc'
-      run: |
-        cd build
-        ctest --output-on-failure --parallel
-
-    - name: Run tests (MinGW)
-      if: matrix.compiler == 'mingw'
-      shell: msys2 {0}
-      run: |
-        cd build
-        ctest --output-on-failure --parallel
-
-  # ── Linux ARM64 ────────────────────────────────────────────────────
-  linux-arm:
-    name: Linux ARM64 (C++${{ matrix.cpp_standard }}, ${{ matrix.compiler }})
+  linux-arm64:
+    name: Linux ARM64 GCC ${{ matrix.gcc }} / C++${{ matrix.standard }}
     runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { compiler: GCC 13, cxx: g++,    cpp_standard: 17 }
-          - { compiler: GCC 13, cxx: g++,    cpp_standard: 20 }
-          - { compiler: GCC 13, cxx: g++,    cpp_standard: 23 }
-          - { compiler: GCC 14, cxx: g++-14, cpp_standard: 20 }
-          - { compiler: GCC 14, cxx: g++-14, cpp_standard: 23 }
-          - { compiler: GCC 14, cxx: g++-14, cpp_standard: 26 }
-
+          - { gcc: 13, standard: 17 }
+          - { gcc: 13, standard: 20 }
+          - { gcc: 13, standard: 23 }
+          - { gcc: 14, standard: 26 }
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake ninja-build ${{ matrix.cxx }}
-
-    - name: Configure CMake
-      env:
-        CXX: ${{ matrix.cxx }}
-      run: |
-        cmake -B build -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }} \
-          -DTHREADSCHEDULE_BUILD_EXAMPLES=ON \
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++-${{ matrix.gcc }}
+      - run: g++-${{ matrix.gcc }} --version
+      - name: Configure
+        env:
+          CC: gcc-${{ matrix.gcc }}
+          CXX: g++-${{ matrix.gcc }}
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_STANDARD=${{ matrix.standard }}
+          -DTHREADSCHEDULE_BUILD_EXAMPLES=ON
           -DTHREADSCHEDULE_BUILD_TESTS=ON
+          -DTHREADSCHEDULE_BUILD_DOCS=OFF
+      - run: cmake --build build --parallel
+      - run: ctest --test-dir build --output-on-failure --parallel 2
 
-    - name: Build
-      run: cmake --build build --parallel
-
-    - name: Run tests
-      run: |
-        cd build
-        ctest --output-on-failure --parallel
-
-  # ── GCC 16 Reflection-specific validation ────────────────────────
-  reflection-linux:
-    name: Reflection (Linux, GCC 16, C++26)
-    runs-on: ubuntu-24.04
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Add toolchain PPA
-      run: |
-        sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-        sudo apt-get update
-
-    - name: Install dependencies
-      run: |
-        sudo apt-get install -y cmake ninja-build gcc-16 g++-16
-
-    - name: Configure CMake
-      env:
-        CC: gcc-16
-        CXX: g++-16
-      run: |
-        cmake -B build -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_CXX_STANDARD=26 \
-          -DTHREADSCHEDULE_BUILD_EXAMPLES=OFF \
-          -DTHREADSCHEDULE_BUILD_TESTS=ON \
-          -DTHREADSCHEDULE_ENABLE_REFLECTION=ON
-
-    - name: Build
-      run: cmake --build build --parallel
-
-    - name: Run reflection-focused tests
-      run: |
-        ctest --test-dir build \
-          --no-tests=error \
-          --output-on-failure \
-          --tests-regex 'ReflectionApiTest|RegistryQueryTest\.Reflection'
-
-  reflection-modules-linux:
-    name: Reflection Modules (Linux, GCC 16, C++26)
-    runs-on: ubuntu-24.04
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Add toolchain PPA
-      run: |
-        sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-        sudo apt-get update
-
-    - name: Install dependencies
-      run: |
-        sudo apt-get install -y cmake ninja-build gcc-16 g++-16
-
-    - name: Configure CMake
-      env:
-        CC: gcc-16
-        CXX: g++-16
-      run: |
-        cmake -B build -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_CXX_STANDARD=26 \
-          -DTHREADSCHEDULE_MODULE=ON \
-          -DTHREADSCHEDULE_ENABLE_REFLECTION=ON
-
-    - name: Build module
-      run: cmake --build build --parallel
-
-    - name: Verify reflection-enabled module artifacts
-      run: |
-        echo "Reflection module artifacts:"
-        find build -name '*.a' -o -name '*.gcm' -o -name '*.pcm' | head -20
-
-  # ── C++20 Module build verification ────────────────────────────────
-  modules-linux:
-    name: Modules (Linux, C++${{ matrix.cpp_standard }}, ${{ matrix.compiler }})
-    runs-on: ubuntu-24.04
+  windows:
+    name: Windows ${{ matrix.compiler }} / C++${{ matrix.standard }}
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - cpp_standard: 20
-            compiler: gcc-14
-            cc: gcc-14
-            cxx: g++-14
-          - cpp_standard: 20
-            compiler: clang-19
-            cc: clang-19
-            cxx: clang++-19
+        runner: [windows-2022, windows-2025]
+        compiler: [msvc, mingw]
+        standard: [17, 20, 23]
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake ninja-build
-        if [ "${{ matrix.compiler }}" = "gcc-14" ]; then
-          sudo apt-get install -y g++-14
-        else
-          sudo apt-get install -y clang-19 clang-tools-19
-        fi
-
-    - name: Symlink clang-scan-deps (Clang)
-      if: startsWith(matrix.compiler, 'clang')
-      run: |
-        if command -v clang-scan-deps-19 &>/dev/null && ! command -v clang-scan-deps &>/dev/null; then
-          sudo ln -s "$(command -v clang-scan-deps-19)" /usr/local/bin/clang-scan-deps
-        fi
-
-    - name: Configure CMake (module target)
-      env:
-        CC: ${{ matrix.cc }}
-        CXX: ${{ matrix.cxx }}
-      run: |
-        cmake -B build -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_CXX_STANDARD=${{ matrix.cpp_standard }} \
-          -DTHREADSCHEDULE_MODULE=ON
-
-    - name: Build module
-      run: cmake --build build --parallel
-
-    - name: Verify module artifact
-      run: |
-        echo "Module library built successfully:"
-        find build -name '*.a' -o -name '*.so' -o -name '*.gcm' -o -name '*.pcm' | head -20
-
-  modules-windows:
-    name: Modules (Windows, C++20, MSVC)
-    runs-on: windows-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup MSVC
-      uses: ilammy/msvc-dev-cmd@v1
-
-    - name: Install Ninja
-      run: choco install ninja --no-progress --yes
-
-    - name: Configure CMake (module target)
-      run: |
-        cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=20 -DTHREADSCHEDULE_MODULE=ON
-
-    - name: Build module
-      run: cmake --build build --parallel
-
-    - name: Verify module artifact
-      run: |
-        echo "Module library built successfully:"
-        Get-ChildItem -Recurse build -Include *.lib,*.ifc,*.obj | Select-Object -First 20
+      - uses: actions/checkout@v4
+      - name: Enable MSVC
+        if: matrix.compiler == 'msvc'
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Enable MinGW
+        if: matrix.compiler == 'mingw'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja
+      - name: Record MSVC version
+        if: matrix.compiler == 'msvc'
+        shell: pwsh
+        run: cl 2>&1 | Select-Object -First 1
+      - name: Record MinGW version
+        if: matrix.compiler == 'mingw'
+        shell: msys2 {0}
+        run: g++ --version
+      - name: Configure MSVC
+        if: matrix.compiler == 'msvc'
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_STANDARD=${{ matrix.standard }}
+          -DTHREADSCHEDULE_BUILD_EXAMPLES=ON
+          -DTHREADSCHEDULE_BUILD_TESTS=ON
+          -DTHREADSCHEDULE_BUILD_DOCS=OFF
+          -Dgtest_force_shared_crt=ON
+      - name: Configure MinGW
+        if: matrix.compiler == 'mingw'
+        shell: msys2 {0}
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_STANDARD=${{ matrix.standard }}
+          -DTHREADSCHEDULE_BUILD_EXAMPLES=ON
+          -DTHREADSCHEDULE_BUILD_TESTS=ON
+          -DTHREADSCHEDULE_BUILD_DOCS=OFF
+      - name: Build MSVC
+        if: matrix.compiler == 'msvc'
+        run: cmake --build build --parallel
+      - name: Test MSVC
+        if: matrix.compiler == 'msvc'
+        run: ctest --test-dir build --output-on-failure -C Release
+      - name: Build MinGW
+        if: matrix.compiler == 'mingw'
+        shell: msys2 {0}
+        run: cmake --build build --parallel
+      - name: Test MinGW
+        if: matrix.compiler == 'mingw'
+        shell: msys2 {0}
+        run: ctest --test-dir build --output-on-failure
