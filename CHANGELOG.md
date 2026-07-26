@@ -623,7 +623,8 @@
 
 ### Migration Guide
 
-Full step-by-step guide: **[docs/MIGRATION_V2.md](docs/MIGRATION_V2.md)**.
+Full step-by-step guide:
+**[docs/MIGRATION_V2.md in v2.4.0](https://github.com/Katze719/ThreadSchedule/blob/v2.4.0/docs/MIGRATION_V2.md)**.
 
 Quick reference:
 
