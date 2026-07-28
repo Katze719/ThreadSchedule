@@ -2,8 +2,10 @@
 #include <gtest/gtest.h>
 #include <memory>
 #include <optional>
+#include <string>
 #include <system_error>
 #include <threadschedule/expected.hpp>
+#include <type_traits>
 #include <vector>
 
 namespace ts = threadschedule;
@@ -558,3 +560,53 @@ TEST(ExpectedStringTest, ValueOrRvalue)
       ts::unexpect, std::make_error_code(std::errc::invalid_argument));
   EXPECT_EQ(std::move(bad).value_or("x"), std::string("x"));
 }
+
+#if THREADSCHEDULE_HAS_STD_EXPECTED
+TEST(ExpectedInteropTest, ImplicitlyConvertsCopyableStatesToStdExpected)
+{
+  static_assert(std::is_convertible_v<ts::expected<int, std::string> const&,
+                                      std::expected<int, std::string>>);
+
+  auto accept_standard
+      = [](std::expected<int, std::string> value) { return value; };
+
+  ts::expected<int, std::string> value(42);
+  auto standard_value = accept_standard(value);
+  ASSERT_TRUE(standard_value.has_value());
+  EXPECT_EQ(standard_value.value(), 42);
+
+  ts::expected<int, std::string> error(ts::unexpect, "failed");
+  auto standard_error = accept_standard(error);
+  ASSERT_FALSE(standard_error.has_value());
+  EXPECT_EQ(standard_error.error(), "failed");
+
+  ts::expected<void, std::string> empty;
+  std::expected<void, std::string> standard_empty = empty;
+  EXPECT_TRUE(standard_empty.has_value());
+}
+
+TEST(ExpectedInteropTest, MovesMoveOnlyStatesToStdExpected)
+{
+  using move_value = ts::expected<std::unique_ptr<int>, std::string>;
+  static_assert(
+      std::is_convertible_v<move_value&&,
+                            std::expected<std::unique_ptr<int>, std::string>>);
+  static_assert(!std::is_convertible_v<
+                move_value const&,
+                std::expected<std::unique_ptr<int>, std::string>>);
+
+  move_value value(std::make_unique<int>(42));
+  std::expected<std::unique_ptr<int>, std::string> standard_value
+      = std::move(value);
+  ASSERT_TRUE(standard_value.has_value());
+  ASSERT_TRUE(static_cast<bool>(standard_value.value()));
+  EXPECT_EQ(*standard_value.value(), 42);
+
+  ts::expected<void, std::unique_ptr<int>> error(ts::unexpect,
+                                                 std::make_unique<int>(7));
+  std::expected<void, std::unique_ptr<int>> standard_error = std::move(error);
+  ASSERT_FALSE(standard_error.has_value());
+  ASSERT_TRUE(static_cast<bool>(standard_error.error()));
+  EXPECT_EQ(*standard_error.error(), 7);
+}
+#endif

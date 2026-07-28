@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <future>
+#include <memory>
 #include <string>
 #include <system_error>
 #include <type_traits>
@@ -263,6 +264,70 @@ TEST(V3Api, PoolDefaultsToNonThrowingSubmission)
   pool.wait();
 }
 
+TEST(V3Api, PoolMoveAssignmentUsesDestinationShutdownPolicy)
+{
+  threadschedule::thread_pool_config config;
+  config.worker_count = 1;
+  config.shutdown = threadschedule::shutdown_policy::drop_pending;
+  threadschedule::thread_pool destination(config);
+
+  std::promise<void> entered;
+  auto entered_future = entered.get_future();
+  std::promise<void> release;
+  auto release_future = release.get_future().share();
+  ASSERT_TRUE(destination
+                  .post(
+                      [&entered, release_future]
+                        {
+                          entered.set_value();
+                          release_future.wait();
+                        })
+                  .has_value());
+  if (entered_future.wait_for(2s) != std::future_status::ready)
+    {
+      release.set_value();
+      FAIL() << "destination worker did not start";
+    }
+
+  std::atomic<int> queued_runs{ 0 };
+  bool queued = true;
+  for (int i = 0; i < 4; ++i)
+    {
+      auto posted = destination.post([&queued_runs] { ++queued_runs; });
+      queued = queued && posted.has_value();
+    }
+
+  threadschedule::thread_pool source(1);
+  auto assignment = std::async(std::launch::async, [&destination, &source]
+                                 { destination = std::move(source); });
+
+  EXPECT_EQ(assignment.wait_for(20ms), std::future_status::timeout);
+  release.set_value();
+  EXPECT_EQ(assignment.wait_for(2s), std::future_status::ready);
+  assignment.get();
+
+  EXPECT_TRUE(queued);
+  EXPECT_EQ(queued_runs.load(), 0);
+}
+
+#ifndef _WIN32
+TEST(V3Api, PoolWorkerNamesReserveSpaceForGeneratedSuffix)
+{
+  threadschedule::thread_pool_config pool_config;
+  pool_config.worker_count = 12;
+  pool_config.workers.name = "123456789012345";
+  auto pool = threadschedule::thread_pool::create(std::move(pool_config));
+  ASSERT_TRUE(pool.has_value()) << pool.error().message();
+
+  threadschedule::scheduled_pool_config scheduled_config;
+  scheduled_config.worker_count = 12;
+  scheduled_config.workers.name = "1234567890123";
+  auto scheduler
+      = threadschedule::scheduled_pool::create(std::move(scheduled_config));
+  ASSERT_TRUE(scheduler.has_value()) << scheduler.error().message();
+}
+#endif
+
 TEST(V3Api, ScheduledPoolReportsShutdown)
 {
   threadschedule::scheduled_pool scheduler(1);
@@ -309,6 +374,47 @@ TEST(V3Api, ScheduledPoolSupportsDelayedPeriodicTasks)
   scheduled->cancel();
 }
 
+TEST(V3Api, ScheduledPoolSupportsMoveOnlyPeriodicCallables)
+{
+  threadschedule::scheduled_pool scheduler(1);
+  std::promise<int> immediate_run;
+  auto immediate_ready = immediate_run.get_future();
+  std::promise<int> delayed_run;
+  auto delayed_ready = delayed_run.get_future();
+
+  auto immediate = scheduler.schedule_periodic(
+      20ms,
+      [payload = std::make_unique<int>(41), &immediate_run,
+       reported = false]() mutable
+        {
+          if (!reported)
+            {
+              reported = true;
+              immediate_run.set_value(*payload);
+            }
+        });
+  auto delayed = scheduler.schedule_periodic_after(
+      10ms, 20ms,
+      [payload = std::make_unique<int>(42), &delayed_run,
+       reported = false]() mutable
+        {
+          if (!reported)
+            {
+              reported = true;
+              delayed_run.set_value(*payload);
+            }
+        });
+
+  ASSERT_TRUE(immediate.has_value());
+  ASSERT_TRUE(delayed.has_value());
+  ASSERT_EQ(immediate_ready.wait_for(2s), std::future_status::ready);
+  ASSERT_EQ(delayed_ready.wait_for(2s), std::future_status::ready);
+  EXPECT_EQ(immediate_ready.get(), 41);
+  EXPECT_EQ(delayed_ready.get(), 42);
+  immediate->cancel();
+  delayed->cancel();
+}
+
 TEST(V3Api, ScheduledPoolReportsTaskExceptions)
 {
   std::promise<std::string> reported;
@@ -327,21 +433,6 @@ TEST(V3Api, ScheduledPoolReportsTaskExceptions)
   ASSERT_TRUE(scheduled.has_value());
   EXPECT_EQ(report.get(), "scheduled boom");
 }
-
-#ifndef _WIN32
-TEST(V3Api, ScheduledPoolCreationPreservesConfigurationError)
-{
-  threadschedule::scheduled_pool_config config;
-  config.worker_count = 1;
-  config.workers.name = "this-name-is-longer-than-fifteen-characters";
-
-  auto scheduler = threadschedule::scheduled_pool::create(std::move(config));
-
-  ASSERT_FALSE(scheduler.has_value());
-  EXPECT_EQ(scheduler.error(),
-            std::make_error_code(std::errc::invalid_argument));
-}
-#endif
 
 TEST(V3Api, PoolReportsTaskExceptionsAndPreservesFutureException)
 {

@@ -38,7 +38,7 @@ TEST(PoolBackendTest, TryPostReturnsExpected)
   auto finished = done.get_future();
   auto result = pool.try_post([&done] { done.set_value(); });
   ASSERT_TRUE(result.has_value());
-  EXPECT_EQ(finished.wait_for(std::chrono::seconds(2)),
+  ASSERT_EQ(finished.wait_for(std::chrono::seconds(2)),
             std::future_status::ready);
   pool.shutdown(shutdown_policy_backend::drain);
 }
@@ -442,6 +442,30 @@ TEST(PoolBackendTest, ScheduledPeriodicRunsMultipleTimes)
   handle.cancel();
   scheduler.shutdown();
   EXPECT_GE(count.load(), 3);
+}
+
+TEST(PoolBackendTest, ScheduledPeriodicAcceptsMoveOnlyCallable)
+{
+  scheduled_pool_backend scheduler(1);
+  std::promise<int> first_run;
+  auto finished = first_run.get_future();
+
+  auto handle
+      = scheduler.schedule_periodic(std::chrono::milliseconds(20),
+                                    [payload = std::make_unique<int>(55),
+                                     &first_run, reported = false]() mutable
+                                      {
+                                        if (!reported)
+                                          {
+                                            reported = true;
+                                            first_run.set_value(*payload);
+                                          }
+                                      });
+
+  EXPECT_EQ(finished.wait_for(std::chrono::seconds(2)),
+            std::future_status::ready);
+  EXPECT_EQ(finished.get(), 55);
+  handle.cancel();
 }
 
 TEST(PoolBackendTest, ScheduledCancel)

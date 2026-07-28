@@ -1289,7 +1289,26 @@ public:
   }
 
   thread_pool(thread_pool&&) noexcept = default;
-  auto operator=(thread_pool&&) noexcept -> thread_pool& = default;
+  auto
+  operator=(thread_pool&& other) noexcept -> thread_pool&
+  {
+    if (this != &other)
+      {
+        if (impl_)
+          {
+            try
+              {
+                impl_->shutdown(detail::to_native(config_.shutdown));
+              }
+            catch (...)
+              {
+              }
+          }
+        config_ = std::move(other.config_);
+        impl_ = std::move(other.impl_);
+      }
+    return *this;
+  }
   thread_pool(thread_pool const&) = delete;
   auto operator=(thread_pool const&) -> thread_pool& = delete;
 

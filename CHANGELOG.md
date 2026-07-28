@@ -76,6 +76,12 @@
 
 - **Stable C++17 core surface** -- public callable and inline implementation
   storage remains stable under C++17, C++20, C++23, and C++26.
+- **Standard expected interoperability** -- when C++23 `std::expected` is
+  available, the library-owned `expected<T, E>` implicitly converts to the
+  matching standard type and moves move-only payloads from rvalues.
+- **Pool lifecycle and callable fixes** -- pool move assignment now honors the
+  destination shutdown policy, generated Linux worker names stay within the
+  platform limit, and periodic scheduling accepts move-only callables.
 - **Conan options match supported targets** -- removed the stale `cpp_module`
   package option and its forwarding CMake definition after module support was
   removed.

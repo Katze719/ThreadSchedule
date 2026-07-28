@@ -11,9 +11,9 @@
  * specialization to avoid ABI drift between consumers built with different
  * language modes.
  *
- * When @c std::expected is available, this header may still include
- * `<expected>` for interoperability helpers, but it does not alias the public
- * ThreadSchedule types to the standard library implementation.
+ * When @c std::expected is available, the library-owned type implicitly
+ * converts to the matching standard specialization. It remains an independent
+ * type rather than an alias to preserve its layout across language modes.
  *
  * @par Exception handling
  * The polyfill respects @c -fno-exceptions builds.  When exceptions are
@@ -496,6 +496,32 @@ public:
     return std::move(storage_.error_);
   }
 
+#if THREADSCHEDULE_HAS_STD_EXPECTED
+  template <typename u = T, typename g = E,
+            std::enable_if_t<std::is_copy_constructible_v<u>
+                                 && std::is_copy_constructible_v<g>,
+                             int> = 0>
+  constexpr
+  operator std::expected<T, E>() const&
+  {
+    if (has_)
+      return std::expected<T, E>(std::in_place, storage_.value_);
+    return std::expected<T, E>(std::unexpect, storage_.error_);
+  }
+
+  template <typename u = T, typename g = E,
+            std::enable_if_t<std::is_move_constructible_v<u>
+                                 && std::is_move_constructible_v<g>,
+                             int> = 0>
+  constexpr
+  operator std::expected<T, E>() &&
+  {
+    if (has_)
+      return std::expected<T, E>(std::in_place, std::move(storage_.value_));
+    return std::expected<T, E>(std::unexpect, std::move(storage_.error_));
+  }
+#endif
+
   template <typename u>
   constexpr auto
   value_or(u&& default_value) const& -> T
@@ -916,6 +942,28 @@ public:
   {
     return std::move(error_);
   }
+
+#if THREADSCHEDULE_HAS_STD_EXPECTED
+  template <typename g = E,
+            std::enable_if_t<std::is_copy_constructible_v<g>, int> = 0>
+  constexpr
+  operator std::expected<void, E>() const&
+  {
+    if (has_)
+      return std::expected<void, E>();
+    return std::expected<void, E>(std::unexpect, error_);
+  }
+
+  template <typename g = E,
+            std::enable_if_t<std::is_move_constructible_v<g>, int> = 0>
+  constexpr
+  operator std::expected<void, E>() &&
+  {
+    if (has_)
+      return std::expected<void, E>();
+    return std::expected<void, E>(std::unexpect, std::move(error_));
+  }
+#endif
 
   constexpr void
   emplace()

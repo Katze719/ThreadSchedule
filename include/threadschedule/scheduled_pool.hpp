@@ -151,7 +151,7 @@ class scheduled_pool_backend_base
 public:
   using task_type = std::function<void()>;
   using one_shot_task_type = detail::move_callable<void()>;
-  using periodic_task_type = detail::copyable_callable<void()>;
+  using periodic_task_type = detail::move_callable<void()>;
   using time_point = std::chrono::steady_clock::time_point;
   using duration = std::chrono::steady_clock::duration;
 
@@ -290,7 +290,7 @@ public:
     auto const run_time = std::chrono::steady_clock::now() + initial_delay;
     return insert_periodic_task(
         run_time, interval,
-        detail::make_copyable_callable<void()>(std::move(task)));
+        detail::make_move_callable<void()>(std::move(task)));
   }
 
   template <
@@ -307,7 +307,7 @@ public:
     auto const run_time = std::chrono::steady_clock::now() + initial_delay;
     return insert_periodic_task(
         run_time, interval,
-        detail::make_copyable_callable<void()>(std::forward<F>(task)));
+        detail::make_move_callable<void()>(std::forward<F>(task)));
   }
 
   /**

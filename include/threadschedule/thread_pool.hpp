@@ -22,6 +22,7 @@
 #include <optional>
 #include <queue>
 #include <random>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <vector>
@@ -31,6 +32,20 @@ namespace threadschedule
 
 namespace detail
 {
+
+inline auto
+worker_thread_name(std::string const& name_prefix, size_t index) -> std::string
+{
+  std::string const suffix = "_" + std::to_string(index);
+#ifndef _WIN32
+  constexpr size_t linux_name_limit = 15;
+  if (suffix.size() >= linux_name_limit)
+    return suffix.substr(suffix.size() - linux_name_limit);
+  return name_prefix.substr(0, linux_name_limit - suffix.size()) + suffix;
+#else
+  return name_prefix + suffix;
+#endif
+}
 
 template <typename WorkerRange>
 inline auto
@@ -42,7 +57,7 @@ configure_worker_threads(WorkerRange& workers, std::string const& name_prefix,
   std::error_code first_error;
   for (size_t i = 0; i < workers.size(); ++i)
     {
-      std::string const thread_name = name_prefix + "_" + std::to_string(i);
+      std::string const thread_name = worker_thread_name(name_prefix, i);
       auto named = workers[i].set_name(thread_name);
       if (!named && !first_error)
         first_error = named.error();
@@ -66,8 +81,7 @@ configure_worker_threads(WorkerRange& workers,
     {
       if (!config.name.empty())
         {
-          std::string const thread_name
-              = config.name + "_" + std::to_string(i);
+          std::string const thread_name = worker_thread_name(config.name, i);
           auto named = workers[i].set_name(thread_name);
           if (!named && !first_error)
             first_error = named.error();

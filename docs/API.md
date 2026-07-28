@@ -24,6 +24,11 @@ library operation. The static `create(...)` factories remain available as an
 optional non-throwing construction path. Explicitly named `*_or_throw` helpers
 are available where a throwing operation is otherwise useful.
 
+When the standard library provides C++23 `std::expected`, a
+`threadschedule::expected<T, E>` implicitly converts to the matching
+`std::expected<T, E>`. Converting an lvalue copies its active value or error;
+converting an rvalue moves it, including move-only payloads.
+
 An accepted task returns a standard future. Exceptions thrown by the task are
 stored in the future and rethrown by `get()`. `thread_pool_config::on_task_error`
 can observe the same exception as a `task_error` without consuming it.
