@@ -81,7 +81,8 @@
   matching standard type and moves move-only payloads from rvalues.
 - **Pool lifecycle and callable fixes** -- pool move assignment now honors the
   destination shutdown policy, generated Linux worker names stay within the
-  platform limit, and periodic scheduling accepts move-only callables.
+  platform limit, periodic scheduling accepts move-only callables, and
+  moved-from pools and registries remain safe to inspect and reassign.
 - **Conan options match supported targets** -- removed the stale `cpp_module`
   package option and its forwarding CMake definition after module support was
   removed.

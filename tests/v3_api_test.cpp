@@ -264,6 +264,64 @@ TEST(V3Api, PoolDefaultsToNonThrowingSubmission)
   pool.wait();
 }
 
+TEST(V3Api, MovedFromPoolsRemainSafe)
+{
+  auto expect_stopped = [](threadschedule::thread_pool& pool)
+    {
+      EXPECT_EQ(pool.size(), 0u);
+
+      auto submitted = pool.submit([] { return 1; });
+      ASSERT_FALSE(submitted.has_value());
+      EXPECT_EQ(submitted.error(),
+                std::make_error_code(std::errc::operation_canceled));
+
+      auto posted = pool.post([] {});
+      ASSERT_FALSE(posted.has_value());
+      EXPECT_EQ(posted.error(),
+                std::make_error_code(std::errc::operation_canceled));
+
+      auto waited = pool.wait();
+      ASSERT_FALSE(waited.has_value());
+      EXPECT_EQ(waited.error(),
+                std::make_error_code(std::errc::operation_canceled));
+
+      threadschedule::thread_config config;
+      auto configured = pool.configure_workers(config);
+      ASSERT_FALSE(configured.has_value());
+      EXPECT_EQ(configured.error(),
+                std::make_error_code(std::errc::operation_canceled));
+
+      try
+        {
+          pool.wait_or_throw();
+          FAIL() << "wait_or_throw should reject a moved-from pool";
+        }
+      catch (std::system_error const& error)
+        {
+          EXPECT_EQ(error.code(),
+                    std::make_error_code(std::errc::operation_canceled));
+        }
+
+      EXPECT_TRUE(pool.shutdown().has_value());
+    };
+
+  threadschedule::thread_pool source(1);
+  threadschedule::thread_pool moved(std::move(source));
+  expect_stopped(source);
+
+  auto first = moved.submit([] { return 41; });
+  ASSERT_TRUE(first.has_value());
+  EXPECT_EQ(first->get(), 41);
+
+  threadschedule::thread_pool assigned(1);
+  assigned = std::move(moved);
+  expect_stopped(moved);
+
+  auto second = assigned.submit([] { return 42; });
+  ASSERT_TRUE(second.has_value());
+  EXPECT_EQ(second->get(), 42);
+}
+
 TEST(V3Api, PoolMoveAssignmentUsesDestinationShutdownPolicy)
 {
   threadschedule::thread_pool_config config;
@@ -538,6 +596,59 @@ TEST(V3Api, RegistryUsesLowercaseSnapshots)
 
   EXPECT_TRUE(registry.unregister_current_thread().has_value());
   EXPECT_TRUE(registry.empty());
+}
+
+TEST(V3Api, MovedFromRegistriesRemainSafe)
+{
+  threadschedule::thread_registry source;
+  ASSERT_TRUE(
+      source.register_current_thread("original", "source").has_value());
+
+  threadschedule::thread_registry moved(std::move(source));
+  // Intentionally verify the documented moved-from state.
+  // NOLINTNEXTLINE(bugprone-use-after-move)
+  EXPECT_TRUE(source.empty());
+  EXPECT_EQ(source.count(), 0u);
+  auto source_snapshot = source.snapshot();
+  ASSERT_TRUE(source_snapshot.has_value());
+  EXPECT_TRUE(source_snapshot->empty());
+
+  auto source_registration
+      = source.register_current_thread("reused", "source");
+  ASSERT_FALSE(source_registration.has_value());
+  EXPECT_EQ(source_registration.error(),
+            std::make_error_code(std::errc::operation_canceled));
+
+  source = threadschedule::thread_registry{};
+  ASSERT_TRUE(source.register_current_thread("reused", "source").has_value());
+  EXPECT_EQ(source.count(), 1u);
+  ASSERT_TRUE(source.unregister_current_thread().has_value());
+
+  threadschedule::thread_registry assigned;
+  assigned = std::move(moved);
+  // Intentionally verify the documented moved-from state.
+  // NOLINTNEXTLINE(bugprone-use-after-move)
+  EXPECT_TRUE(moved.empty());
+  EXPECT_EQ(moved.count(), 0u);
+  auto moved_snapshot = moved.snapshot();
+  ASSERT_TRUE(moved_snapshot.has_value());
+  EXPECT_TRUE(moved_snapshot->empty());
+
+  auto moved_registration = moved.register_current_thread("reused", "moved");
+  ASSERT_FALSE(moved_registration.has_value());
+  EXPECT_EQ(moved_registration.error(),
+            std::make_error_code(std::errc::operation_canceled));
+
+  moved = threadschedule::thread_registry{};
+  ASSERT_TRUE(moved.register_current_thread("reused", "moved").has_value());
+  EXPECT_EQ(moved.count(), 1u);
+  ASSERT_TRUE(moved.unregister_current_thread().has_value());
+
+  auto assigned_snapshot = assigned.snapshot();
+  ASSERT_TRUE(assigned_snapshot.has_value());
+  ASSERT_EQ(assigned_snapshot->size(), 1u);
+  EXPECT_EQ(assigned_snapshot->front().name, "original");
+  ASSERT_TRUE(assigned.unregister_current_thread().has_value());
 }
 
 TEST(V3Api, RegistrySetsAndReadsPortablePriority)

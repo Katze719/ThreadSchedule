@@ -139,6 +139,9 @@ pool.wait();
 `submit` returns `result<std::future<T>>`; `post` returns `result<void>`.
 Destruction uses the configured shutdown policy. `drain` completes accepted
 work, while `drop_pending` discards work that has not started.
+After a move, the source pool has size zero. Submission, waiting, and worker
+configuration return `operation_canceled`; shutdown remains an idempotent
+success.
 
 ## Scheduled work
 
@@ -192,6 +195,8 @@ supplies one instance to compatible DSOs that link it.
 Entries added by `register_current_thread` retain a native control block, so
 their `native_id` can be passed to `thread_registry::configure` while the
 registered thread remains alive.
+After a move, the source registry reads as empty and mutating operations return
+`operation_canceled`. Assigning a new registry makes it usable again.
 
 ## Scheduling
 

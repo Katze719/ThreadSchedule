@@ -1101,6 +1101,8 @@ public:
   register_current_thread(std::string name = {}, std::string component = {})
       -> result<void>
   {
+    if (!has_native())
+      return unexpected(std::make_error_code(std::errc::operation_canceled));
     try
       {
         auto control = thread_control_block::create_for_current_thread();
@@ -1117,6 +1119,8 @@ public:
   auto
   unregister_current_thread() -> result<void>
   {
+    if (!has_native())
+      return unexpected(std::make_error_code(std::errc::operation_canceled));
     try
       {
         native().unregister_current_thread();
@@ -1131,18 +1135,20 @@ public:
   [[nodiscard]] auto
   count() const -> std::size_t
   {
-    return native().count();
+    return has_native() ? native().count() : 0;
   }
 
   [[nodiscard]] auto
   empty() const -> bool
   {
-    return native().empty();
+    return !has_native() || native().empty();
   }
 
   [[nodiscard]] auto
   snapshot() const -> result<std::vector<registered_thread>>
   {
+    if (!has_native())
+      return std::vector<registered_thread>{};
     try
       {
         auto entries = native().query().entries();
@@ -1166,6 +1172,8 @@ public:
   configure(std::uint64_t native_id, thread_config const& config)
       -> result<void>
   {
+    if (!has_native())
+      return unexpected(std::make_error_code(std::errc::operation_canceled));
     try
       {
         return native().configure(static_cast<native_thread_id>(native_id),
@@ -1186,6 +1194,8 @@ public:
   auto
   set_nice(std::uint64_t native_id, int nice_value) -> result<void>
   {
+    if (!has_native())
+      return unexpected(std::make_error_code(std::errc::operation_canceled));
     try
       {
         return native().configure(
@@ -1201,6 +1211,8 @@ public:
   [[nodiscard]] auto
   get_priority(std::uint64_t native_id) const -> result<priority_level>
   {
+    if (!has_native())
+      return unexpected(std::make_error_code(std::errc::operation_canceled));
     try
       {
         auto value = native().get_nice_value(
@@ -1221,6 +1233,12 @@ private:
   };
 
   explicit thread_registry(global_tag /*unused*/) noexcept : global_(true) {}
+
+  [[nodiscard]] auto
+  has_native() const noexcept -> bool
+  {
+    return global_ || owned_ != nullptr;
+  }
 
   [[nodiscard]] auto
   native() -> thread_registry_backend&
@@ -1251,7 +1269,8 @@ global_registry() -> thread_registry&
 inline void
 use_global_registry(thread_registry* value)
 {
-  set_external_registry(value != nullptr ? &value->native() : nullptr);
+  set_external_registry(
+      value != nullptr && value->has_native() ? &value->native() : nullptr);
 }
 
 struct thread_pool_config
@@ -1343,6 +1362,8 @@ public:
   submit(F&& function, Args&&... args)
       -> result<std::future<std::invoke_result_t<F, Args...>>>
   {
+    if (!impl_)
+      return unexpected(std::make_error_code(std::errc::operation_canceled));
     try
       {
         using return_type = std::invoke_result_t<F, Args...>;
@@ -1405,6 +1426,8 @@ public:
   auto
   post(F&& function, Args&&... args) -> result<void>
   {
+    if (!impl_)
+      return unexpected(std::make_error_code(std::errc::operation_canceled));
     try
       {
         if (!config_.on_task_error)
@@ -1451,6 +1474,8 @@ public:
   auto
   wait() -> result<void>
   {
+    if (!impl_)
+      return unexpected(std::make_error_code(std::errc::operation_canceled));
     try
       {
         impl_->wait_for_tasks();
@@ -1465,12 +1490,18 @@ public:
   void
   wait_or_throw()
   {
+    if (!impl_)
+      throw std::system_error(
+          std::make_error_code(std::errc::operation_canceled),
+          "thread_pool::wait");
     impl_->wait_for_tasks();
   }
 
   auto
   configure_workers(thread_config const& config) -> result<void>
   {
+    if (!impl_)
+      return unexpected(std::make_error_code(std::errc::operation_canceled));
     try
       {
         return impl_->configure_threads(detail::to_native(config));
@@ -1484,6 +1515,8 @@ public:
   auto
   shutdown(shutdown_policy policy = shutdown_policy::drain) -> result<void>
   {
+    if (!impl_)
+      return {};
     try
       {
         impl_->shutdown(detail::to_native(policy));
@@ -1498,7 +1531,7 @@ public:
   [[nodiscard]] auto
   size() const noexcept -> std::size_t
   {
-    return impl_->size();
+    return impl_ ? impl_->size() : 0;
   }
 
 private:
