@@ -8,6 +8,10 @@ add_test(NAME CompileTest COMMAND compile_test)
 # Google Test based tests
 if(TARGET gtest)
     include(GoogleTest)
+    # Avoid parallel POST_BUILD discovery racing on a shared JSON file in
+    # CMake 4.4. PRE_TEST also ensures Windows runtime dependencies are ready.
+    set(CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE PRE_TEST)
+
     # detail::thread_backend tests
     add_executable(callable_test callable_test.cpp)
     target_link_libraries(callable_test
