@@ -408,6 +408,27 @@ TEST(V3Api, AffinityIsANormalizedValueType)
   EXPECT_EQ(affinity.cpus(), (std::vector<int>{ 1, 2 }));
 }
 
+TEST(V3Api, AffinityRejectsPartiallyRepresentableMasks)
+{
+#ifdef _WIN32
+  constexpr int unsupported_cpu = 64;
+#else
+  constexpr int unsupported_cpu = CPU_SETSIZE;
+#endif
+  threadschedule::thread_affinity affinity({ 0, unsupported_cpu });
+  std::promise<void> release;
+  auto ready = release.get_future().share();
+  threadschedule::thread worker([ready] { ready.wait(); });
+
+  auto configured = worker.set_affinity(affinity);
+
+  release.set_value();
+  ASSERT_TRUE(worker.join().has_value());
+  ASSERT_FALSE(configured.has_value());
+  EXPECT_EQ(configured.error(),
+            std::make_error_code(std::errc::invalid_argument));
+}
+
 TEST(V3Api, RegistryUsesLowercaseSnapshots)
 {
   threadschedule::thread_registry registry;

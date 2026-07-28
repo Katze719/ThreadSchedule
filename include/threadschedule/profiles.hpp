@@ -108,19 +108,23 @@ background() -> thread_profile
 namespace detail
 {
 
+[[nodiscard]] inline auto
+scheduling_from_profile(thread_profile const& p) -> native_scheduling_config
+{
+  return { native_scheduling_intent::normal, p.policy, p.priority,
+           p.priority_model };
+}
+
 /**
  * @brief Apply policy + optional affinity to any type exposing
- *        set_scheduling_policy() and set_affinity().
+ *        configure() and set_affinity().
  */
 template <typename T>
 inline auto
 apply_profile_to(T& t, thread_profile const& p)
     -> expected<void, std::error_code>
 {
-  native_scheduling_config scheduling{ native_scheduling_intent::normal,
-                                       p.policy, p.priority,
-                                       p.priority_model };
-  auto scheduled = t.configure(scheduling);
+  auto scheduled = t.configure(scheduling_from_profile(p));
   if (!scheduled)
     return unexpected(scheduled.error());
   if (p.affinity.has_value())
@@ -139,14 +143,31 @@ apply_profile_to_pool(PoolType& pool, std::string const& name_prefix,
 {
   native_thread_config config;
   config.name = name_prefix;
-  config.scheduling = { native_scheduling_intent::normal, p.policy, p.priority,
-                        p.priority_model };
+  config.scheduling = scheduling_from_profile(p);
   auto configured = pool.configure_threads(config);
   if (!configured)
     return unexpected(configured.error());
   if (p.affinity.has_value())
     return pool.set_affinity(*p.affinity);
   return {};
+}
+
+template <typename T>
+inline auto
+apply_profile_detailed_to(T& t, thread_profile const& p)
+    -> std::vector<std::error_code>
+{
+  std::vector<std::error_code> results;
+  auto scheduling_result = t.configure(scheduling_from_profile(p));
+  results.push_back(scheduling_result.has_value() ? std::error_code{}
+                                                  : scheduling_result.error());
+  if (p.affinity.has_value())
+    {
+      auto affinity_result = t.set_affinity(*p.affinity);
+      results.push_back(affinity_result.has_value() ? std::error_code{}
+                                                    : affinity_result.error());
+    }
+  return results;
 }
 
 } // namespace detail
@@ -227,7 +248,7 @@ inline auto
 apply_profile(thread_registry_backend& reg, native_thread_id tid,
               thread_profile const& p) -> expected<void, std::error_code>
 {
-  auto scheduled = reg.set_scheduling_policy(tid, p.policy, p.priority);
+  auto scheduled = reg.configure(tid, detail::scheduling_from_profile(p));
   if (!scheduled)
     return unexpected(scheduled.error());
   if (p.affinity.has_value())
@@ -244,7 +265,7 @@ apply_profile(thread_registry_backend& reg, native_thread_id tid,
  * (zero) error code; failed steps carry the specific OS error.
  *
  * The steps are, in order:
- *  0 - set_scheduling_policy
+ *  0 - configure scheduling
  *  1 - set_affinity (only present when @c p.affinity has a value)
  *
  * @tparam ThreadLike A type satisfying the is_thread_like trait.
@@ -256,17 +277,7 @@ inline auto
 apply_profile_detailed(ThreadLike& t, thread_profile const& p)
     -> std::vector<std::error_code>
 {
-  std::vector<std::error_code> results;
-  auto policy_result = t.set_scheduling_policy(p.policy, p.priority);
-  results.push_back(policy_result.has_value() ? std::error_code{}
-                                              : policy_result.error());
-  if (p.affinity.has_value())
-    {
-      auto aff_result = t.set_affinity(*p.affinity);
-      results.push_back(aff_result.has_value() ? std::error_code{}
-                                               : aff_result.error());
-    }
-  return results;
+  return detail::apply_profile_detailed_to(t, p);
 }
 
 /**
@@ -277,17 +288,7 @@ inline auto
 apply_profile_detailed(thread_control_block& t, thread_profile const& p)
     -> std::vector<std::error_code>
 {
-  std::vector<std::error_code> results;
-  auto policy_result = t.set_scheduling_policy(p.policy, p.priority);
-  results.push_back(policy_result.has_value() ? std::error_code{}
-                                              : policy_result.error());
-  if (p.affinity.has_value())
-    {
-      auto aff_result = t.set_affinity(*p.affinity);
-      results.push_back(aff_result.has_value() ? std::error_code{}
-                                               : aff_result.error());
-    }
-  return results;
+  return detail::apply_profile_detailed_to(t, p);
 }
 
 } // namespace threadschedule

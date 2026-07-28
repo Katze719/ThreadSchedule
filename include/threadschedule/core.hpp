@@ -327,7 +327,11 @@ to_native(scheduling_config config) noexcept -> native_scheduling_config
 [[nodiscard]] inline auto
 to_native(thread_affinity const& affinity) -> native_thread_affinity
 {
-  return native_thread_affinity(affinity.cpus());
+  native_thread_affinity native(affinity.cpus());
+  if (native.get_cpus() != affinity.cpus())
+    throw std::system_error(std::make_error_code(std::errc::invalid_argument),
+                            "thread affinity is not representable");
+  return native;
 }
 
 [[nodiscard]] inline auto

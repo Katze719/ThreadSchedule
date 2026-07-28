@@ -48,6 +48,12 @@
 - **Specific native errors are preserved** -- thread, pool, profile, registry,
   and scheduler configuration returns the first concrete platform error
   instead of replacing it with a generic permission error.
+- **Profiles preserve priority semantics** -- registry and detailed profile
+  application now honor the profile's priority model, including Linux nice
+  values, instead of silently treating every profile as platform-native.
+- **Portable affinity conversion is lossless** -- masks containing CPUs that
+  cannot be represented by the platform-native affinity type now return
+  `invalid_argument` instead of applying only the representable subset.
 - **Controllable registry entries** -- `thread_registry::register_current_thread`
   now retains a native control block, allowing later `configure(native_id,
   ...)` calls for the live registered thread.
@@ -70,6 +76,9 @@
 
 - **Stable C++17 core surface** -- public callable and inline implementation
   storage remains stable under C++17, C++20, C++23, and C++26.
+- **Conan options match supported targets** -- removed the stale `cpp_module`
+  package option and its forwarding CMake definition after module support was
+  removed.
 - **Documentation and CI reset** -- examples, migration guidance, packaging,
   integrations, and compiler matrices describe and test the actual v3 API.
 
