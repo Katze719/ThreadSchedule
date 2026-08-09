@@ -4,7 +4,7 @@
 add_executable(basic_example basic_example.cpp)
 target_link_libraries(basic_example ThreadSchedule::ThreadSchedule) 
 
-# Performance benchmark for high-performance thread_pool_backend (requires Google Benchmark)
+# Performance benchmark for advanced::work_stealing_pool (requires Google Benchmark)
 if(TARGET benchmark::benchmark)
     add_executable(performance_benchmark performance_benchmark.cpp)
     target_link_libraries(performance_benchmark ThreadSchedule::ThreadSchedule benchmark::benchmark)
@@ -32,6 +32,11 @@ target_link_libraries(error_handling_example ThreadSchedule::ThreadSchedule)
 add_executable(thread_configuration_example thread_configuration_example.cpp)
 target_link_libraries(thread_configuration_example
                       ThreadSchedule::ThreadSchedule)
+
+if(CMAKE_CXX_STANDARD GREATER_EQUAL 20)
+    add_executable(jthread_example jthread_example.cpp)
+    target_link_libraries(jthread_example ThreadSchedule::ThreadSchedule)
+endif()
 
 # Runtime shared registry example (requires THREADSCHEDULE_RUNTIME)
 add_subdirectory(runtime_shared)

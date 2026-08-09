@@ -15,18 +15,6 @@ project(ThreadSchedule
     LANGUAGES CXX
 )
 
-# Ensure MSVC uses the shared runtime (/MD, /MDd) to avoid CRT mismatches with dependencies
-if(MSVC)
-    foreach(flag_var CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_C_FLAGS_MINSIZEREL
-        CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_MINSIZEREL)
-        if(DEFINED ${flag_var})
-            string(REGEX REPLACE "/MTd" "/MDd" ${flag_var} "${${flag_var}}")
-            string(REGEX REPLACE "/MT" "/MD" ${flag_var} "${${flag_var}}")
-            set(${flag_var} "${${flag_var}}" CACHE STRING "" FORCE)
-        endif()
-    endforeach()
-endif()
-
 # Only set CMAKE_CXX_STANDARD if not already set by parent project
 if(NOT DEFINED CMAKE_CXX_STANDARD)
     set(CMAKE_CXX_STANDARD 17)
@@ -133,14 +121,6 @@ target_include_directories(ThreadSchedule INTERFACE
 # Link libraries
 target_link_libraries(ThreadSchedule INTERFACE Threads::Threads)
 
-# Windows: ensure modern API availability macros
-if(WIN32)
-    target_compile_definitions(ThreadSchedule INTERFACE
-        $<BUILD_INTERFACE:_WIN32_WINNT=0x0A00>
-        $<BUILD_INTERFACE:NOMINMAX>
-    )
-endif()
-
 # Platform-specific libraries
 if(UNIX AND NOT APPLE AND NOT WIN32)
     # Linux-specific libraries
@@ -165,23 +145,6 @@ if(THREADSCHEDULE_IS_TOPLEVEL_PROJECT)
             $<BUILD_INTERFACE:/W4 /permissive- /Zc:preprocessor /EHsc>
         )
     endif()
-endif()
-
-# Copy compile_commands.json to project root for clangd (single-config generators only)
-if(THREADSCHEDULE_IS_TOPLEVEL_PROJECT
-   AND CMAKE_EXPORT_COMPILE_COMMANDS
-   AND NOT CMAKE_CONFIGURATION_TYPES
-   AND (THREADSCHEDULE_BUILD_EXAMPLES
-        OR THREADSCHEDULE_BUILD_TESTS
-        OR THREADSCHEDULE_BUILD_BENCHMARKS
-        OR THREADSCHEDULE_RUNTIME))
-    add_custom_target(copy-compile-commands ALL
-        ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_BINARY_DIR}/compile_commands.json
-        ${CMAKE_SOURCE_DIR}/compile_commands.json
-        DEPENDS ${CMAKE_BINARY_DIR}/compile_commands.json
-        COMMENT "Copying compile_commands.json to project root"
-    )
 endif()
 
 # Optional components

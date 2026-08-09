@@ -2,13 +2,13 @@
 #include <benchmark/benchmark.h>
 #include <numeric>
 #include <random>
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/advanced.hpp>
 #include <vector>
 
 using namespace threadschedule;
 
 // =============================================================================
-// work_stealing_pool_backend submission throughput (submit with futures)
+// advanced::work_stealing_pool submission throughput (submit with futures)
 // =============================================================================
 
 static void
@@ -16,9 +16,9 @@ BM_HPPool_Throughput(benchmark::State& state)
 {
   auto const num_tasks = static_cast<size_t>(state.range(0));
 
-  work_stealing_pool_backend pool(std::thread::hardware_concurrency());
-  pool.configure_threads("bench", native_scheduling_policy::other,
-                         native_thread_priority::normal());
+  advanced::work_stealing_pool pool(std::thread::hardware_concurrency());
+  pool.configure_threads("bench", advanced::native_scheduling_policy::other,
+                         advanced::native_thread_priority::normal());
   pool.distribute_across_cpus();
 
   std::atomic<size_t> completed{ 0 };
@@ -54,7 +54,7 @@ BENCHMARK(BM_HPPool_Throughput)
     ->Unit(benchmark::kMicrosecond);
 
 // =============================================================================
-// work_stealing_pool_backend batch processing
+// advanced::work_stealing_pool batch processing
 // =============================================================================
 
 static void
@@ -62,9 +62,9 @@ BM_HPPool_Batch(benchmark::State& state)
 {
   auto const batch_size = static_cast<size_t>(state.range(0));
 
-  work_stealing_pool_backend pool(std::thread::hardware_concurrency());
-  pool.configure_threads("bench", native_scheduling_policy::other,
-                         native_thread_priority::normal());
+  advanced::work_stealing_pool pool(std::thread::hardware_concurrency());
+  pool.configure_threads("bench", advanced::native_scheduling_policy::other,
+                         advanced::native_thread_priority::normal());
   pool.distribute_across_cpus();
 
   std::atomic<size_t> counter{ 0 };
@@ -91,7 +91,7 @@ BENCHMARK(BM_HPPool_Batch)
     ->Unit(benchmark::kMillisecond);
 
 // =============================================================================
-// work_stealing_pool_backend variable workload (simulating real tasks)
+// advanced::work_stealing_pool variable workload (simulating real tasks)
 // =============================================================================
 
 static void
@@ -99,9 +99,9 @@ BM_HPPool_VariableWorkload(benchmark::State& state)
 {
   auto const num_tasks = static_cast<size_t>(state.range(0));
 
-  work_stealing_pool_backend pool(std::thread::hardware_concurrency());
-  pool.configure_threads("bench", native_scheduling_policy::other,
-                         native_thread_priority::normal());
+  advanced::work_stealing_pool pool(std::thread::hardware_concurrency());
+  pool.configure_threads("bench", advanced::native_scheduling_policy::other,
+                         advanced::native_thread_priority::normal());
   pool.distribute_across_cpus();
 
   std::mt19937 gen(42);
@@ -141,7 +141,7 @@ BENCHMARK(BM_HPPool_VariableWorkload)
     ->Unit(benchmark::kMillisecond);
 
 // =============================================================================
-// work_stealing_pool_backend parallel_for_each
+// advanced::work_stealing_pool parallel_for_each
 // =============================================================================
 
 static void
@@ -149,9 +149,9 @@ BM_HPPool_ParallelForEach(benchmark::State& state)
 {
   auto const data_size = static_cast<size_t>(state.range(0));
 
-  work_stealing_pool_backend pool(std::thread::hardware_concurrency());
-  pool.configure_threads("bench", native_scheduling_policy::other,
-                         native_thread_priority::normal());
+  advanced::work_stealing_pool pool(std::thread::hardware_concurrency());
+  pool.configure_threads("bench", advanced::native_scheduling_policy::other,
+                         advanced::native_thread_priority::normal());
   pool.distribute_across_cpus();
 
   std::vector<int> data(data_size);

@@ -16,6 +16,18 @@
 
 using namespace std::chrono_literals;
 
+template <typename T, typename = void>
+struct has_native_handle_member : std::false_type
+{
+};
+
+template <typename T>
+struct has_native_handle_member<
+    T, std::void_t<decltype(std::declval<T&>().native_handle())>>
+    : std::true_type
+{
+};
+
 TEST(V3Api, CoreObjectsConstructDirectly)
 {
   std::atomic<bool> ran{ false };
@@ -532,6 +544,24 @@ TEST(V3Api, AdvancedPoolsRemainAvailable)
   EXPECT_EQ(pool.submit([] { return 7; }).get(), 7);
 }
 
+TEST(V3Api, NativeHandleIsAnAdvancedEscapeHatch)
+{
+  static_assert(!has_native_handle_member<threadschedule::thread>::value);
+
+  threadschedule::thread worker([] {});
+  [[maybe_unused]] auto handle
+      = threadschedule::advanced::native_handle(worker);
+  ASSERT_TRUE(worker.join().has_value());
+
+#if defined(__cpp_lib_jthread) && __cpp_lib_jthread >= 201911L
+  static_assert(!has_native_handle_member<threadschedule::jthread>::value);
+  threadschedule::jthread cancellable([](std::stop_token) {});
+  [[maybe_unused]] auto cancellable_handle
+      = threadschedule::advanced::native_handle(cancellable);
+  ASSERT_TRUE(cancellable.join().has_value());
+#endif
+}
+
 TEST(V3Api, CoreTypesAreIndependentImplementations)
 {
   static_assert(!std::is_same_v<threadschedule::thread_config,
@@ -555,6 +585,23 @@ TEST(V3Api, AffinityIsANormalizedValueType)
   affinity.add_cpu(2);
   affinity.remove_cpu(3);
   EXPECT_EQ(affinity.cpus(), (std::vector<int>{ 1, 2 }));
+}
+
+TEST(V3Api, AffinityReadPreservesResultContract)
+{
+  std::promise<void> release;
+  auto ready = release.get_future().share();
+  threadschedule::thread worker([ready] { ready.wait(); });
+
+  static_assert(
+      std::is_same_v<decltype(worker.get_affinity()),
+                     threadschedule::result<threadschedule::thread_affinity>>);
+  auto affinity = worker.get_affinity();
+
+  release.set_value();
+  ASSERT_TRUE(worker.join().has_value());
+  ASSERT_TRUE(affinity.has_value()) << affinity.error().message();
+  EXPECT_FALSE(affinity->empty());
 }
 
 TEST(V3Api, AffinityRejectsPartiallyRepresentableMasks)

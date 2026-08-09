@@ -27,6 +27,10 @@ the canonical `thread_pool` remains the recommended default.
 
 ## Native scheduling
 
+`advanced::native_handle(thread)` and its C++20 `jthread` overload provide the
+platform-native handle escape hatch. The portable core types intentionally do
+not expose toolchain-specific handle types as member functions.
+
 `native_thread_priority`, `native_scheduling_policy`, and
 `scheduler_parameters` expose POSIX and Windows scheduling details. Realtime
 configuration may require `CAP_SYS_NICE`, root privileges, or an elevated

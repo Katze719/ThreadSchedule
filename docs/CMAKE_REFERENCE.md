@@ -29,6 +29,14 @@ add_subdirectory(ThreadSchedule)
 target_link_libraries(my_app PRIVATE ThreadSchedule::ThreadSchedule)
 ```
 
+ThreadSchedule does not change global compiler flags, the selected C++
+standard, or the MSVC runtime library of a parent project. The consumer owns
+those project-wide choices.
+
+The source tree also provides `cmake/ThreadScheduleAddCPM.cmake`. It reads the
+checkout's `VERSION` file so its CPM tag cannot drift from the supplied
+headers.
+
 ## Shared registry runtime
 
 ```cmake
@@ -49,6 +57,16 @@ compiler ABI, standard library ABI, architecture, and runtime-library mode.
 find_package(ThreadSchedule 3 CONFIG REQUIRED)
 target_link_libraries(my_app PRIVATE ThreadSchedule::ThreadSchedule)
 ```
+
+The standalone `examples/getting_started` project is a minimal installed-package
+consumer and is exercised by documentation CI.
+
+## Conan 2
+
+The root `conanfile.py` packages header-only mode by default and provides the
+optional `shared=True` setting. `conan create . --build=missing` builds
+the package and its `test_package` consumer. Conan packaging does not change
+the CMake target names.
 
 The old `StableAbi` and `Module` targets and their associated options were
 removed in 3.0. See [the migration guide](MIGRATION_V3.md).

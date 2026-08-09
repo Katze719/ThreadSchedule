@@ -2,9 +2,9 @@ name: Integration
 
 on:
   push:
-    branches: [ main, dev ]
+    branches: [main, dev]
   pull_request:
-    branches: [ main, dev ]
+    branches: [main, dev]
   workflow_dispatch:
 
 jobs:
@@ -15,19 +15,19 @@ jobs:
       fail-fast: false
       matrix:
         method: [subdirectory, fetchcontent, cpm]
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         path: ThreadSchedule
-    
+
     - name: Test add_subdirectory
       if: matrix.method == 'subdirectory'
       run: |
         mkdir test_project
         cd test_project
-        
+
         cat > CMakeLists.txt << 'EOF'
         cmake_minimum_required(VERSION 3.14)
         project(TestProject LANGUAGES CXX)
@@ -36,39 +36,42 @@ jobs:
         add_executable(test_app main.cpp)
         target_link_libraries(test_app PRIVATE ThreadSchedule::ThreadSchedule)
         EOF
-        
+
         cat > main.cpp << 'EOF'
         #include <threadschedule/threadschedule.hpp>
         #include <iostream>
         int main() {
             threadschedule::thread thread([]() {
-                std::cout << "Thread running!" << std::endl; 
+                std::cout << "Thread running!" << std::endl;
             });
             return thread.join() ? 0 : 1;
         }
         EOF
-        
+
         cmake -B build
         cmake --build build
         ./build/test_app
-    
+
     - name: Test FetchContent
       if: matrix.method == 'fetchcontent'
       run: |
         mkdir test_project
         cd test_project
-        
+
         cat > CMakeLists.txt << 'EOF'
         cmake_minimum_required(VERSION 3.14)
         project(TestProject LANGUAGES CXX)
         set(CMAKE_CXX_STANDARD 17)
         include(FetchContent)
-        FetchContent_Declare(ThreadSchedule SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../ThreadSchedule)
+        FetchContent_Declare(
+            ThreadSchedule
+            SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../ThreadSchedule
+        )
         FetchContent_MakeAvailable(ThreadSchedule)
         add_executable(test_app main.cpp)
         target_link_libraries(test_app PRIVATE ThreadSchedule::ThreadSchedule)
         EOF
-        
+
         cat > main.cpp << 'EOF'
         #include <threadschedule/threadschedule.hpp>
         #include <iostream>
@@ -80,33 +83,38 @@ jobs:
             return 0;
         }
         EOF
-        
+
         cmake -B build
         cmake --build build
         ./build/test_app
-    
+
     - name: Test CPM
       if: matrix.method == 'cpm'
       run: |
         mkdir test_project
         cd test_project
-        
+
         cat > CMakeLists.txt << 'EOF'
         cmake_minimum_required(VERSION 3.14)
         project(TestProject LANGUAGES CXX)
         set(CMAKE_CXX_STANDARD 17)
-        
-        # Download CPM
-        file(DOWNLOAD https://github.com/cpm-cmake/CPM.cmake/releases/download/v0.40.8/CPM.cmake
-             ${CMAKE_BINARY_DIR}/cmake/CPM.cmake)
+
+        file(
+            DOWNLOAD
+            https://github.com/cpm-cmake/CPM.cmake/releases/download/v0.40.8/CPM.cmake
+            ${CMAKE_BINARY_DIR}/cmake/CPM.cmake
+        )
         include(${CMAKE_BINARY_DIR}/cmake/CPM.cmake)
-        
-        CPMAddPackage(NAME ThreadSchedule SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../ThreadSchedule)
-        
+
+        CPMAddPackage(
+            NAME ThreadSchedule
+            SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../ThreadSchedule
+        )
+
         add_executable(test_app main.cpp)
         target_link_libraries(test_app PRIVATE ThreadSchedule::ThreadSchedule)
         EOF
-        
+
         cat > main.cpp << 'EOF'
         #include <threadschedule/threadschedule.hpp>
         int main() {
@@ -114,7 +122,21 @@ jobs:
             return thread.join() ? 0 : 1;
         }
         EOF
-        
+
         cmake -B build
         cmake --build build
         ./build/test_app
+
+  conan-package:
+    name: Conan 2 package
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install Conan
+      run: python3 -m pip install 'conan>=2,<3'
+    - name: Create and test the header-only package
+      run: |
+        conan profile detect
+        conan create . --build=missing --no-remote
+    - name: Create and test the shared-runtime package
+      run: conan create . -o '&:shared=True' --build=missing --no-remote

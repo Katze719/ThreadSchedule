@@ -16,7 +16,7 @@ USE_MDFILE_AS_MAINPAGE = README.md
 FULL_PATH_NAMES        = NO
 STRIP_FROM_PATH        = @CMAKE_SOURCE_DIR@
 
-INPUT                  = README.md LICENSE include docs
+INPUT                  = README.md CHANGELOG.md LICENSE include docs examples
 FILE_PATTERNS          = *.hpp *.md
 RECURSIVE              = YES
 EXCLUDE_PATTERNS       = */build/* */.git/* */install/*

@@ -15,6 +15,16 @@ aliases or public subclasses of the former PascalCase API. The standard-thread
 adapter lives under `threadschedule::detail`; specialized implementation types
 are supported only through the explicitly named `advanced` surface.
 
+## Choosing a core type
+
+| Need | Type |
+| --- | --- |
+| One owning thread | `thread` |
+| Cooperative cancellation under C++20 | `jthread` |
+| General-purpose task execution | `thread_pool` |
+| Delayed or periodic execution | `scheduled_pool` |
+| Process thread discovery and control | `thread_registry` |
+
 ## Results and errors
 
 `result<T>` is an alias for `expected<T, std::error_code>`. Configuration,
@@ -32,6 +42,17 @@ converting an rvalue moves it, including move-only payloads.
 An accepted task returns a standard future. Exceptions thrown by the task are
 stored in the future and rethrown by `get()`. `thread_pool_config::on_task_error`
 can observe the same exception as a `task_error` without consuming it.
+Fire-and-forget tasks submitted through `post()` have no future, so configure
+`on_task_error` when their exceptions must be observed.
+
+| Operation | Failure channel |
+| --- | --- |
+| Direct construction | Exception |
+| `create(...)` | `result<T>` |
+| Configuration, submission, waiting, shutdown | `result<T>` |
+| Accepted `submit(...)` task | `std::future` |
+| Accepted `post(...)` task | `on_task_error` callback |
+| Explicit `*_or_throw` helper | Exception |
 
 ## Threads
 
@@ -66,11 +87,12 @@ if (auto result = worker.join(); !result)
     }
 ```
 
-`thread` owns a `std::thread` and joins it on destruction. `join`, `detach`,
-and `configure` return `result<void>`; `join_or_throw` and `detach_or_throw`
-are the explicit throwing forms. Joining or detaching a non-joinable thread
-returns `std::errc::invalid_argument`. `thread_view` configures an existing
-`std::thread` without taking ownership.
+`thread` owns a `std::thread` and joins it on destruction. Destruction and move
+assignment can therefore block until the currently owned thread exits. `join`,
+`detach`, and `configure` return `result<void>`; `join_or_throw` and
+`detach_or_throw` are the explicit throwing forms. Joining or detaching a
+non-joinable thread returns `std::errc::invalid_argument`. `thread_view`
+configures an existing `std::thread` without taking ownership.
 
 ### Thread configuration
 
@@ -131,9 +153,16 @@ config.register_workers = true;
 config.shutdown = threadschedule::shutdown_policy::drain;
 
 threadschedule::thread_pool pool(std::move(config));
-auto future = pool.submit([] { return calculate(); });
-auto posted = pool.post([] { publish_metrics(); });
-pool.wait();
+auto calculated = pool.submit([] { return calculate(); });
+if (!calculated)
+    report(calculated.error());
+else
+    use(calculated->get());
+
+if (auto posted = pool.post([] { publish_metrics(); }); !posted)
+    report(posted.error());
+if (auto waited = pool.wait(); !waited)
+    report(waited.error());
 ```
 
 `submit` returns `result<std::future<T>>`; `post` returns `result<void>`.
@@ -161,7 +190,14 @@ auto once = scheduler.schedule_after(250ms, [] { refresh(); });
 auto periodic = scheduler.schedule_periodic(1s, [] { sample(); });
 auto delayed = scheduler.schedule_periodic_after(
     5s, 1s, [] { sample_after_warmup(); });
-periodic->cancel();
+if (!once)
+    report(once.error());
+if (!delayed)
+    report(delayed.error());
+if (!periodic)
+    report(periodic.error());
+else
+    periodic->cancel();
 ```
 
 Periodic intervals must be positive. Periodic tasks use fixed-rate scheduling:
@@ -179,11 +215,16 @@ queued in the worker pool.
 
 ```cpp
 threadschedule::thread_registry registry;
-registry.register_current_thread("main", "application");
+if (auto registered = registry.register_current_thread("main", "application");
+    !registered)
+    report(registered.error());
 
 auto entries = registry.snapshot();
-for (auto const& entry : *entries)
-    inspect(entry.name, entry.component);
+if (!entries)
+    report(entries.error());
+else
+    for (auto const& entry : *entries)
+        inspect(entry.name, entry.component);
 ```
 
 `registered_thread` is a lowercase value snapshot without native control-block
@@ -216,7 +257,8 @@ realtime scheduling. MinGW-w64 uses the same Win32 behavior through its
 pthread-to-`HANDLE` adapter.
 
 `thread`, C++20 `jthread`, and `thread_view` provide `set_priority`,
-`set_nice`, and `get_priority`. A Linux `thread_view` over an external
+`set_nice`, `get_priority`, and error-preserving `get_affinity` operations. A
+Linux `thread_view` over an external
 `std::thread` needs the constructor overload taking its native TID for nice
 control; without it, nice operations report `operation_not_supported`.
 Registry-managed threads expose matching operations by `native_id`, and pool

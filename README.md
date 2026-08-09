@@ -2,28 +2,17 @@
 
 [![Tests](https://github.com/Katze719/ThreadSchedule/actions/workflows/tests.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/tests.yml)
 [![Runtime Tests](https://github.com/Katze719/ThreadSchedule/actions/workflows/runtime-tests.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/runtime-tests.yml)
-[![Documentation](https://github.com/Katze719/ThreadSchedule/actions/workflows/documentation.yml/badge.svg)](https://github.com/Katze719/ThreadSchedule/actions/workflows/documentation.yml)
+[![Documentation](https://github.com/Katze719/ThreadSchedule/actions/workflows/documentation.yml/badge.svg)](https://katze719.github.io/ThreadSchedule/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ThreadSchedule is a C++17 library for creating, configuring, scheduling, and
-observing threads on Linux and Windows. It is header-only by default. Its core
-API stays the same from C++17 onward; C++20 additionally exposes `jthread` when
-the standard library provides `std::jthread`.
+observing threads on Linux and Windows. It is header-only by default. C++20
+consumers additionally get `threadschedule::jthread` when the standard library
+provides `std::jthread`.
 
-Version 3.0 intentionally has a small default surface:
-
-- `thread` and `thread_view` for owning and observing threads
-- `jthread` under C++20 for cooperative cancellation with stop tokens
-- `thread_pool` for general-purpose work submission
-- `scheduled_pool` for delayed and periodic work
-- `thread_registry` for process-wide discovery and control
-- intent-based scheduling through `schedule::*`
-- specialized pools and native controls under `threadschedule::advanced`
-
-Operations that can fail return `threadschedule::expected<T,
-std::error_code>`. Task exceptions remain attached to their `std::future`.
-The lowercase core consists of independent v3 types; it is not an alias layer
-over the former PascalCase API.
+The v3 core deliberately stays small and uses lowercase, standard-style names.
+Operations whose normal failure mode should not require exceptions return
+`threadschedule::expected<T, std::error_code>`.
 
 ## Requirements
 
@@ -32,12 +21,11 @@ over the former PascalCase API.
 - Linux with GCC/libstdc++, or Windows with MinGW-w64/GCC or MSVC
 
 The tested compiler versions are the compatibility contract. See
-[Compatibility](docs/COMPATIBILITY.md) for the current matrix and the rules for
-using the optional shared registry runtime.
+[Compatibility](docs/COMPATIBILITY.md) for the current matrix.
 
-## Installation
+## Install
 
-### FetchContent
+The recommended source integration uses CMake FetchContent:
 
 ```cmake
 include(FetchContent)
@@ -51,7 +39,14 @@ FetchContent_MakeAvailable(ThreadSchedule)
 target_link_libraries(my_app PRIVATE ThreadSchedule::ThreadSchedule)
 ```
 
-### Installed package
+An existing checkout can be added directly:
+
+```cmake
+add_subdirectory(path/to/ThreadSchedule)
+target_link_libraries(my_app PRIVATE ThreadSchedule::ThreadSchedule)
+```
+
+To install and consume the CMake package:
 
 ```bash
 cmake -S . -B build -DTHREADSCHEDULE_INSTALL=ON
@@ -64,7 +59,17 @@ find_package(ThreadSchedule 3 CONFIG REQUIRED)
 target_link_libraries(my_app PRIVATE ThreadSchedule::ThreadSchedule)
 ```
 
-## Quick start
+Conan 2 consumers can build a local package directly from the release source:
+
+```bash
+conan profile detect
+conan create . --build=missing
+```
+
+The recipe is tested in CI. Its standard `shared=True` option packages the
+optional `ThreadSchedule::Runtime`; header-only mode remains the default.
+
+## Start in five minutes
 
 ```cpp
 #include <threadschedule/threadschedule.hpp>
@@ -73,72 +78,91 @@ target_link_libraries(my_app PRIVATE ThreadSchedule::ThreadSchedule)
 
 int main()
 {
-    threadschedule::thread_config config;
-    config.name = "metrics";
-    config.scheduling = threadschedule::schedule::background();
-    config.affinity = threadschedule::thread_affinity({ 0 });
-
-    if (auto worker = threadschedule::thread::create(config, [] {
-            // Collect metrics on the configured thread.
-        });
-        !worker) {
-        std::cerr << worker.error().message() << '\n';
-        return 1;
-    } else if (auto result = worker->join(); !result) {
-        std::cerr << result.error().message() << '\n';
+    threadschedule::thread_pool pool(2);
+    auto answer = pool.submit([] { return 42; });
+    if (!answer) {
+        std::cerr << answer.error().message() << '\n';
         return 1;
     }
+
+    std::cout << answer->get() << '\n';
 }
 ```
 
-CPU indices identify logical processors. Naming, affinity, and scheduling can
-fail when the requested CPU is unavailable or the operating system denies the
-operation; use `create(...)` when those failures should be reported as an
-error value.
+The complete
+[getting-started project](examples/getting_started/CMakeLists.txt) includes its
+own `CMakeLists.txt` and is tested against a freshly installed package.
 
-## Thread pools
+## Choose the right type
+
+| Need | Start with |
+| --- | --- |
+| Own one thread | `thread` |
+| Own one cooperatively cancellable C++20 thread | `jthread` |
+| Submit general-purpose work | `thread_pool` |
+| Run delayed or periodic work | `scheduled_pool` |
+| Discover and control registered threads | `thread_registry` |
+| Select a specialized pool or native control | `advanced::*` |
+
+Include `<threadschedule/threadschedule.hpp>` for the complete core. Include
+`<threadschedule/advanced.hpp>` only when the workload requires native or
+specialized choices.
+
+## Results, exceptions, and lifetime
+
+ThreadSchedule keeps failure channels explicit:
+
+| Operation | Failure channel |
+| --- | --- |
+| Direct construction | May throw `std::system_error`, like standard types |
+| `create(...)` | Returns `expected<T, std::error_code>` |
+| Configuration and shutdown | Return `expected<void, std::error_code>` |
+| `thread_pool::submit(...)` | Submission error in `expected`; task exception in the future |
+| `thread_pool::post(...)` | Submission error in `expected`; task exception via `on_task_error` |
+| Explicit `*_or_throw` operation | Throws `std::system_error` on failure |
+
+Always inspect an `expected` before dereferencing it. A task submitted with
+`post()` has no future; configure `on_task_error` if its exceptions must be
+observed.
+
+`threadschedule::thread` owns a `std::thread` but deliberately joins a joinable
+thread on destruction. Destruction and move assignment can therefore block.
+Call `join()`, `detach()`, or `release()` explicitly when that timing matters.
+
+## Threads and configuration
+
+Direct construction is the ordinary path:
 
 ```cpp
-threadschedule::thread_pool_config config;
-config.worker_count = 4;
-config.workers.name = "worker";
-config.workers.scheduling = threadschedule::schedule::normal();
-
-threadschedule::thread_pool pool(std::move(config));
-
-auto answer = pool.submit([] { return 42; });
-if (!answer)
-    report(answer.error());
-else
-    std::cout << answer->get() << '\n';
+threadschedule::thread worker([] { do_work(); });
+if (auto joined = worker.join(); !joined)
+    report(joined.error());
 ```
 
-Submission itself is non-throwing. If the task throws, the exception is
-reported when its future is read:
+Use `create(...)` when initial configuration failures should be returned as an
+error value:
 
 ```cpp
-threadschedule::thread_pool_config config;
-config.on_task_error = [](threadschedule::task_error const& error) {
-    log(error.what());
-};
+threadschedule::thread_config config;
+config.name = "metrics";
+config.scheduling = threadschedule::schedule::background();
 
-threadschedule::thread_pool pool(std::move(config));
-auto task = pool.submit([]() -> int { throw std::runtime_error("failed"); });
-task->get(); // rethrows the task exception
+auto worker = threadschedule::thread::create(config, [] {
+    collect_metrics();
+});
+if (!worker) {
+    report(worker.error());
+} else if (auto joined = worker->join(); !joined) {
+    report(joined.error());
+}
 ```
 
-Direct constructors follow the standard-library style and may throw if thread
-creation or initial configuration fails. Code that prefers an error value can
-still opt into the corresponding `create(...)` factory:
+Affinity uses logical CPU indices and is intentionally absent from this first
+configured example: containers and restricted CPU sets may not make CPU 0
+available. Query the deployment environment before pinning a thread.
 
-```cpp
-auto pool = threadschedule::thread_pool::create(std::move(config));
-if (!pool)
-    report(pool.error());
-```
-
-Under C++20, `jthread` forwards callables like `std::jthread`, including
-automatic `std::stop_token` injection:
+Under C++20, `jthread` mirrors standard callable forwarding and stop-token
+injection:
 
 ```cpp
 #if defined(__cpp_lib_jthread) && __cpp_lib_jthread >= 201911L
@@ -146,14 +170,37 @@ threadschedule::jthread worker([](std::stop_token stop) {
     while (!stop.stop_requested())
         do_work();
 });
-
 worker.request_stop();
 #endif
 ```
 
+See the compile-tested [jthread example](examples/jthread_example.cpp).
+
+## Thread pools
+
+```cpp
+threadschedule::thread_pool_config config;
+config.worker_count = 4;
+config.workers.name = "worker";
+config.on_task_error = [](threadschedule::task_error const& error) {
+    log(error.what());
+};
+
+threadschedule::thread_pool pool(std::move(config));
+auto answer = pool.submit([] { return calculate(); });
+if (!answer)
+    report(answer.error());
+else
+    use(answer->get());
+```
+
+Task exceptions from `submit()` remain attached to the returned future and are
+rethrown by `get()`. Direct pool construction can throw when worker creation or
+configuration fails; `thread_pool::create(...)` offers the error-value path.
+
 ## Scheduling
 
-Portable intent factories cover normal use:
+Portable intent factories cover ordinary use:
 
 ```cpp
 auto background = threadschedule::schedule::background();
@@ -166,19 +213,11 @@ auto realtime = threadschedule::schedule::realtime_fifo(80);
 ```
 
 The five `priority_level` values are the simplest cross-platform choice.
-`schedule::nice(-20..19)` uses the exact per-thread nice value on Linux and a
-documented, non-realtime Win32 thread-priority mapping on Windows. Priorities
-can also be changed later with `thread::set_priority()` or
-`thread::set_nice()` and read back portably with `thread::get_priority()`.
-Negative nice values normally require elevated privileges on Linux.
-
-Realtime policies normally require elevated privileges. Native priority and
-policy controls remain available through `threadschedule::advanced`.
+Negative nice values and realtime policies normally require elevated
+privileges on Linux. Native scheduling remains available through
+`threadschedule::advanced`.
 
 ## Advanced usage
-
-Performance specialists can select a backend explicitly without expanding the
-default learning surface:
 
 ```cpp
 #include <threadschedule/advanced.hpp>
@@ -193,9 +232,9 @@ future combinators, task groups, chaos testing, and lower-level error handling.
 
 ## Optional shared registry runtime
 
-Header-only mode owns one registry per linked image. Applications that need one
-registry shared by an executable and several compatible DSOs can build and link
-the optional C++ runtime:
+Header-only mode owns one registry per linked image. Applications that need
+one registry shared by an executable and compatible DSOs can link the optional
+C++ runtime:
 
 ```cmake
 set(THREADSCHEDULE_RUNTIME ON)
@@ -203,11 +242,12 @@ add_subdirectory(ThreadSchedule)
 target_link_libraries(my_app PRIVATE ThreadSchedule::Runtime)
 ```
 
-This is a C++ ABI within one documented toolchain line. It is not a portable
-plugin ABI and must not be mixed across GCC/libstdc++, MinGW, and MSVC builds.
+This is a same-toolchain C++ ABI, not a portable plugin ABI. Do not mix GCC,
+MinGW, and MSVC artifacts.
 
 ## Documentation
 
+- [Online API reference](https://katze719.github.io/ThreadSchedule/)
 - [API overview](docs/API.md)
 - [Advanced APIs](docs/ADVANCED.md)
 - [CMake reference](docs/CMAKE_REFERENCE.md)

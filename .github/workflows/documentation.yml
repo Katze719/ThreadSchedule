@@ -22,8 +22,27 @@ jobs:
           file-extension: '.md'
       - name: Build documented examples as C++17
         run: |
-          cmake -S . -B build -DTHREADSCHEDULE_BUILD_EXAMPLES=ON -DTHREADSCHEDULE_BUILD_DOCS=OFF -DCMAKE_CXX_STANDARD=17
+          cmake -S . -B build \
+            -DTHREADSCHEDULE_BUILD_EXAMPLES=ON \
+            -DTHREADSCHEDULE_BUILD_DOCS=OFF \
+            -DTHREADSCHEDULE_INSTALL=ON \
+            -DCMAKE_CXX_STANDARD=17
           cmake --build build --parallel
+      - name: Build the C++20 jthread example
+        run: |
+          cmake -S . -B build-cxx20 \
+            -DTHREADSCHEDULE_BUILD_EXAMPLES=ON \
+            -DTHREADSCHEDULE_BUILD_DOCS=OFF \
+            -DCMAKE_CXX_STANDARD=20
+          cmake --build build-cxx20 --target jthread_example --parallel
+          ./build-cxx20/examples/jthread_example
+      - name: Test the installed getting-started project
+        run: |
+          cmake --install build --prefix "$PWD/install"
+          cmake -S examples/getting_started -B getting-started-build \
+            -DCMAKE_PREFIX_PATH="$PWD/install"
+          cmake --build getting-started-build --parallel
+          ctest --test-dir getting-started-build --output-on-failure
       - name: Validate release documentation
         run: |
           test -f docs/API.md

@@ -386,7 +386,7 @@ public:
   }
 
   [[nodiscard]] auto
-  get_affinity() const -> std::optional<native_thread_affinity>
+  get_affinity() const -> expected<native_thread_affinity, std::error_code>
   {
     return detail::read_affinity(
         const_cast<basic_thread_backend*>(this)->native_handle());
@@ -901,7 +901,7 @@ public:
   }
 
   [[nodiscard]] auto
-  get_affinity() const -> std::optional<native_thread_affinity>
+  get_affinity() const -> expected<native_thread_affinity, std::error_code>
   {
     if (has_native_handle())
       return detail::read_affinity(native_handle());

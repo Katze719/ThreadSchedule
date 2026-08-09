@@ -36,6 +36,11 @@
 namespace threadschedule
 {
 
+namespace detail
+{
+struct native_thread_access;
+}
+
 template <typename T>
 using result = expected<T, std::error_code>;
 
@@ -371,8 +376,6 @@ from_native(native_thread_affinity const& affinity) -> thread_affinity
 class thread
 {
 public:
-  using native_handle_type = std::thread::native_handle_type;
-
   thread() = default;
   explicit thread(std::thread&& value) noexcept : impl_(std::move(value)) {}
   thread(std::thread&& value, std::uint64_t native_id) noexcept
@@ -496,12 +499,6 @@ public:
     return impl_.get_id();
   }
 
-  [[nodiscard]] auto
-  native_handle() -> native_handle_type
-  {
-    return impl_.native_handle();
-  }
-
   [[nodiscard]] static auto
   hardware_concurrency() noexcept -> unsigned
   {
@@ -569,12 +566,12 @@ public:
   }
 
   [[nodiscard]] auto
-  get_affinity() const -> std::optional<thread_affinity>
+  get_affinity() const -> result<thread_affinity>
   {
     auto affinity = impl_.get_affinity();
     if (!affinity)
-      return std::nullopt;
-    return detail::from_native(*affinity);
+      return unexpected(affinity.error());
+    return detail::from_native(affinity.value());
   }
 
   [[nodiscard]] auto
@@ -584,6 +581,8 @@ public:
   }
 
 private:
+  friend struct detail::native_thread_access;
+
   template <typename F, typename... Args>
   static auto
   make_configured_impl(thread_config const& config, F&& function,
@@ -627,8 +626,6 @@ private:
 class jthread
 {
 public:
-  using native_handle_type = std::jthread::native_handle_type;
-
   jthread() noexcept = default;
   explicit jthread(std::jthread&& value) noexcept : impl_(std::move(value)) {}
   jthread(std::jthread&& value, std::uint64_t native_id) noexcept
@@ -758,12 +755,6 @@ public:
   }
 
   [[nodiscard]] auto
-  native_handle() -> native_handle_type
-  {
-    return impl_.native_handle();
-  }
-
-  [[nodiscard]] auto
   request_stop() noexcept -> bool
   {
     return impl_.request_stop();
@@ -855,13 +846,13 @@ public:
   }
 
   [[nodiscard]] auto
-  get_affinity() const -> std::optional<thread_affinity>
+  get_affinity() const -> result<thread_affinity>
   {
     auto view = native_view();
     auto affinity = view.get_affinity();
     if (!affinity)
-      return std::nullopt;
-    return detail::from_native(*affinity);
+      return unexpected(affinity.error());
+    return detail::from_native(affinity.value());
   }
 
   [[nodiscard]] auto
@@ -873,6 +864,8 @@ public:
   }
 
 private:
+  friend struct detail::native_thread_access;
+
   using native_view_type
       = detail::basic_thread_backend<std::jthread, detail::non_owning_tag>;
 
@@ -1053,12 +1046,12 @@ public:
   }
 
   [[nodiscard]] auto
-  get_affinity() const -> std::optional<thread_affinity>
+  get_affinity() const -> result<thread_affinity>
   {
     auto affinity = impl_.get_affinity();
     if (!affinity)
-      return std::nullopt;
-    return detail::from_native(*affinity);
+      return unexpected(affinity.error());
+    return detail::from_native(affinity.value());
   }
 
 private:
@@ -1842,8 +1835,43 @@ private:
   std::atomic<bool> stopped_{ false };
 };
 
+namespace detail
+{
+struct native_thread_access
+{
+  [[nodiscard]] static auto
+  get(thread& value) -> std::thread::native_handle_type
+  {
+    return value.impl_.native_handle();
+  }
+
+#if defined(__cpp_lib_jthread) && __cpp_lib_jthread >= 201911L
+  [[nodiscard]] static auto
+  get(jthread& value) -> std::jthread::native_handle_type
+  {
+    return value.impl_.native_handle();
+  }
+#endif
+};
+} // namespace detail
+
 namespace advanced
 {
+
+[[nodiscard]] inline auto
+native_handle(thread& value) -> std::thread::native_handle_type
+{
+  return detail::native_thread_access::get(value);
+}
+
+#if defined(__cpp_lib_jthread) && __cpp_lib_jthread >= 201911L
+[[nodiscard]] inline auto
+native_handle(jthread& value) -> std::jthread::native_handle_type
+{
+  return detail::native_thread_access::get(value);
+}
+#endif
+
 using work_stealing_pool = work_stealing_pool_backend;
 using polling_pool = polling_pool_backend;
 using lightweight_pool = lightweight_pool_backend;

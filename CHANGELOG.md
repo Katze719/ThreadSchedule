@@ -88,6 +88,32 @@
   removed.
 - **Documentation and CI reset** -- examples, migration guidance, packaging,
   integrations, and compiler matrices describe and test the actual v3 API.
+- **Consumer-safe CMake integration** -- source inclusion no longer rewrites a
+  parent project's MSVC runtime flags or injects Windows feature macros. The
+  bundled CPM helper derives its release tag from `VERSION` instead of fetching
+  the obsolete v1.0.0 API.
+- **Guided getting started path** -- the README now starts with a portable pool
+  example, explains type selection, failure channels, and blocking thread
+  destruction, and links the published API reference. CI builds a standalone
+  installed-package consumer and a dedicated C++20 `jthread` example.
+- **Copy-safe API examples** -- documentation checks every returned `expected`
+  and explicitly distinguishes `submit` future exceptions from `post` error
+  callbacks.
+- **Error-preserving affinity reads** -- core thread affinity getters now
+  return `result<thread_affinity>` and retain platform errors instead of
+  collapsing every read failure into an empty `optional`.
+- **Explicit native-handle boundary** -- platform-native handles moved from
+  core members to `advanced::native_handle`, keeping toolchain-specific types
+  out of the portable member API.
+- **Conan 2 packaging** -- restored a public, CI-tested recipe with a
+  header-only default, an optional shared runtime, canonical CMake target names,
+  and an executable `test_package` consumer.
+- **Complete source releases** -- release archives now include the Conan test
+  package, installed-package integrations, and Doxygen configuration needed to
+  reproduce the repository's release checks.
+- **Clean out-of-source builds** -- CMake keeps `compile_commands.json` in the
+  selected build directory instead of writing generated tooling files into the
+  source checkout.
 
 ## v2.4.0
 

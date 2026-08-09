@@ -56,6 +56,9 @@ config.scheduling = threadschedule::schedule::nice(10);
 
 The five-level form is portable. Nice values are exact per-thread values on
 Linux and map to safe, discrete Win32 thread priorities on MSVC and MinGW.
+Code that genuinely needs the platform handle can call
+`threadschedule::advanced::native_handle(thread)`; native handles are not part
+of the portable core member surface.
 
 `PoolWithErrors` and its aliases were removed. Set
 `thread_pool_config::on_task_error` instead; task exceptions remain available

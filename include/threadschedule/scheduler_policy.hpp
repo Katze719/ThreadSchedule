@@ -1095,32 +1095,31 @@ read_name(HANDLE handle) -> expected<std::string, std::error_code>
 }
 
 inline auto
-read_affinity(HANDLE handle) -> std::optional<native_thread_affinity>
+read_affinity(HANDLE handle)
+    -> expected<native_thread_affinity, std::error_code>
 {
   if (!handle)
-    return std::nullopt;
+    return unexpected(std::make_error_code(std::errc::no_such_process));
   using get_thread_group_affinity_fn = BOOL(WINAPI*)(HANDLE, PGROUP_AFFINITY);
   HMODULE module = GetModuleHandleW(L"kernel32.dll");
   if (!module)
-    return std::nullopt;
+    return unexpected(last_win32_error());
   auto get_group_affinity
       = reinterpret_cast<get_thread_group_affinity_fn>(reinterpret_cast<void*>(
           GetProcAddress(module, "GetThreadGroupAffinity")));
   if (!get_group_affinity)
-    return std::nullopt;
+    return unexpected(std::make_error_code(std::errc::function_not_supported));
   GROUP_AFFINITY ga{};
-  if (get_group_affinity(handle, &ga) != 0)
+  if (get_group_affinity(handle, &ga) == 0)
+    return unexpected(last_win32_error());
+
+  native_thread_affinity affinity;
+  for (int i = 0; i < 64; ++i)
     {
-      native_thread_affinity affinity;
-      for (int i = 0; i < 64; ++i)
-        {
-          if ((ga.Mask & (static_cast<KAFFINITY>(1) << i)) != 0)
-            affinity.add_cpu(static_cast<int>(ga.Group) * 64 + i);
-        }
-      if (affinity.has_any())
-        return affinity;
+      if ((ga.Mask & (static_cast<KAFFINITY>(1) << i)) != 0)
+        affinity.add_cpu(static_cast<int>(ga.Group) * 64 + i);
     }
-  return std::nullopt;
+  return affinity;
 }
 
 inline auto
@@ -1242,11 +1241,12 @@ read_name(native_thread_id tid) -> expected<std::string, std::error_code>
 }
 
 inline auto
-read_affinity(native_thread_id tid) -> std::optional<native_thread_affinity>
+read_affinity(native_thread_id tid)
+    -> expected<native_thread_affinity, std::error_code>
 {
   HANDLE handle = OpenThread(THREAD_QUERY_INFORMATION, FALSE, tid);
   if (!handle)
-    return std::nullopt;
+    return unexpected(last_win32_error());
 
   auto result = read_affinity(handle);
   CloseHandle(handle);
@@ -1369,10 +1369,13 @@ read_name(pthread_t thread) -> expected<std::string, std::error_code>
 }
 
 inline auto
-read_affinity(pthread_t thread) -> std::optional<native_thread_affinity>
+read_affinity(pthread_t thread)
+    -> expected<native_thread_affinity, std::error_code>
 {
   auto const handle = win32_handle_from_pthread(thread);
-  return handle.has_value() ? read_affinity(handle.value()) : std::nullopt;
+  if (!handle.has_value())
+    return unexpected(handle.error());
+  return read_affinity(handle.value());
 }
 
 inline auto
@@ -1475,21 +1478,23 @@ read_name(pthread_t handle) -> expected<std::string, std::error_code>
 }
 
 inline auto
-read_affinity(pthread_t handle) -> std::optional<native_thread_affinity>
+read_affinity(pthread_t handle)
+    -> expected<native_thread_affinity, std::error_code>
 {
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
-  if (pthread_getaffinity_np(handle, sizeof(cpu_set_t), &cpuset) == 0)
+  int const result
+      = pthread_getaffinity_np(handle, sizeof(cpu_set_t), &cpuset);
+  if (result != 0)
+    return unexpected(std::error_code(result, std::generic_category()));
+
+  std::vector<int> cpus;
+  for (int i = 0; i < CPU_SETSIZE; ++i)
     {
-      std::vector<int> cpus;
-      for (int i = 0; i < CPU_SETSIZE; ++i)
-        {
-          if (CPU_ISSET(i, &cpuset))
-            cpus.push_back(i);
-        }
-      return native_thread_affinity(cpus);
+      if (CPU_ISSET(i, &cpuset))
+        cpus.push_back(i);
     }
-  return std::nullopt;
+  return native_thread_affinity(cpus);
 }
 
 inline auto
@@ -1593,12 +1598,12 @@ read_name(pid_t tid) -> expected<std::string, std::error_code>
 }
 
 inline auto
-read_affinity(pid_t tid) -> std::optional<native_thread_affinity>
+read_affinity(pid_t tid) -> expected<native_thread_affinity, std::error_code>
 {
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
   if (sched_getaffinity(tid, sizeof(cpu_set_t), &cpuset) != 0)
-    return std::nullopt;
+    return unexpected(std::error_code(errno, std::generic_category()));
 
   std::vector<int> cpus;
   for (int i = 0; i < CPU_SETSIZE; ++i)
