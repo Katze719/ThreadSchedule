@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <atomic>
+#include <future>
 #include <gtest/gtest.h>
 #include <thread>
 #include <threadschedule/detail/registered_thread_backend.hpp>
@@ -146,6 +147,18 @@ TEST(ThreadRegistryTest, RegisteredThreadBackendMoveAssign)
   EXPECT_TRUE(t.joinable());
   t.join();
   EXPECT_TRUE(ran.load());
+}
+
+TEST(ThreadRegistryTest, RegisteredThreadBackendAcceptsPackagedTask)
+{
+  std::packaged_task<int()> task([] { return 42; });
+  auto result = task.get_future();
+
+  detail::registered_thread_backend t("packaged", "move-only",
+                                      std::move(task));
+
+  t.join();
+  EXPECT_EQ(result.get(), 42);
 }
 
 TEST(ThreadRegistryTest, CallbackOnUnregisterFires)

@@ -651,6 +651,25 @@ TEST(V3Api, MovedFromRegistriesRemainSafe)
   ASSERT_TRUE(assigned.unregister_current_thread().has_value());
 }
 
+TEST(V3Api, MoveAssigningInjectedRegistryRetargetsGlobalRegistry)
+{
+  threadschedule::thread_registry injected;
+  threadschedule::thread_registry replacement;
+  ASSERT_TRUE(
+      replacement.register_current_thread("replacement", "v3").has_value());
+
+  threadschedule::use_global_registry(&injected);
+  injected = std::move(replacement);
+  auto snapshot = threadschedule::global_registry().snapshot();
+  threadschedule::use_global_registry(nullptr);
+
+  ASSERT_TRUE(snapshot.has_value());
+  ASSERT_EQ(snapshot->size(), 1u);
+  EXPECT_EQ(snapshot->front().name, "replacement");
+  EXPECT_EQ(snapshot->front().component, "v3");
+  EXPECT_TRUE(injected.unregister_current_thread().has_value());
+}
+
 TEST(V3Api, RegistrySetsAndReadsPortablePriority)
 {
   threadschedule::thread_registry registry;

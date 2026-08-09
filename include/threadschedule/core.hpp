@@ -1080,7 +1080,23 @@ public:
   thread_registry() : owned_(std::make_unique<thread_registry_backend>()) {}
 
   thread_registry(thread_registry&&) noexcept = default;
-  auto operator=(thread_registry&&) noexcept -> thread_registry& = default;
+  auto
+  operator=(thread_registry&& other) noexcept -> thread_registry&
+  {
+    if (this != &other)
+      {
+        auto* const current = owned_.get();
+        bool const is_external = current != nullptr && &registry() == current;
+        if (is_external)
+          {
+            set_external_registry(other.global_ ? nullptr
+                                                : other.owned_.get());
+          }
+        owned_ = std::move(other.owned_);
+        global_ = other.global_;
+      }
+    return *this;
+  }
   thread_registry(thread_registry const&) = delete;
   auto operator=(thread_registry const&) -> thread_registry& = delete;
 

@@ -46,7 +46,7 @@ public:
                                      F&& f, Args&&... args)
       : thread_backend(
             [n = std::move(name), c = std::move(component),
-             func = std::forward<F>(f)](auto&&... inner)
+             func = std::forward<F>(f)](auto&&... inner) mutable
               {
                 auto_register_current_thread guard(n, c);
                 std::invoke(func, std::forward<decltype(inner)>(inner)...);
