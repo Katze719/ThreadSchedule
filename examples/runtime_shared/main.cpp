@@ -1,25 +1,26 @@
-#include <iostream>
-#include <threadschedule/thread_registry.hpp>
+#include <threadschedule/threadschedule.hpp>
 
-using namespace threadschedule;
+#include <chrono>
+#include <iostream>
+#include <thread>
 
 extern "C" void libA_start();
 extern "C" void libB_start();
 
-int main()
+int
+main()
 {
-    // All components link ThreadSchedule::Runtime -> single process-wide registry
-    libA_start();
-    libB_start();
+  libA_start();
+  libB_start();
+  std::this_thread::sleep_for(std::chrono::milliseconds(30));
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+  auto entries = threadschedule::global_registry().snapshot();
+  if (!entries)
+    return 1;
 
-    int count = 0;
-    registry().for_each([&](RegisteredThreadInfo const& e) {
-        std::cout << "thread: " << e.name << " tag=" << e.componentTag << "\n";
-        count++;
-    });
-
-    std::cout << "total=" << count << "\n";
-    return 0;
+  for (auto const& entry : *entries)
+    std::cout << "thread: " << entry.name << " tag=" << entry.component
+              << '\n';
+  std::cout << "total=" << entries->size() << '\n';
+  return entries->size() == 2 ? 0 : 2;
 }

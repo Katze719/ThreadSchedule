@@ -36,11 +36,11 @@
 <rect x="735.6" y="296.0" width="29.1" height="100.0" rx="3" fill="#db2777" />
 <text x="704.5" y="414.0" fill="#122033" font-size="12" font-weight="600" text-anchor="middle">imbalanced</text>
 <rect x="64" y="440" width="14" height="14" rx="3" fill="#2a7fff" />
-<text x="84" y="452" fill="#122033" font-size="12">ThreadPool</text>
+<text x="84" y="452" fill="#122033" font-size="12">thread_pool_backend</text>
 <rect x="166.0" y="440" width="14" height="14" rx="3" fill="#16a34a" />
-<text x="186.0" y="452" fill="#122033" font-size="12">FastThreadPool</text>
+<text x="186.0" y="452" fill="#122033" font-size="12">polling_pool_backend</text>
 <rect x="296.8" y="440" width="14" height="14" rx="3" fill="#f59e0b" />
-<text x="316.8" y="452" fill="#122033" font-size="12">HighPerformancePool</text>
+<text x="316.8" y="452" fill="#122033" font-size="12">work_stealing_pool_backend</text>
 <rect x="463.6" y="440" width="14" height="14" rx="3" fill="#db2777" />
-<text x="483.6" y="452" fill="#122033" font-size="12">LightweightPool</text>
+<text x="483.6" y="452" fill="#122033" font-size="12">lightweight_pool_backend</text>
 </svg>

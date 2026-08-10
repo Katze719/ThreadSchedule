@@ -1,5 +1,120 @@
 # Changelog
 
+## v3.0.0
+
+> A deliberate C++17 API reset focused on one approachable default surface,
+> explicit errors, and stable behavior across consumer language modes.
+
+### Breaking Changes
+
+- **Small canonical API** -- added `thread`, `thread_view`, `thread_pool`,
+  `scheduled_pool`, `thread_registry`, and matching lowercase config types.
+  These are independent value/composition types rather than aliases or public
+  subclasses of the former PascalCase surface.
+- **Standard-style construction** -- core objects are directly constructible.
+  Optional `create(...)` factories return the library-owned
+  `expected<T, std::error_code>` when an error-value path is preferred.
+- **Standard thread state errors** -- joining or detaching a non-joinable
+  `thread` or `jthread` reports `std::errc::invalid_argument`; explicit
+  `join_or_throw` and `detach_or_throw` forms mirror standard exceptions.
+- **Portable scheduling intent** -- common use goes through
+  `schedule::{background, normal, interactive, low_latency, realtime_fifo,
+  realtime_rr}`; backend and native controls live under `advanced`.
+- **One thread implementation** -- managed threads use `std::thread`.
+  Platform-specific pthread and Windows operations remain behind native
+  control boundaries.
+- **Focused C++20 support** -- `threadschedule::jthread` is available only
+  when `std::jthread` is detected and supports standard-style callable
+  forwarding and stop-token injection.
+- **Removed compatibility and portable ABI claims** -- the PascalCase wrapper
+  families, experimental C ABI, `StableAbi` target, modules, coroutine
+  helpers, ranges-only overloads, and reflection surface are removed. The
+  optional runtime is a same-toolchain shared C++ registry.
+
+### Configuration and Scheduling
+
+- **Portable non-realtime priority** -- added the five-level
+  `priority_level`, `schedule::priority`, and the full `schedule::nice(-20..19)`
+  input. Linux now applies real per-thread nice values instead of discarding
+  them through `SCHED_OTHER`; MSVC and MinGW map them to safe Win32 thread
+  priorities without using `TIME_CRITICAL`.
+- **Priority control and readback** -- `thread`, C++20 `jthread`,
+  `thread_view`, and `thread_registry` can change normal priority after startup
+  and read back an effective portable level. Library-owned threads retain the
+  Linux TID needed for race-free configured startup and later control.
+- **Configured startup is transactional** -- a configured `thread` or
+  `jthread` does not invoke its callable when initial name, scheduling, or
+  affinity configuration fails.
+- **Specific native errors are preserved** -- thread, pool, profile, registry,
+  and scheduler configuration returns the first concrete platform error
+  instead of replacing it with a generic permission error.
+- **Profiles preserve priority semantics** -- registry and detailed profile
+  application now honor the profile's priority model, including Linux nice
+  values, instead of silently treating every profile as platform-native.
+- **Portable affinity conversion is lossless** -- masks containing CPUs that
+  cannot be represented by the platform-native affinity type now return
+  `invalid_argument` instead of applying only the representable subset.
+- **Controllable registry entries** -- `thread_registry::register_current_thread`
+  now retains a native control block, allowing later `configure(native_id,
+  ...)` calls for the live registered thread.
+- **Scheduled pool configuration** -- `scheduled_pool_config` now supports
+  worker registration, independent worker and scheduler thread settings,
+  shutdown policy, and an error callback. It also adds delayed-first periodic
+  scheduling and rejects non-positive periods.
+- **Integrated task reporting** -- `thread_pool_config::on_task_error` and
+  `scheduled_pool_config::on_task_error` observe task failures without
+  requiring the former adapter family.
+
+### Advanced API
+
+- **Supported advanced umbrella** -- `<threadschedule/advanced.hpp>` exposes
+  specialized pools and native controls together with future combinators,
+  task groups, profiles, topology helpers, chaos testing, and lower-level
+  error handling under `threadschedule::advanced`.
+
+### Compatibility and Release Hygiene
+
+- **Stable C++17 core surface** -- public callable and inline implementation
+  storage remains stable under C++17, C++20, C++23, and C++26.
+- **Standard expected interoperability** -- when C++23 `std::expected` is
+  available, the library-owned `expected<T, E>` implicitly converts to the
+  matching standard type and moves move-only payloads from rvalues.
+- **Pool lifecycle and callable fixes** -- pool move assignment now honors the
+  destination shutdown policy, generated Linux worker names stay within the
+  platform limit, periodic scheduling accepts move-only callables, and
+  moved-from pools and registries remain safe to inspect and reassign.
+- **Conan options match supported targets** -- removed the stale `cpp_module`
+  package option and its forwarding CMake definition after module support was
+  removed.
+- **Documentation and CI reset** -- examples, migration guidance, packaging,
+  integrations, and compiler matrices describe and test the actual v3 API.
+- **Consumer-safe CMake integration** -- source inclusion no longer rewrites a
+  parent project's MSVC runtime flags or injects Windows feature macros. The
+  bundled CPM helper derives its release tag from `VERSION` instead of fetching
+  the obsolete v1.0.0 API.
+- **Guided getting started path** -- the README now starts with a portable pool
+  example, explains type selection, failure channels, and blocking thread
+  destruction, and links the published API reference. CI builds a standalone
+  installed-package consumer and a dedicated C++20 `jthread` example.
+- **Copy-safe API examples** -- documentation checks every returned `expected`
+  and explicitly distinguishes `submit` future exceptions from `post` error
+  callbacks.
+- **Error-preserving affinity reads** -- core thread affinity getters now
+  return `result<thread_affinity>` and retain platform errors instead of
+  collapsing every read failure into an empty `optional`.
+- **Explicit native-handle boundary** -- platform-native handles moved from
+  core members to `advanced::native_handle`, keeping toolchain-specific types
+  out of the portable member API.
+- **Conan 2 packaging** -- restored a public, CI-tested recipe with a
+  header-only default, an optional shared runtime, canonical CMake target names,
+  and an executable `test_package` consumer.
+- **Complete source releases** -- release archives now include the Conan test
+  package, installed-package integrations, and Doxygen configuration needed to
+  reproduce the repository's release checks.
+- **Clean out-of-source builds** -- CMake keeps `compile_commands.json` in the
+  selected build directory instead of writing generated tooling files into the
+  source checkout.
+
 ## v2.4.0
 
 > This release adds an explicit stable-ABI subset for shared-runtime / DSO
@@ -550,7 +665,8 @@
 
 ### Migration Guide
 
-Full step-by-step guide: **[docs/MIGRATION_V2.md](docs/MIGRATION_V2.md)**.
+Full step-by-step guide:
+**[docs/MIGRATION_V2.md in v2.4.0](https://github.com/Katze719/ThreadSchedule/blob/v2.4.0/docs/MIGRATION_V2.md)**.
 
 Quick reference:
 

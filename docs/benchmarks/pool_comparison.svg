@@ -1,17 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 320" width="760" height="320" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
 <rect x="0" y="0" width="760" height="320" rx="14" fill="#ffffff" stroke="#dbe3ef" />
 <text x="24" y="34" fill="#122033" font-size="18" font-weight="700">Thread pool comparison — light workload</text>
-<text x="24" y="56" fill="#5b6b82" font-size="13">Wall-clock time to run 100,000 tiny tasks (lower is better, relative to ThreadPool)</text>
-<text x="24" y="102" fill="#122033" font-size="13" font-weight="600">LightweightPool</text>
+<text x="24" y="56" fill="#5b6b82" font-size="13">Wall-clock time to run 100,000 tiny tasks (lower is better, relative to thread_pool_backend)</text>
+<text x="24" y="102" fill="#122033" font-size="13" font-weight="600">lightweight_pool_backend</text>
 <rect x="200" y="80" width="123.4" height="34" rx="6" fill="#db2777" />
 <text x="333.4" y="102" fill="#122033" font-size="13" font-weight="600">38.18 ms  (1.86x faster)</text>
-<text x="24" y="158" fill="#122033" font-size="13" font-weight="600">ThreadPool</text>
+<text x="24" y="158" fill="#122033" font-size="13" font-weight="600">thread_pool_backend</text>
 <rect x="200" y="136" width="229.9" height="34" rx="6" fill="#2a7fff" />
 <text x="439.9" y="158" fill="#122033" font-size="13" font-weight="600">71.13 ms  (baseline)</text>
-<text x="24" y="214" fill="#122033" font-size="13" font-weight="600">FastThreadPool</text>
+<text x="24" y="214" fill="#122033" font-size="13" font-weight="600">polling_pool_backend</text>
 <rect x="200" y="192" width="252.9" height="34" rx="6" fill="#16a34a" />
 <text x="462.9" y="214" fill="#122033" font-size="13" font-weight="600">78.26 ms  (1.10x slower)</text>
-<text x="24" y="270" fill="#122033" font-size="13" font-weight="600">HighPerformancePool</text>
+<text x="24" y="270" fill="#122033" font-size="13" font-weight="600">work_stealing_pool_backend</text>
 <rect x="200" y="248" width="386.0" height="34" rx="6" fill="#f59e0b" />
 <text x="596.0" y="270" fill="#122033" font-size="13" font-weight="600">119.45 ms  (1.68x slower)</text>
 </svg>
