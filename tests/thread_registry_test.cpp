@@ -98,6 +98,173 @@ TEST(ThreadRegistryTest, DuplicateRegistrationIsNoOp)
   EXPECT_EQ(it->component, std::string("first-comp"));
 }
 
+TEST(ThreadRegistryTest, NestedRegistrationGuardDoesNotRemoveOuterEntry)
+{
+  thread_registry_backend local;
+  {
+    auto_register_current_thread outer(local, "outer", "test");
+    EXPECT_EQ(local.count(), 1u);
+    {
+      auto_register_current_thread inner(local, "inner", "test");
+      EXPECT_EQ(local.count(), 1u);
+    }
+    EXPECT_EQ(local.count(), 1u);
+    auto entry = local.get(thread_info::get_thread_id());
+    ASSERT_TRUE(entry.has_value());
+    EXPECT_EQ(entry->name, "outer");
+  }
+  EXPECT_TRUE(local.empty());
+}
+
+TEST(ThreadRegistryTest, GlobalGuardUnregistersFromCapturedRegistry)
+{
+  thread_registry_backend first;
+  thread_registry_backend second;
+  set_external_registry(&first);
+  {
+    auto_register_current_thread guard("captured", "test");
+    EXPECT_EQ(first.count(), 1u);
+    set_external_registry(&second);
+  }
+  set_external_registry(nullptr);
+
+  EXPECT_TRUE(first.empty());
+  EXPECT_TRUE(second.empty());
+}
+
+TEST(ThreadRegistryTest, StaleControlBlockRejectsOperations)
+{
+  thread_registry_backend local;
+  auto control = thread_control_block::create_for_current_thread();
+  local.register_current_thread(control, "stale", "test");
+  local.unregister_current_thread();
+
+  auto result = control->set_priority(native_thread_priority::normal());
+  ASSERT_FALSE(result.has_value());
+  EXPECT_EQ(result.error(), std::make_error_code(std::errc::no_such_process));
+}
+
+#ifndef _WIN32
+TEST(ThreadRegistryTest, StandaloneControlCannotAffectCallerAfterThreadExit)
+{
+  auto main_affinity = thread_info().get_affinity();
+  ASSERT_TRUE(main_affinity.has_value());
+  ASSERT_FALSE(main_affinity->get_cpus().empty());
+
+  std::promise<std::shared_ptr<thread_control_block>> published;
+  std::thread worker(
+      [&published]
+        {
+          published.set_value(
+              thread_control_block::create_for_current_thread());
+        });
+  auto control = published.get_future().get();
+  worker.join();
+
+  native_thread_affinity requested({ main_affinity->get_cpus().front() });
+  auto result = control->set_affinity(requested);
+  ASSERT_FALSE(result.has_value());
+  EXPECT_EQ(result.error(), std::make_error_code(std::errc::no_such_process));
+
+  auto after = thread_info().get_affinity();
+  ASSERT_TRUE(after.has_value());
+  EXPECT_EQ(after->get_cpus(), main_affinity->get_cpus());
+}
+
+TEST(ThreadRegistryTest, AffinityRejectsAndRollsBackPartialApplication)
+{
+  thread_registry_backend local;
+  std::promise<std::shared_ptr<thread_control_block>> published;
+  std::promise<void> release;
+  auto release_ready = release.get_future().share();
+  std::thread worker(
+      [&]
+        {
+          auto control = thread_control_block::create_for_current_thread();
+          local.register_current_thread(control, "affinity", "test");
+          published.set_value(control);
+          release_ready.wait();
+          local.unregister_current_thread();
+        });
+  auto control = published.get_future().get();
+  auto original = thread_info(control->tid()).get_affinity();
+  if (!original || original->get_cpus().empty())
+    {
+      release.set_value();
+      worker.join();
+      GTEST_SKIP() << "Cannot read worker affinity";
+    }
+
+  int unavailable = -1;
+  for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu)
+    if (!original->has_cpu(cpu))
+      {
+        unavailable = cpu;
+        break;
+      }
+  if (unavailable < 0)
+    {
+      release.set_value();
+      worker.join();
+      GTEST_SKIP() << "No unavailable CPU within cpu_set_t";
+    }
+
+  native_thread_affinity requested(
+      { original->get_cpus().front(), unavailable });
+  auto result = control->set_affinity(requested);
+  auto effective = thread_info(control->tid()).get_affinity();
+  release.set_value();
+  worker.join();
+
+  ASSERT_FALSE(result.has_value());
+  ASSERT_TRUE(effective.has_value());
+  EXPECT_EQ(effective->get_cpus(), original->get_cpus());
+}
+#endif
+
+TEST(ThreadRegistryTest, GuardDoesNotRemoveReplacementRegistration)
+{
+  thread_registry_backend local;
+  std::shared_ptr<thread_control_block> replacement;
+  bool replace = true;
+  local.set_on_register(
+      [&](registered_thread_info_backend const&)
+        {
+          if (!replace)
+            return;
+          replace = false;
+          local.unregister_current_thread();
+          replacement = thread_control_block::create_for_current_thread();
+          local.register_current_thread(replacement, "replacement", "test");
+        });
+
+  {
+    auto_register_current_thread guard(local, "original", "test");
+    auto entry = local.get(thread_info::get_thread_id());
+    ASSERT_TRUE(entry.has_value());
+    EXPECT_EQ(entry->control, replacement);
+  }
+
+  EXPECT_EQ(local.count(), 1u);
+  local.unregister_current_thread();
+}
+
+TEST(ThreadRegistryTest, ThrowingCallbacksDoNotEscapeRegistryOperations)
+{
+  thread_registry_backend local;
+  local.set_on_register([](registered_thread_info_backend const&)
+                          { throw std::runtime_error("register callback"); });
+  local.set_on_unregister(
+      [](registered_thread_info_backend const&)
+        { throw std::runtime_error("unregister callback"); });
+
+  EXPECT_NO_THROW({
+    auto_register_current_thread guard(local, "callbacks", "test");
+    EXPECT_EQ(local.count(), 1u);
+  });
+  EXPECT_TRUE(local.empty());
+}
+
 TEST(ThreadRegistryTest, CallbackOnRegisterFires)
 {
   // Ensure clean state and no side effects from other tests

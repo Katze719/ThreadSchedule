@@ -457,6 +457,32 @@ TEST_F(ThreadBackendTest, GetThreadId)
   EXPECT_EQ(managed_id, thread_id);
 }
 
+TEST_F(ThreadBackendTest, NativeOperationsAfterJoinReturnNoSuchProcess)
+{
+  detail::thread_backend thread([] {});
+  thread.join();
+
+  native_thread_affinity affinity;
+  affinity.add_cpu(0);
+  native_scheduling_config scheduling;
+
+  auto const expected_error = std::make_error_code(std::errc::no_such_process);
+  EXPECT_EQ(thread.set_name("finished").error(), expected_error);
+  EXPECT_EQ(thread.get_name().error(), expected_error);
+  EXPECT_EQ(thread.set_priority(native_thread_priority::normal()).error(),
+            expected_error);
+  EXPECT_EQ(thread
+                .set_scheduling_policy(native_scheduling_policy::other,
+                                       native_thread_priority::normal())
+                .error(),
+            expected_error);
+  EXPECT_EQ(thread.configure(scheduling).error(), expected_error);
+  EXPECT_EQ(thread.set_nice_value(0).error(), expected_error);
+  EXPECT_EQ(thread.get_nice_value().error(), expected_error);
+  EXPECT_EQ(thread.set_affinity(affinity).error(), expected_error);
+  EXPECT_EQ(thread.get_affinity().error(), expected_error);
+}
+
 // Performance test - thread creation overhead
 TEST_F(ThreadBackendTest, ThreadCreationPerformance)
 {

@@ -287,6 +287,7 @@ public:
     if (underlying().joinable())
       {
         underlying().join();
+        native_id_ = {};
       }
   }
 
@@ -296,6 +297,7 @@ public:
     if (underlying().joinable())
       {
         underlying().detach();
+        native_id_ = {};
       }
   }
 
@@ -312,18 +314,24 @@ public:
   [[nodiscard]] auto
   native_handle() noexcept -> native_handle_type
   {
+    if (!joinable())
+      return native_handle_type{};
     return underlying().native_handle();
   }
 
   [[nodiscard]] auto
   set_name(std::string const& name) -> expected<void, std::error_code>
   {
+    if (!joinable())
+      return no_such_thread();
     return detail::apply_name(native_handle(), name);
   }
 
   [[nodiscard]] auto
   get_name() const -> expected<std::string, std::error_code>
   {
+    if (!joinable())
+      return no_such_thread();
     return detail::read_name(
         const_cast<basic_thread_backend*>(this)->native_handle());
   }
@@ -332,6 +340,8 @@ public:
   set_priority(native_thread_priority priority)
       -> expected<void, std::error_code>
   {
+    if (!joinable())
+      return no_such_thread();
     return detail::apply_priority(native_handle(), priority);
   }
 
@@ -340,6 +350,8 @@ public:
                         native_thread_priority priority)
       -> expected<void, std::error_code>
   {
+    if (!joinable())
+      return no_such_thread();
     return detail::apply_scheduling_policy(native_handle(), policy, priority);
   }
 
@@ -347,6 +359,8 @@ public:
   configure(native_scheduling_config const& config)
       -> expected<void, std::error_code>
   {
+    if (!joinable())
+      return no_such_thread();
     return detail::apply_scheduling_config(native_handle(), native_id_,
                                            config);
   }
@@ -354,6 +368,8 @@ public:
   [[nodiscard]] auto
   set_nice_value(int nice_value) -> expected<void, std::error_code>
   {
+    if (!joinable())
+      return no_such_thread();
 #ifdef _WIN32
     return detail::apply_nice_value(native_handle(), nice_value);
 #else
@@ -367,6 +383,8 @@ public:
   [[nodiscard]] auto
   get_nice_value() const -> expected<int, std::error_code>
   {
+    if (!joinable())
+      return no_such_thread();
     return detail::read_effective_nice(
         const_cast<basic_thread_backend*>(this)->native_handle(), native_id_);
   }
@@ -382,12 +400,16 @@ public:
   set_affinity(native_thread_affinity const& affinity)
       -> expected<void, std::error_code>
   {
-    return detail::apply_affinity(native_handle(), affinity);
+    if (!joinable())
+      return no_such_thread();
+    return detail::apply_affinity_checked(native_handle(), affinity);
   }
 
   [[nodiscard]] auto
   get_affinity() const -> expected<native_thread_affinity, std::error_code>
   {
+    if (!joinable())
+      return no_such_thread();
     return detail::read_affinity(
         const_cast<basic_thread_backend*>(this)->native_handle());
   }
@@ -399,6 +421,12 @@ public:
   }
 
 protected:
+  [[nodiscard]] static auto
+  no_such_thread() -> unexpected<std::error_code>
+  {
+    return unexpected(std::make_error_code(std::errc::no_such_process));
+  }
+
   void
   set_native_id(native_thread_id tid) noexcept
   {
@@ -526,13 +554,15 @@ public:
   auto
   release() noexcept -> std::thread
   {
-    return std::move(this->underlying());
+    auto result = std::move(this->underlying());
+    this->set_native_id({});
+    return result;
   }
 
   explicit
   operator std::thread() && noexcept
   {
-    return std::move(this->underlying());
+    return release();
   }
 
   // Factory methods

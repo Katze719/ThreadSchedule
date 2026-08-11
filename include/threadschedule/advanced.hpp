@@ -5,8 +5,8 @@
  * @brief Optional ThreadSchedule facilities beyond the portable core API.
  */
 
-#include "core.hpp"
 #include "chaos.hpp"
+#include "core.hpp"
 #include "error_handler.hpp"
 #include "futures.hpp"
 #include "profiles.hpp"

@@ -68,7 +68,11 @@ realtime() -> thread_profile
 #else
                          native_scheduling_policy::fifo,
 #endif
+#ifdef _WIN32
+                         native_thread_priority::highest(),
+#else
                          native_thread_priority::realtime_highest(),
+#endif
                          std::nullopt };
 }
 
@@ -91,7 +95,11 @@ inline auto
 throughput() -> thread_profile
 {
   return thread_profile{ "throughput", native_scheduling_policy::batch,
+#ifdef _WIN32
+                         native_thread_priority{ 5 }, std::nullopt };
+#else
                          native_thread_priority::normal(), std::nullopt };
+#endif
 }
 
 /**

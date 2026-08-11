@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cerrno>
 #include <future>
 #include <gtest/gtest.h>
 #include <threadschedule/threadschedule.hpp>
@@ -124,8 +125,47 @@ TEST_F(ThreadConfigTest, WindowsPriorityMappingUsesNiceSemantics)
       native_scheduling_policy::fifo,
       native_thread_priority::realtime_highest());
   ASSERT_TRUE(realtime_params.has_value());
-  EXPECT_EQ(realtime_params.value().sched_priority,
-            THREAD_PRIORITY_TIME_CRITICAL);
+  EXPECT_EQ(realtime_params.value().sched_priority, THREAD_PRIORITY_HIGHEST);
+
+  auto realtime_lowest = scheduler_parameters::create_for_policy(
+      native_scheduling_policy::rr, native_thread_priority::realtime_lowest());
+  ASSERT_TRUE(realtime_lowest.has_value());
+  EXPECT_EQ(realtime_lowest.value().sched_priority,
+            THREAD_PRIORITY_ABOVE_NORMAL);
+}
+
+TEST_F(ThreadConfigTest, WindowsNativePriorityIsAppliedWithoutRemapping)
+{
+  int const original = GetThreadPriority(GetCurrentThread());
+  ASSERT_NE(original, THREAD_PRIORITY_ERROR_RETURN);
+
+  thread_info current;
+  auto applied
+      = current.configure(detail::native_schedule::native_windows_priority(
+          THREAD_PRIORITY_ABOVE_NORMAL));
+  int const observed = GetThreadPriority(GetCurrentThread());
+  BOOL const restored = SetThreadPriority(GetCurrentThread(), original);
+
+  ASSERT_TRUE(applied.has_value()) << applied.error().message();
+  EXPECT_EQ(observed, THREAD_PRIORITY_ABOVE_NORMAL);
+  EXPECT_NE(restored, 0);
+
+  auto invalid
+      = current.configure(detail::native_schedule::native_windows_priority(3));
+  ASSERT_FALSE(invalid.has_value());
+  EXPECT_EQ(invalid.error(),
+            std::make_error_code(std::errc::invalid_argument));
+}
+#endif
+
+#ifndef _WIN32
+TEST_F(ThreadConfigTest, PthreadErrorsPreserveTheReturnedErrorNumber)
+{
+  errno = EIO;
+  auto result = detail::pthread_call_result(EPERM);
+
+  ASSERT_FALSE(result.has_value());
+  EXPECT_EQ(result.error(), std::error_code(EPERM, std::generic_category()));
 }
 #endif
 

@@ -22,13 +22,20 @@
 namespace threadschedule
 {
 
+namespace detail
+{
+struct scheduled_cancellation_state
+{
+  std::atomic<bool> user_cancelled{ false };
+  std::atomic<bool> pool_stopped{ false };
+};
+} // namespace detail
+
 /**
  * @brief Copyable handle for a cancellable scheduled task.
  *
- * Copyable (the cancel flag is shared via
- * @c std::shared_ptr<std::atomic<bool>>). Both cancel() and
- * is_cancelled() are thread-safe (atomic store / load with
- * release / acquire ordering).
+ * Copyable (its cancellation state is shared). Both cancel() and
+ * is_cancelled() are thread-safe.
  *
  * Cancellation is cooperative: the scheduler checks the flag before
  * dispatching the task to the worker pool, but a task that is already
@@ -38,20 +45,46 @@ class scheduled_task_backend
 {
 public:
   explicit scheduled_task_backend(uint64_t id)
-      : id_(id), cancelled_(std::make_shared<std::atomic<bool>>(false))
+      : id_(id),
+        cancellation_(std::make_shared<detail::scheduled_cancellation_state>())
   {
+  }
+
+  scheduled_task_backend(scheduled_task_backend const&) = default;
+  auto operator=(scheduled_task_backend const&)
+      -> scheduled_task_backend& = default;
+
+  scheduled_task_backend(scheduled_task_backend&& other) noexcept
+      : id_(other.id_), cancellation_(std::move(other.cancellation_))
+  {
+    other.id_ = 0;
+  }
+
+  auto
+  operator=(scheduled_task_backend&& other) noexcept -> scheduled_task_backend&
+  {
+    if (this != &other)
+      {
+        id_ = other.id_;
+        cancellation_ = std::move(other.cancellation_);
+        other.id_ = 0;
+      }
+    return *this;
   }
 
   void
   cancel()
   {
-    cancelled_->store(true, std::memory_order_release);
+    if (cancellation_)
+      cancellation_->user_cancelled.store(true, std::memory_order_release);
   }
 
   [[nodiscard]] auto
   is_cancelled() const noexcept -> bool
   {
-    return cancelled_->load(std::memory_order_acquire);
+    return !cancellation_
+           || cancellation_->user_cancelled.load(std::memory_order_acquire)
+           || cancellation_->pool_stopped.load(std::memory_order_acquire);
   }
 
   [[nodiscard]] auto
@@ -61,15 +94,16 @@ public:
   }
 
 private:
-  uint64_t id_;
-  std::shared_ptr<std::atomic<bool>> cancelled_;
+  uint64_t id_{ 0 };
+  std::shared_ptr<detail::scheduled_cancellation_state> cancellation_;
 
   template <typename>
   friend class scheduled_pool_backend_base;
   [[nodiscard]] auto
-  get_cancel_flag() const -> std::shared_ptr<std::atomic<bool>>
+  get_cancellation() const
+      -> std::shared_ptr<detail::scheduled_cancellation_state>
   {
-    return cancelled_;
+    return cancellation_;
   }
 };
 
@@ -94,10 +128,9 @@ private:
  *      underlying pool (see @c thread_pool_backend, @c polling_pool_backend,
  *      @ref work_stealing_pool_backend, or @c lightweight_pool_backend
  * documentation).
- *   4. For periodic tasks, the scheduler immediately re-inserts the task
- *      into the multimap with next_run += interval. This means the next
- *      execution is timed from the scheduled time, not from when the
- *      task actually finishes.
+ *   4. For periodic tasks, the scheduler re-inserts the next fixed-rate
+ *      deadline. A task never overlaps with itself; deadlines missed while
+ *      an occurrence is running are skipped rather than queued as backlog.
  *
  * @par Execution guarantees
  * - Every successfully scheduled task (schedule_after/schedule_at/
@@ -117,10 +150,10 @@ private:
  *   the pool. Additionally, the pool-side wrapper checks the flag again
  *   right before calling the task. However, a task that is already
  *   running will NOT be interrupted by cancel().
- * - Periodic tasks repeat at a fixed interval, not a fixed rate. If a
- *   task takes longer than the interval, executions can pile up because
- *   the next run is computed from the previous scheduled time, not
- *   from when the task actually finishes.
+ * - Periodic tasks use fixed-rate deadlines. If an occurrence takes longer
+ *   than its interval, missed occurrences are skipped. The same periodic
+ *   callable is never invoked concurrently, and independent pool work does
+ *   not wait behind a backlog of overdue occurrences.
  * - There is no returned std::future for scheduled tasks. If you need
  *   to observe the result, use the underlying pool directly via
  *   thread_pool().post() or thread_pool().submit().
@@ -155,14 +188,25 @@ public:
   using time_point = std::chrono::steady_clock::time_point;
   using duration = std::chrono::steady_clock::duration;
 
+  struct periodic_task_state
+  {
+    explicit periodic_task_state(periodic_task_type task_value)
+        : task(std::move(task_value))
+    {
+    }
+
+    periodic_task_type task;
+    std::atomic<bool> running{ false };
+  };
+
   struct scheduled_task_info
   {
     uint64_t id;
     time_point next_run;
     duration interval; // Zero for one-time tasks
     one_shot_task_type one_shot_task;
-    std::shared_ptr<periodic_task_type> periodic_task;
-    std::shared_ptr<std::atomic<bool>> cancelled;
+    std::shared_ptr<periodic_task_state> periodic_task;
+    std::shared_ptr<detail::scheduled_cancellation_state> cancellation;
     bool periodic;
   };
 
@@ -347,18 +391,31 @@ public:
   void
   shutdown(shutdown_policy_backend policy = shutdown_policy_backend::drain)
   {
+    if (pool_.is_current_worker()
+        || (scheduler_thread_.joinable()
+            && thread_info::get_thread_id() == scheduler_tid_))
+      detail::throw_worker_deadlock();
+    std::lock_guard<std::recursive_mutex> shutdown_lock(shutdown_mutex_);
+    std::multimap<time_point, scheduled_task_info> discarded;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (stop_)
         return;
       stop_ = true;
+      for (auto const& task : scheduled_tasks_)
+        task.second.cancellation->pool_stopped.store(
+            true, std::memory_order_release);
+      scheduled_tasks_.swap(discarded);
     }
+
+    discarded.clear();
 
     condition_.notify_one();
 
     if (scheduler_thread_.joinable())
       {
         scheduler_thread_.join();
+        scheduler_tid_ = native_thread_id{};
       }
 
     pool_.shutdown(policy);
@@ -426,6 +483,7 @@ private:
   mutable std::mutex mutex_;
   std::condition_variable condition_;
   std::atomic<bool> stop_;
+  std::recursive_mutex shutdown_mutex_;
 
   std::multimap<time_point, scheduled_task_info> scheduled_tasks_;
   std::atomic<uint64_t> next_task_id_;
@@ -467,7 +525,7 @@ private:
     info.next_run = run_time;
     info.interval = duration::zero();
     info.one_shot_task = std::move(task);
-    info.cancelled = handle.get_cancel_flag();
+    info.cancellation = handle.get_cancellation();
     info.periodic = false;
 
     scheduled_tasks_.insert({ run_time, std::move(info) });
@@ -495,8 +553,9 @@ private:
     info.id = task_id;
     info.next_run = run_time;
     info.interval = interval;
-    info.periodic_task = std::make_shared<periodic_task_type>(std::move(task));
-    info.cancelled = handle.get_cancel_flag();
+    info.periodic_task
+        = std::make_shared<periodic_task_state>(std::move(task));
+    info.cancellation = handle.get_cancellation();
     info.periodic = true;
 
     scheduled_tasks_.insert({ run_time, std::move(info) });
@@ -511,6 +570,9 @@ private:
     while (true)
       {
         std::unique_lock<std::mutex> lock(mutex_);
+
+        if (stop_)
+          return;
 
         // Wait until we have tasks or need to stop
         if (scheduled_tasks_.empty())
@@ -534,8 +596,7 @@ private:
         // Wait until it's time to execute
         if (it->first > now)
           {
-            condition_.wait_until(lock, it->first,
-                                  [this] { return stop_.load(); });
+            condition_.wait_until(lock, it->first);
 
             if (stop_)
               return;
@@ -546,9 +607,11 @@ private:
         // Extract the task info
         scheduled_task_info info = std::move(it->second);
         scheduled_tasks_.erase(it);
+        lock.unlock();
 
         // Check if cancelled
-        if (info.cancelled->load(std::memory_order_acquire))
+        if (info.cancellation->user_cancelled.load(std::memory_order_acquire)
+            || info.cancellation->pool_stopped.load(std::memory_order_acquire))
           {
             continue;
           }
@@ -556,33 +619,65 @@ private:
         // Schedule for execution in the thread pool
         try
           {
-            auto cancelled_flag = info.cancelled;
+            auto cancellation = info.cancellation;
             if (info.periodic)
               {
                 auto periodic_task = info.periodic_task;
-                pool_.post(
-                    [periodic_task, cancelled_flag]()
-                      {
-                        if (!cancelled_flag->load(std::memory_order_acquire))
-                          {
-                            (*periodic_task)();
-                          }
-                      });
-
-                if (!info.cancelled->load(std::memory_order_acquire))
+                bool const already_running = periodic_task->running.exchange(
+                    true, std::memory_order_acq_rel);
+                if (!already_running)
                   {
-                    info.next_run += info.interval;
-                    scheduled_tasks_.insert(
-                        { info.next_run, std::move(info) });
+                    try
+                      {
+                        pool_.post(
+                            [periodic_task, cancellation]()
+                              {
+                                try
+                                  {
+                                    if (!cancellation->user_cancelled.load(
+                                            std::memory_order_acquire))
+                                      periodic_task->task();
+                                  }
+                                catch (...)
+                                  {
+                                    periodic_task->running.store(
+                                        false, std::memory_order_release);
+                                    throw;
+                                  }
+                                periodic_task->running.store(
+                                    false, std::memory_order_release);
+                              });
+                      }
+                    catch (...)
+                      {
+                        periodic_task->running.store(
+                            false, std::memory_order_release);
+                        throw;
+                      }
                   }
+
+                info.next_run += info.interval;
+                auto const current = std::chrono::steady_clock::now();
+                if (info.next_run <= current)
+                  {
+                    auto const missed
+                        = (current - info.next_run) / info.interval + 1;
+                    info.next_run += info.interval * missed;
+                  }
+                std::lock_guard<std::mutex> schedule_lock(mutex_);
+                if (!stop_
+                    && !cancellation->user_cancelled.load(
+                        std::memory_order_acquire))
+                  scheduled_tasks_.insert({ info.next_run, std::move(info) });
               }
             else
               {
                 auto one_shot_task = std::move(info.one_shot_task);
                 pool_.post(
-                    [task = std::move(one_shot_task), cancelled_flag]() mutable
+                    [task = std::move(one_shot_task), cancellation]() mutable
                       {
-                        if (!cancelled_flag->load(std::memory_order_acquire))
+                        if (!cancellation->user_cancelled.load(
+                                std::memory_order_acquire))
                           {
                             task();
                           }
@@ -591,6 +686,8 @@ private:
           }
         catch (...)
           {
+            info.cancellation->pool_stopped.store(true,
+                                                  std::memory_order_release);
             // Thread pool might be shutting down
           }
       }

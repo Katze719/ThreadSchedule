@@ -318,9 +318,17 @@ to_native(scheduling_config config) noexcept -> native_scheduling_config
     case scheduling_intent::low_latency:
       return native_schedule::low_latency();
     case scheduling_intent::realtime_fifo:
-      return native_schedule::realtime_fifo(config.priority);
+      {
+        auto native = native_schedule::realtime_fifo(config.priority);
+        native.valid = config.priority >= 1 && config.priority <= 99;
+        return native;
+      }
     case scheduling_intent::realtime_round_robin:
-      return native_schedule::realtime_rr(config.priority);
+      {
+        auto native = native_schedule::realtime_rr(config.priority);
+        native.valid = config.priority >= 1 && config.priority <= 99;
+        return native;
+      }
     case scheduling_intent::nice:
       return native_schedule::posix_nice(config.priority);
     case scheduling_intent::normal:
@@ -1072,21 +1080,47 @@ class thread_registry
 public:
   thread_registry() : owned_(std::make_unique<thread_registry_backend>()) {}
 
+  ~thread_registry()
+  {
+    if (owned_ != nullptr && &registry() == owned_.get())
+      set_external_registry(nullptr);
+  }
+
   thread_registry(thread_registry&&) noexcept = default;
   auto
-  operator=(thread_registry&& other) noexcept -> thread_registry&
+  operator=(thread_registry&& other) -> thread_registry&
   {
     if (this != &other)
       {
+        bool const keep_global_proxy = global_;
         auto* const current = owned_.get();
         bool const is_external = current != nullptr && &registry() == current;
-        if (is_external)
-          {
-            set_external_registry(other.global_ ? nullptr
-                                                : other.owned_.get());
-          }
+        retired_.reserve(retired_.size() + (owned_ != nullptr ? 1u : 0u)
+                         + other.retired_.size());
+        // A registration guard can outlive its entry (for example after an
+        // explicit unregister) and still retain the backend address for its
+        // destructor. Keep every replaced backend alive, even when it is
+        // currently empty.
+        if (owned_ != nullptr)
+          retired_.push_back(std::move(owned_));
+        for (auto& backend : other.retired_)
+          retired_.push_back(std::move(backend));
+        other.retired_.clear();
         owned_ = std::move(other.owned_);
-        global_ = other.global_;
+        if (keep_global_proxy)
+          {
+            // global_registry() is a permanent facade over registry(). A
+            // public move-assignment must not turn that singleton into an
+            // unrelated owning registry.
+            global_ = true;
+            set_external_registry(other.global_ ? nullptr : owned_.get());
+          }
+        else
+          {
+            if (is_external)
+              set_external_registry(other.global_ ? nullptr : owned_.get());
+            global_ = other.global_;
+          }
       }
     return *this;
   }
@@ -1262,6 +1296,7 @@ private:
   }
 
   std::unique_ptr<thread_registry_backend> owned_;
+  std::vector<std::unique_ptr<thread_registry_backend>> retired_;
   bool global_{ false };
 
   friend auto global_registry() -> thread_registry&;
@@ -1700,6 +1735,9 @@ public:
             std::chrono::duration_cast<scheduled_pool_backend::duration>(
                 delay),
             wrap_task(std::forward<F>(function)));
+        if (handle.is_cancelled())
+          return unexpected(
+              std::make_error_code(std::errc::operation_canceled));
         return scheduled_task(std::move(handle));
       }
     catch (...)
@@ -1717,8 +1755,12 @@ public:
       return unexpected(std::make_error_code(std::errc::operation_canceled));
     try
       {
-        return scheduled_task(
-            impl_->schedule_at(time, wrap_task(std::forward<F>(function))));
+        auto handle
+            = impl_->schedule_at(time, wrap_task(std::forward<F>(function)));
+        if (handle.is_cancelled())
+          return unexpected(
+              std::make_error_code(std::errc::operation_canceled));
+        return scheduled_task(std::move(handle));
       }
     catch (...)
       {
@@ -1742,6 +1784,9 @@ public:
       {
         auto handle = impl_->schedule_periodic(
             native_interval, wrap_task(std::forward<F>(function)));
+        if (handle.is_cancelled())
+          return unexpected(
+              std::make_error_code(std::errc::operation_canceled));
         return scheduled_task(std::move(handle));
       }
     catch (...)
@@ -1771,6 +1816,9 @@ public:
             std::chrono::duration_cast<scheduled_pool_backend::duration>(
                 initial_delay),
             native_interval, wrap_task(std::forward<F>(function)));
+        if (handle.is_cancelled())
+          return unexpected(
+              std::make_error_code(std::errc::operation_canceled));
         return scheduled_task(std::move(handle));
       }
     catch (...)
@@ -1782,10 +1830,12 @@ public:
   auto
   shutdown(shutdown_policy policy = shutdown_policy::drain) -> result<void>
   {
+    if (!impl_)
+      return {};
     try
       {
-        if (!stopped_.exchange(true, std::memory_order_acq_rel))
-          impl_->shutdown(detail::to_native(policy));
+        impl_->shutdown(detail::to_native(policy));
+        stopped_.store(true, std::memory_order_release);
         return {};
       }
     catch (...)

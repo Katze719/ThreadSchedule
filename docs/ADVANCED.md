@@ -44,10 +44,23 @@ accepts them. `advanced::native_schedule::posix_nice()` applies a real
 per-thread nice value on Linux and the documented safe Win32 mapping on
 Windows. Exact native realtime priority remains separate.
 
+On Windows, `advanced::native_schedule::native_windows_priority()` accepts a
+Win32 thread-priority constant and applies that constant without passing it
+through the portable nice mapping. Unsupported integer values fail with
+`invalid_argument`.
+
 Normal Windows priority configuration does not alter the process priority
 class and does not select `THREAD_PRIORITY_TIME_CRITICAL`. Under MinGW-w64,
 the implementation obtains the Win32 `HANDLE` with `pthread_gethandle()`; a
 `pthread_t` is never reinterpreted as a handle or thread ID.
+
+Windows affinity IDs use `processor_group * 64 + processor_index`.
+`native_thread_affinity` represents one processor group at a time, matching
+`SetThreadGroupAffinity`. On Windows versions where a default thread may run
+in more than one group, `get_affinity()` reports the primary group exposed by
+`GetThreadGroupAffinity`; it does not claim to represent the all-group default.
+Pool distribution therefore stays within the caller's reported group unless
+workers are configured explicitly with per-group masks.
 
 `composite_thread_registry` can merge independent header-only registries when
 using the shared runtime is not appropriate.

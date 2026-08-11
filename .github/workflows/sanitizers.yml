@@ -131,7 +131,7 @@ jobs:
 
     - name: Run clang-tidy
       run: |
-        find include/threadschedule -name '*.hpp' | \
-          xargs clang-tidy-19 -p build --warnings-as-errors='*' \
-            --header-filter='include/threadschedule/.*' 2>&1 | \
-          head -200
+        run-clang-tidy-19 -p build -j 4 -quiet \
+          -warnings-as-errors='*' \
+          -header-filter='include/threadschedule/.*' \
+          "$GITHUB_WORKSPACE/(tests|examples)/.*\\.cpp$"

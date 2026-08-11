@@ -22,7 +22,9 @@
 #include <optional>
 #include <queue>
 #include <random>
+#include <shared_mutex>
 #include <string>
+#include <system_error>
 #include <tuple>
 #include <type_traits>
 #include <vector>
@@ -32,6 +34,38 @@ namespace threadschedule
 
 namespace detail
 {
+
+template <typename Pool>
+class worker_context_guard
+{
+public:
+  worker_context_guard(Pool*& slot, Pool* current) noexcept
+      : slot_(slot), previous_(slot)
+  {
+    slot_ = current;
+  }
+
+  ~worker_context_guard()
+  {
+    slot_ = previous_;
+  }
+
+  worker_context_guard(worker_context_guard const&) = delete;
+  auto operator=(worker_context_guard const&)
+      -> worker_context_guard& = delete;
+
+private:
+  Pool*& slot_;
+  Pool* previous_;
+};
+
+[[noreturn]] inline void
+throw_worker_deadlock()
+{
+  throw std::system_error(
+      std::make_error_code(std::errc::resource_deadlock_would_occur),
+      "pool lifecycle operation called from its own worker");
+}
 
 inline auto
 worker_thread_name(std::string const& name_prefix, size_t index) -> std::string
@@ -124,14 +158,18 @@ inline auto
 distribute_workers_across_cpus(WorkerRange& workers)
     -> expected<void, std::error_code>
 {
-  auto const cpu_count = std::thread::hardware_concurrency();
-  if (cpu_count == 0)
+  auto allowed = thread_info().get_affinity();
+  if (!allowed)
+    return unexpected(allowed.error());
+
+  auto const cpus = allowed->get_cpus();
+  if (cpus.empty())
     return unexpected(std::make_error_code(std::errc::invalid_argument));
 
   std::error_code first_error;
   for (size_t i = 0; i < workers.size(); ++i)
     {
-      native_thread_affinity affinity({ static_cast<int>(i % cpu_count) });
+      native_thread_affinity affinity({ cpus[i % cpus.size()] });
       auto configured = workers[i].set_affinity(affinity);
       if (!configured && !first_error)
         first_error = configured.error();
@@ -153,26 +191,47 @@ parallel_for_each_chunked(Pool& pool, Iterator begin, Iterator end, F&& func,
   size_t const chunk_size = (std::max)(size_t(1), total / (num_workers * 4));
   std::vector<std::future<void>> futures;
   auto it = begin;
+  std::exception_ptr first_error;
 
-  while (it != end)
+  try
     {
-      auto remaining = static_cast<size_t>(std::distance(it, end));
-      auto this_chunk = (std::min)(chunk_size, remaining);
-      auto chunk_end = it;
-      std::advance(chunk_end, this_chunk);
+      while (it != end)
+        {
+          auto remaining = static_cast<size_t>(std::distance(it, end));
+          auto this_chunk = (std::min)(chunk_size, remaining);
+          auto chunk_end = it;
+          std::advance(chunk_end, this_chunk);
 
-      futures.push_back(pool.submit(
-          [it, chunk_end, &func]()
-            {
-              for (auto cur = it; cur != chunk_end; ++cur)
-                func(*cur);
-            }));
+          futures.push_back(pool.submit(
+              [it, chunk_end, &func]()
+                {
+                  for (auto cur = it; cur != chunk_end; ++cur)
+                    func(*cur);
+                }));
 
-      it = chunk_end;
+          it = chunk_end;
+        }
+    }
+  catch (...)
+    {
+      first_error = std::current_exception();
     }
 
   for (auto& f : futures)
-    f.get();
+    {
+      try
+        {
+          f.get();
+        }
+      catch (...)
+        {
+          if (!first_error)
+            first_error = std::current_exception();
+        }
+    }
+
+  if (first_error)
+    std::rethrow_exception(first_error);
 }
 
 // ---------------------------------------------------------------------------
@@ -345,8 +404,18 @@ public:
   operator()()
   {
     auto* vt = vtable_;
+    if (vt == nullptr)
+      throw std::bad_function_call();
     vtable_ = nullptr;
-    vt->invoke(buffer_);
+    try
+      {
+        vt->invoke(buffer_);
+      }
+    catch (...)
+      {
+        vt->destroy(buffer_);
+        throw;
+      }
     vt->destroy(buffer_);
   }
 
@@ -528,20 +597,19 @@ public:
   void
   clear()
   {
-    std::lock_guard<std::mutex> lock(mutex_);
-    bottom_.store(0, std::memory_order_relaxed);
-    top_.store(0, std::memory_order_relaxed);
+    (void)clear_and_count();
   }
 
   [[nodiscard]] auto
   clear_and_count() -> size_t
   {
-    std::lock_guard<std::mutex> lock(mutex_);
-    size_t const t = top_.load(std::memory_order_relaxed);
-    size_t const b = bottom_.load(std::memory_order_relaxed);
-    size_t const count = t > b ? t - b : 0;
-    bottom_.store(0, std::memory_order_relaxed);
-    top_.store(0, std::memory_order_relaxed);
+    size_t count = 0;
+    T discarded;
+    while (steal(discarded))
+      {
+        ++count;
+        discarded = T{};
+      }
     return count;
   }
 };
@@ -682,10 +750,21 @@ public:
 
     workers_.reserve(num_threads_);
 
-    for (size_t i = 0; i < num_threads_; ++i)
+    try
       {
-        workers_.emplace_back(&work_stealing_pool_backend::worker_function,
-                              this, i);
+        for (size_t i = 0; i < num_threads_; ++i)
+          workers_.emplace_back(&work_stealing_pool_backend::worker_function,
+                                this, i);
+      }
+    catch (...)
+      {
+        stop_.store(true, std::memory_order_release);
+        submissions_quiesced_.store(true, std::memory_order_release);
+        wakeup_condition_.notify_all();
+        for (auto& worker : workers_)
+          if (worker.joinable())
+            worker.join();
+        throw;
       }
   }
 
@@ -707,64 +786,52 @@ public:
   void
   shutdown(shutdown_policy_backend policy = shutdown_policy_backend::drain)
   {
-    size_t dropped_tasks = 0;
-    {
-      std::lock_guard<std::mutex> lock(overflow_mutex_);
-      if (stop_.exchange(true, std::memory_order_acq_rel))
-        return;
-
-      if (policy == shutdown_policy_backend::drop_pending)
-        {
-          dropped_tasks += overflow_tasks_.size();
-          std::queue<queued_task> empty;
-          overflow_tasks_.swap(empty);
-          for (auto& q : worker_queues_)
-            dropped_tasks += q->clear_and_count();
-        }
-    }
-
-    if (dropped_tasks != 0)
-      {
-        std::lock_guard<std::mutex> lock(completion_mutex_);
-        outstanding_tasks_.fetch_sub(dropped_tasks, std::memory_order_acq_rel);
-      }
-
-    if (dropped_tasks != 0)
-      completion_condition_.notify_all();
-    wakeup_condition_.notify_all();
-
-    for (auto& worker : workers_)
-      {
-        if (worker.joinable())
-          worker.join();
-      }
-
-    workers_.clear();
+    if (is_current_worker())
+      detail::throw_worker_deadlock();
+    std::lock_guard<std::recursive_mutex> shutdown_lock(shutdown_mutex_);
+    if (stop_.exchange(true, std::memory_order_acq_rel))
+      return;
+    shutdown_completed_all_ = finish_shutdown(policy);
+    shutdown_completed_at_ = std::chrono::steady_clock::now();
   }
 
   /**
    * @brief Attempt a timed drain: finish as many tasks as possible within
-   *        @p timeout, then force-stop remaining workers.
+   *        @p timeout, then discard queued work and wait for running tasks.
+   *
+   * New submissions are rejected before the timed wait begins.
+   * Running C++ callables cannot be stopped safely, so this function can
+   * return after the timeout while an already-running task finishes.
    * @return @c true if all tasks completed within the deadline,
    *         @c false if the timeout expired first.
    */
   auto
   shutdown_for(std::chrono::milliseconds timeout) -> bool
   {
+    if (is_current_worker())
+      detail::throw_worker_deadlock();
     auto const deadline = std::chrono::steady_clock::now() + timeout;
+    std::lock_guard<std::recursive_mutex> shutdown_lock(shutdown_mutex_);
+
+    if (stop_.exchange(true, std::memory_order_acq_rel))
+      return shutdown_completed_all_ && shutdown_completed_at_ <= deadline;
 
     {
-      std::lock_guard<std::mutex> lock(overflow_mutex_);
-      if (stop_.load(std::memory_order_acquire))
-        return true;
+      std::unique_lock<std::shared_mutex> submission_lock(submission_mutex_);
+      submissions_quiesced_.store(true, std::memory_order_release);
     }
+    wakeup_condition_.notify_all();
 
     std::unique_lock<std::mutex> lock(completion_mutex_);
     bool const drained = completion_condition_.wait_until(
         lock, deadline, [this]
           { return outstanding_tasks_.load(std::memory_order_acquire) == 0; });
+    lock.unlock();
 
-    shutdown(shutdown_policy_backend::drain);
+    shutdown_completed_all_
+        = finish_shutdown(drained ? shutdown_policy_backend::drain
+                                  : shutdown_policy_backend::drop_pending);
+    shutdown_completed_at_ = std::chrono::steady_clock::now();
     return drained;
   }
 
@@ -796,6 +863,9 @@ public:
         detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
 
     std::future<return_type> result = task->get_future();
+    queued_task queued([task]() { (*task)(); });
+
+    std::shared_lock<std::shared_mutex> submission_lock(submission_mutex_);
 
     if (stop_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
@@ -804,7 +874,7 @@ public:
         = next_victim_.fetch_add(1, std::memory_order_relaxed) % num_threads_;
 
     outstanding_tasks_.fetch_add(1, std::memory_order_release);
-    if (worker_queues_[preferred_queue]->push([task]() { (*task)(); }))
+    if (worker_queues_[preferred_queue]->push(std::move(queued)))
       {
         wakeup_condition_.notify_one();
         return result;
@@ -816,7 +886,9 @@ public:
       {
         size_t const idx = (preferred_queue + attempts + 1) % num_threads_;
         outstanding_tasks_.fetch_add(1, std::memory_order_release);
-        if (worker_queues_[idx]->push([task]() { (*task)(); }))
+        // A failed push does not consume the queued task.
+        // NOLINTNEXTLINE(bugprone-use-after-move)
+        if (worker_queues_[idx]->push(std::move(queued)))
           {
             wakeup_condition_.notify_one();
             return result;
@@ -828,8 +900,10 @@ public:
       std::lock_guard<std::mutex> lock(overflow_mutex_);
       if (stop_.load(std::memory_order_relaxed))
         return unexpected(std::make_error_code(std::errc::operation_canceled));
+      // Failed deque pushes preserve the queued task.
+      // NOLINTNEXTLINE(bugprone-use-after-move)
+      overflow_tasks_.emplace(std::move(queued));
       outstanding_tasks_.fetch_add(1, std::memory_order_release);
-      overflow_tasks_.emplace([task]() { (*task)(); });
     }
 
     wakeup_condition_.notify_all();
@@ -888,6 +962,8 @@ public:
     queued_task bound(detail::make_move_callable<void()>(
         detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...)));
 
+    std::shared_lock<std::shared_mutex> submission_lock(submission_mutex_);
+
     if (stop_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
 
@@ -922,8 +998,10 @@ public:
       std::lock_guard<std::mutex> lock(overflow_mutex_);
       if (stop_.load(std::memory_order_relaxed))
         return unexpected(std::make_error_code(std::errc::operation_canceled));
-      outstanding_tasks_.fetch_add(1, std::memory_order_release);
+      // Failed deque pushes preserve the queued task.
+      // NOLINTNEXTLINE(bugprone-use-after-move)
       overflow_tasks_.emplace(std::move(bound));
+      outstanding_tasks_.fetch_add(1, std::memory_order_release);
     }
 
     wakeup_condition_.notify_all();
@@ -950,6 +1028,17 @@ public:
     std::vector<std::future<void>> futures;
     size_t const batch_size = std::distance(begin, end);
     futures.reserve(batch_size);
+    std::vector<queued_task> prepared;
+    prepared.reserve(batch_size);
+
+    for (auto it = begin; it != end; ++it)
+      {
+        auto task = std::make_shared<std::packaged_task<void()>>(*it);
+        futures.push_back(task->get_future());
+        prepared.emplace_back([task]() { (*task)(); });
+      }
+
+    std::shared_lock<std::shared_mutex> submission_lock(submission_mutex_);
 
     if (stop_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
@@ -958,30 +1047,39 @@ public:
         = next_victim_.fetch_add(batch_size, std::memory_order_relaxed)
           % num_threads_;
 
-    for (auto it = begin; it != end; ++it)
+    try
       {
-        auto task = std::make_shared<std::packaged_task<void()>>(*it);
-        futures.push_back(task->get_future());
-
-        bool queued = false;
-        for (size_t attempts = 0; attempts < num_threads_; ++attempts)
+        for (auto& queued : prepared)
           {
-            outstanding_tasks_.fetch_add(1, std::memory_order_release);
-            if (worker_queues_[queue_idx]->push([task]() { (*task)(); }))
+            bool enqueued = false;
+            for (size_t attempts = 0; attempts < num_threads_; ++attempts)
               {
-                queued = true;
-                break;
+                outstanding_tasks_.fetch_add(1, std::memory_order_release);
+                // A failed push does not consume the queued task.
+                // NOLINTNEXTLINE(bugprone-use-after-move)
+                if (worker_queues_[queue_idx]->push(std::move(queued)))
+                  {
+                    enqueued = true;
+                    break;
+                  }
+                outstanding_tasks_.fetch_sub(1, std::memory_order_acq_rel);
+                queue_idx = (queue_idx + 1) % num_threads_;
               }
-            outstanding_tasks_.fetch_sub(1, std::memory_order_acq_rel);
-            queue_idx = (queue_idx + 1) % num_threads_;
-          }
 
-        if (!queued)
-          {
-            std::lock_guard<std::mutex> lock(overflow_mutex_);
-            outstanding_tasks_.fetch_add(1, std::memory_order_release);
-            overflow_tasks_.emplace([task]() { (*task)(); });
+            if (!enqueued)
+              {
+                std::lock_guard<std::mutex> lock(overflow_mutex_);
+                // Failed deque pushes preserve the queued task.
+                // NOLINTNEXTLINE(bugprone-use-after-move)
+                overflow_tasks_.emplace(std::move(queued));
+                outstanding_tasks_.fetch_add(1, std::memory_order_release);
+              }
           }
+      }
+    catch (...)
+      {
+        wakeup_condition_.notify_all();
+        throw;
       }
 
     wakeup_condition_.notify_all();
@@ -1013,6 +1111,8 @@ public:
   void
   parallel_for_each(Iterator begin, Iterator end, F&& func)
   {
+    if (is_current_worker())
+      detail::throw_worker_deadlock();
     detail::parallel_for_each_chunked(*this, begin, end, std::forward<F>(func),
                                       num_threads_);
   }
@@ -1138,10 +1238,18 @@ public:
   void
   wait_for_tasks()
   {
+    if (is_current_worker())
+      detail::throw_worker_deadlock();
     std::unique_lock<std::mutex> lock(completion_mutex_);
     completion_condition_.wait(
         lock, [this]
           { return outstanding_tasks_.load(std::memory_order_acquire) == 0; });
+  }
+
+  [[nodiscard]] auto
+  is_current_worker() const noexcept -> bool
+  {
+    return current_pool == this;
   }
 
   /// @}
@@ -1220,8 +1328,13 @@ private:
 
   std::queue<queued_task> overflow_tasks_;
   mutable std::mutex overflow_mutex_;
+  mutable std::shared_mutex submission_mutex_;
+  std::recursive_mutex shutdown_mutex_;
 
   std::atomic<bool> stop_;
+  std::atomic<bool> submissions_quiesced_{ false };
+  bool shutdown_completed_all_{ true };
+  std::chrono::steady_clock::time_point shutdown_completed_at_{};
   std::condition_variable wakeup_condition_;
   std::mutex wakeup_mutex_;
 
@@ -1240,11 +1353,74 @@ private:
   task_end_callback_storage on_task_end_;
 
   std::chrono::steady_clock::time_point start_time_;
+  inline static thread_local work_stealing_pool_backend* current_pool
+      = nullptr;
+
+  auto
+  finish_shutdown(shutdown_policy_backend policy) -> bool
+  {
+    size_t dropped_tasks = 0;
+    std::queue<queued_task> discarded_overflow;
+    {
+      std::unique_lock<std::shared_mutex> submission_lock(submission_mutex_);
+      submissions_quiesced_.store(true, std::memory_order_release);
+      std::lock_guard<std::mutex> lock(overflow_mutex_);
+      if (policy == shutdown_policy_backend::drop_pending)
+        {
+          dropped_tasks += overflow_tasks_.size();
+          overflow_tasks_.swap(discarded_overflow);
+        }
+    }
+
+    if (dropped_tasks != 0)
+      {
+        std::lock_guard<std::mutex> lock(completion_mutex_);
+        outstanding_tasks_.fetch_sub(dropped_tasks, std::memory_order_acq_rel);
+      }
+
+    if (dropped_tasks != 0)
+      completion_condition_.notify_all();
+
+    if (dropped_tasks != 0)
+      {
+        std::queue<queued_task> empty;
+        discarded_overflow.swap(empty);
+      }
+
+    if (policy == shutdown_policy_backend::drop_pending)
+      {
+        for (auto& queue : worker_queues_)
+          {
+            queued_task discarded;
+            while (queue->steal(discarded))
+              {
+                ++dropped_tasks;
+                {
+                  std::lock_guard<std::mutex> lock(completion_mutex_);
+                  outstanding_tasks_.fetch_sub(1, std::memory_order_acq_rel);
+                }
+                completion_condition_.notify_all();
+                discarded = queued_task{};
+              }
+          }
+      }
+
+    wakeup_condition_.notify_all();
+
+    for (auto& worker : workers_)
+      if (worker.joinable())
+        worker.join();
+
+    workers_.clear();
+    return dropped_tasks == 0;
+  }
 
   // NOLINTNEXTLINE(readability-function-cognitive-complexity)
   void
   worker_function(size_t worker_id)
   {
+    detail::worker_context_guard<work_stealing_pool_backend> worker_context(
+        current_pool, this);
     std::optional<auto_register_current_thread> reg_guard;
     if (register_workers_)
       reg_guard.emplace("hp_worker_" + std::to_string(worker_id),
@@ -1303,13 +1479,19 @@ private:
             auto const start_time = std::chrono::steady_clock::now();
             auto const tid = std::this_thread::get_id();
 
-            task_start_callback_storage on_task_start;
-            {
-              std::lock_guard<std::mutex> tl(trace_mutex_);
-              on_task_start = on_task_start_;
-            }
-            if (on_task_start)
-              on_task_start(start_time, tid);
+            try
+              {
+                task_start_callback_storage on_task_start;
+                {
+                  std::lock_guard<std::mutex> tl(trace_mutex_);
+                  on_task_start = on_task_start_;
+                }
+                if (on_task_start)
+                  on_task_start(start_time, tid);
+              }
+            catch (...)
+              {
+              }
 
             // For submit() tasks the callable is a packaged_task which
             // catches exceptions internally and stores them in the
@@ -1323,6 +1505,7 @@ private:
             catch (...)
               {
               }
+            task = queued_task{};
             auto const end_time = std::chrono::steady_clock::now();
 
             auto const task_duration
@@ -1331,13 +1514,19 @@ private:
             total_task_time_.fetch_add(task_duration.count(),
                                        std::memory_order_relaxed);
 
-            task_end_callback_storage on_task_end;
-            {
-              std::lock_guard<std::mutex> tl(trace_mutex_);
-              on_task_end = on_task_end_;
-            }
-            if (on_task_end)
-              on_task_end(end_time, tid, task_duration);
+            try
+              {
+                task_end_callback_storage on_task_end;
+                {
+                  std::lock_guard<std::mutex> tl(trace_mutex_);
+                  on_task_end = on_task_end_;
+                }
+                if (on_task_end)
+                  on_task_end(end_time, tid, task_duration);
+              }
+            catch (...)
+              {
+              }
 
             active_tasks_.fetch_sub(1, std::memory_order_relaxed);
             {
@@ -1352,6 +1541,7 @@ private:
         else
           {
             if (stop_.load(std::memory_order_acquire)
+                && submissions_quiesced_.load(std::memory_order_acquire)
                 && outstanding_tasks_.load(std::memory_order_acquire) == 0)
               {
                 break;
@@ -1487,10 +1677,20 @@ public:
   {
     workers_.reserve(num_threads_);
 
-    for (size_t i = 0; i < num_threads_; ++i)
+    try
       {
-        workers_.emplace_back(&thread_pool_backend_base::worker_function, this,
-                              i);
+        for (size_t i = 0; i < num_threads_; ++i)
+          workers_.emplace_back(&thread_pool_backend_base::worker_function,
+                                this, i);
+      }
+    catch (...)
+      {
+        stop_.store(true, std::memory_order_release);
+        condition_.notify_all();
+        for (auto& worker : workers_)
+          if (worker.joinable())
+            worker.join();
+        throw;
       }
   }
 
@@ -1576,12 +1776,13 @@ public:
   auto
   try_post(F&& f, Args&&... args) -> expected<void, std::error_code>
   {
+    queued_task task(
+        detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
     {
       std::lock_guard<std::mutex> lock(queue_mutex_);
       if (stop_)
         return unexpected(std::make_error_code(std::errc::operation_canceled));
-      tasks_.emplace(
-          detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
+      tasks_.push(std::move(task));
     }
     condition_.notify_one();
     return {};
@@ -1598,20 +1799,38 @@ public:
       -> expected<std::vector<std::future<void>>, std::error_code>
   {
     std::vector<std::future<void>> futures;
-    futures.reserve(std::distance(begin, end));
+    size_t const batch_size = std::distance(begin, end);
+    futures.reserve(batch_size);
+    std::vector<std::shared_ptr<std::packaged_task<void()>>> prepared;
+    prepared.reserve(batch_size);
 
-    {
-      std::lock_guard<std::mutex> lock(queue_mutex_);
-      if (stop_)
-        return unexpected(std::make_error_code(std::errc::operation_canceled));
+    for (auto it = begin; it != end; ++it)
+      {
+        auto task = std::make_shared<std::packaged_task<void()>>(*it);
+        futures.push_back(task->get_future());
+        prepared.push_back(std::move(task));
+      }
 
-      for (auto it = begin; it != end; ++it)
-        {
-          auto task = std::make_shared<std::packaged_task<void()>>(*it);
-          futures.push_back(task->get_future());
-          tasks_.emplace([task]() { (*task)(); });
-        }
-    }
+    bool enqueued = false;
+    try
+      {
+        std::lock_guard<std::mutex> lock(queue_mutex_);
+        if (stop_)
+          return unexpected(
+              std::make_error_code(std::errc::operation_canceled));
+
+        for (auto const& task : prepared)
+          {
+            tasks_.emplace([task]() { (*task)(); });
+            enqueued = true;
+          }
+      }
+    catch (...)
+      {
+        if (enqueued)
+          condition_.notify_all();
+        throw;
+      }
 
     condition_.notify_all();
     return futures;
@@ -1633,6 +1852,8 @@ public:
   void
   parallel_for_each(Iterator begin, Iterator end, F&& func)
   {
+    if (is_current_worker())
+      detail::throw_worker_deadlock();
     detail::parallel_for_each_chunked(*this, begin, end, std::forward<F>(func),
                                       num_threads_);
   }
@@ -1709,6 +1930,8 @@ public:
   void
   wait_for_tasks()
   {
+    if (is_current_worker())
+      detail::throw_worker_deadlock();
     std::unique_lock<std::mutex> lock(queue_mutex_);
     task_finished_condition_.wait(
         lock,
@@ -1719,6 +1942,12 @@ public:
           });
   }
 
+  [[nodiscard]] auto
+  is_current_worker() const noexcept -> bool
+  {
+    return current_pool == this;
+  }
+
   /**
    * @brief Shut the pool down.
    * @param policy @c drain (default) finishes all queued tasks;
@@ -1727,19 +1956,26 @@ public:
   void
   shutdown(shutdown_policy_backend policy = shutdown_policy_backend::drain)
   {
+    if (is_current_worker())
+      detail::throw_worker_deadlock();
+    std::lock_guard<std::recursive_mutex> shutdown_lock(shutdown_mutex_);
+    std::queue<queued_task> discarded;
     {
       std::lock_guard<std::mutex> lock(queue_mutex_);
       if (stop_)
         return;
       stop_ = true;
       if (policy == shutdown_policy_backend::drop_pending)
-        {
-          std::queue<queued_task> empty;
-          tasks_.swap(empty);
-        }
+        tasks_.swap(discarded);
     }
+    shutdown_completed_all_ = discarded.empty();
 
     condition_.notify_all();
+    task_finished_condition_.notify_all();
+    {
+      std::queue<queued_task> empty;
+      discarded.swap(empty);
+    }
 
     for (auto& worker : workers_)
       {
@@ -1748,26 +1984,32 @@ public:
       }
 
     workers_.clear();
+    shutdown_completed_at_ = std::chrono::steady_clock::now();
   }
 
   /**
    * @brief Attempt a timed drain: finish as many tasks as possible within
-   *        @p timeout, then force-stop remaining workers.
+   *        @p timeout, then discard queued work and wait for running tasks.
+   *
+   * New submissions are rejected before the timed wait begins.
+   * Running C++ callables cannot be stopped safely, so this function can
+   * return after the timeout while an already-running task finishes.
    * @return @c true if all tasks completed within the deadline,
    *         @c false if the timeout expired first.
    */
   auto
   shutdown_for(std::chrono::milliseconds timeout) -> bool
   {
+    if (is_current_worker())
+      detail::throw_worker_deadlock();
     auto const deadline = std::chrono::steady_clock::now() + timeout;
-
-    {
-      std::lock_guard<std::mutex> lock(queue_mutex_);
-      if (stop_)
-        return true;
-    }
+    std::lock_guard<std::recursive_mutex> shutdown_lock(shutdown_mutex_);
 
     std::unique_lock<std::mutex> lock(queue_mutex_);
+    if (stop_)
+      return shutdown_completed_all_ && shutdown_completed_at_ <= deadline;
+    stop_ = true;
+    condition_.notify_all();
     bool const drained = task_finished_condition_.wait_until(
         lock, deadline,
         [this]
@@ -1775,9 +2017,23 @@ public:
             return tasks_.empty()
                    && active_tasks_.load(std::memory_order_acquire) == 0;
           });
+    std::queue<queued_task> discarded;
+    if (!drained)
+      tasks_.swap(discarded);
+    shutdown_completed_all_ = discarded.empty();
     lock.unlock();
 
-    shutdown(shutdown_policy_backend::drain);
+    condition_.notify_all();
+    task_finished_condition_.notify_all();
+    {
+      std::queue<queued_task> empty;
+      discarded.swap(empty);
+    }
+    for (auto& worker : workers_)
+      if (worker.joinable())
+        worker.join();
+    workers_.clear();
+    shutdown_completed_at_ = std::chrono::steady_clock::now();
     return drained;
   }
 
@@ -1902,7 +2158,10 @@ private:
   mutable std::mutex queue_mutex_;
   std::condition_variable condition_;
   std::condition_variable task_finished_condition_;
+  std::recursive_mutex shutdown_mutex_;
   std::atomic<bool> stop_;
+  bool shutdown_completed_all_{ true };
+  std::chrono::steady_clock::time_point shutdown_completed_at_{};
   std::atomic<size_t> active_tasks_{ 0 };
   std::atomic<size_t> completed_tasks_{ 0 };
   std::atomic<uint64_t> total_task_time_{ 0 };
@@ -1912,10 +2171,13 @@ private:
   task_end_callback_storage on_task_end_;
 
   std::chrono::steady_clock::time_point start_time_;
+  inline static thread_local thread_pool_backend_base* current_pool = nullptr;
 
   void
   worker_function(size_t worker_id)
   {
+    detail::worker_context_guard<thread_pool_backend_base> worker_context(
+        current_pool, this);
     std::optional<auto_register_current_thread> reg_guard;
     if (register_workers_)
       reg_guard.emplace("pool_worker_" + std::to_string(worker_id),
@@ -1956,13 +2218,19 @@ private:
             auto const start_time = std::chrono::steady_clock::now();
             auto const tid = std::this_thread::get_id();
 
-            task_start_callback_storage on_task_start;
-            {
-              std::lock_guard<std::mutex> tl(trace_mutex_);
-              on_task_start = on_task_start_;
-            }
-            if (on_task_start)
-              on_task_start(start_time, tid);
+            try
+              {
+                task_start_callback_storage on_task_start;
+                {
+                  std::lock_guard<std::mutex> tl(trace_mutex_);
+                  on_task_start = on_task_start_;
+                }
+                if (on_task_start)
+                  on_task_start(start_time, tid);
+              }
+            catch (...)
+              {
+              }
 
             // See work_stealing_pool_backend::worker_function for rationale.
             try
@@ -1980,13 +2248,19 @@ private:
             total_task_time_.fetch_add(task_duration.count(),
                                        std::memory_order_relaxed);
 
-            task_end_callback_storage on_task_end;
-            {
-              std::lock_guard<std::mutex> tl(trace_mutex_);
-              on_task_end = on_task_end_;
-            }
-            if (on_task_end)
-              on_task_end(end_time, tid, task_duration);
+            try
+              {
+                task_end_callback_storage on_task_end;
+                {
+                  std::lock_guard<std::mutex> tl(trace_mutex_);
+                  on_task_end = on_task_end_;
+                }
+                if (on_task_end)
+                  on_task_end(end_time, tid, task_duration);
+              }
+            catch (...)
+              {
+              }
 
             {
               std::lock_guard<std::mutex> lock(queue_mutex_);
@@ -2112,8 +2386,21 @@ public:
       : num_threads_(num_threads == 0 ? 1 : num_threads)
   {
     workers_.reserve(num_threads_);
-    for (size_t i = 0; i < num_threads_; ++i)
-      workers_.emplace_back(&lightweight_pool_backend_base::worker_loop, this);
+    try
+      {
+        for (size_t i = 0; i < num_threads_; ++i)
+          workers_.emplace_back(&lightweight_pool_backend_base::worker_loop,
+                                this);
+      }
+    catch (...)
+      {
+        stop_.store(true, std::memory_order_release);
+        condition_.notify_all();
+        for (auto& worker : workers_)
+          if (worker.joinable())
+            worker.join();
+        throw;
+      }
   }
 
   lightweight_pool_backend_base(lightweight_pool_backend_base const&) = delete;
@@ -2198,13 +2485,30 @@ public:
   try_post_batch(Iterator begin, Iterator end)
       -> expected<void, std::error_code>
   {
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      if (stop_)
-        return unexpected(std::make_error_code(std::errc::operation_canceled));
-      for (auto it = begin; it != end; ++it)
-        tasks_.push(detail::sbo_callable<TaskSize>(*it));
-    }
+    std::vector<detail::sbo_callable<TaskSize>> prepared;
+    prepared.reserve(std::distance(begin, end));
+    for (auto it = begin; it != end; ++it)
+      prepared.emplace_back(*it);
+
+    bool enqueued = false;
+    try
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (stop_)
+          return unexpected(
+              std::make_error_code(std::errc::operation_canceled));
+        for (auto& task : prepared)
+          {
+            tasks_.push(std::move(task));
+            enqueued = true;
+          }
+      }
+    catch (...)
+      {
+        if (enqueued)
+          condition_.notify_all();
+        throw;
+      }
     condition_.notify_all();
     return {};
   }
@@ -2227,45 +2531,56 @@ public:
   void
   shutdown(shutdown_policy_backend policy = shutdown_policy_backend::drain)
   {
+    if (is_current_worker())
+      detail::throw_worker_deadlock();
+    std::lock_guard<std::recursive_mutex> shutdown_lock(shutdown_mutex_);
+    std::queue<detail::sbo_callable<TaskSize>> discarded;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (stop_)
         return;
       stop_ = true;
       if (policy == shutdown_policy_backend::drop_pending)
-        {
-          std::queue<detail::sbo_callable<TaskSize>> empty;
-          tasks_.swap(empty);
-        }
+        tasks_.swap(discarded);
     }
+    shutdown_completed_all_ = discarded.empty();
     condition_.notify_all();
+    drain_condition_.notify_all();
+    {
+      std::queue<detail::sbo_callable<TaskSize>> empty;
+      discarded.swap(empty);
+    }
     for (auto& w : workers_)
       {
         if (w.joinable())
           w.join();
       }
     workers_.clear();
+    shutdown_completed_at_ = std::chrono::steady_clock::now();
   }
 
   /**
    * @brief Attempt a timed drain.
    *
-   * Waits up to @p timeout for all tasks to complete, then performs a
-   * full @c shutdown(drain).
+   * Waits up to @p timeout for all tasks to complete, then discards queued
+   * work and waits for any already-running tasks.
    *
+   * New submissions are rejected before the timed wait begins.
    * @return @c true if all tasks completed within the deadline,
    *         @c false if the timeout expired (pool is still shut down).
    */
   auto
   shutdown_for(std::chrono::milliseconds timeout) -> bool
   {
+    if (is_current_worker())
+      detail::throw_worker_deadlock();
     auto const deadline = std::chrono::steady_clock::now() + timeout;
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      if (stop_)
-        return true;
-    }
+    std::lock_guard<std::recursive_mutex> shutdown_lock(shutdown_mutex_);
     std::unique_lock<std::mutex> lock(mutex_);
+    if (stop_)
+      return shutdown_completed_all_ && shutdown_completed_at_ <= deadline;
+    stop_ = true;
+    condition_.notify_all();
     bool const drained = drain_condition_.wait_until(
         lock, deadline,
         [this]
@@ -2273,8 +2588,22 @@ public:
             return tasks_.empty()
                    && active_tasks_.load(std::memory_order_acquire) == 0;
           });
+    std::queue<detail::sbo_callable<TaskSize>> discarded;
+    if (!drained)
+      tasks_.swap(discarded);
+    shutdown_completed_all_ = discarded.empty();
     lock.unlock();
-    shutdown(shutdown_policy_backend::drain);
+    condition_.notify_all();
+    drain_condition_.notify_all();
+    {
+      std::queue<detail::sbo_callable<TaskSize>> empty;
+      discarded.swap(empty);
+    }
+    for (auto& worker : workers_)
+      if (worker.joinable())
+        worker.join();
+    workers_.clear();
+    shutdown_completed_at_ = std::chrono::steady_clock::now();
     return drained;
   }
 
@@ -2288,6 +2617,12 @@ public:
   size() const noexcept -> size_t
   {
     return num_threads_;
+  }
+
+  [[nodiscard]] auto
+  is_current_worker() const noexcept -> bool
+  {
+    return current_pool == this;
   }
 
   /// @}
@@ -2343,12 +2678,19 @@ private:
   std::mutex mutex_;
   std::condition_variable condition_;
   std::condition_variable drain_condition_;
+  std::recursive_mutex shutdown_mutex_;
   std::atomic<bool> stop_{ false };
+  bool shutdown_completed_all_{ true };
+  std::chrono::steady_clock::time_point shutdown_completed_at_{};
   std::atomic<size_t> active_tasks_{ 0 };
+  inline static thread_local lightweight_pool_backend_base* current_pool
+      = nullptr;
 
   void
   worker_loop()
   {
+    detail::worker_context_guard<lightweight_pool_backend_base> worker_context(
+        current_pool, this);
     while (true)
       {
         detail::sbo_callable<TaskSize> task;

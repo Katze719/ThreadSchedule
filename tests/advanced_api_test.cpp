@@ -28,6 +28,17 @@ TEST(AdvancedApi, UmbrellaExposesOptionalFacilities)
   EXPECT_EQ(values.front(), 7);
 }
 
+TEST(AdvancedApi, NegativeNumaThreadIndexWrapsWithinNode)
+{
+  threadschedule::cpu_topology topology;
+  topology.cpu_count = 3;
+  topology.numa_nodes = 1;
+  topology.node_to_cpus = { { 2, 4, 6 } };
+
+  auto affinity = threadschedule::affinity_for_node(topology, 0, -1, 2);
+  EXPECT_EQ(affinity.get_cpus(), (std::vector<int>{ 2, 6 }));
+}
+
 TEST(AdvancedApi, ErrorHandledTaskAcceptsLvalueCallable)
 {
   auto handler = std::make_shared<threadschedule::advanced::error_handler>();
@@ -40,6 +51,25 @@ TEST(AdvancedApi, ErrorHandledTaskAcceptsLvalueCallable)
 
   EXPECT_TRUE(ran);
 }
+
+#ifdef _WIN32
+TEST(AdvancedApi, WindowsProfilesUseSafeDocumentedPriorities)
+{
+  auto const realtime = threadschedule::profiles::realtime();
+  auto realtime_params
+      = threadschedule::scheduler_parameters::create_for_policy(
+          realtime.policy, realtime.priority);
+  ASSERT_TRUE(realtime_params.has_value());
+  EXPECT_EQ(realtime_params->sched_priority, THREAD_PRIORITY_HIGHEST);
+
+  auto const throughput = threadschedule::profiles::throughput();
+  auto throughput_params
+      = threadschedule::scheduler_parameters::create_for_policy(
+          throughput.policy, throughput.priority);
+  ASSERT_TRUE(throughput_params.has_value());
+  EXPECT_EQ(throughput_params->sched_priority, THREAD_PRIORITY_BELOW_NORMAL);
+}
+#endif
 
 #ifndef _WIN32
 TEST(AdvancedApi, ProfilesPreservePosixNicePriorityModel)

@@ -48,6 +48,15 @@
 - **Specific native errors are preserved** -- thread, pool, profile, registry,
   and scheduler configuration returns the first concrete platform error
   instead of replacing it with a generic permission error.
+- **Validated portable realtime priority** -- `schedule::realtime_fifo` and
+  `schedule::realtime_rr` accept priorities from 1 through 99 and reject other
+  values before a configured thread callable starts.
+- **Safe Windows realtime mapping** -- portable realtime requests use only
+  `ABOVE_NORMAL` and `HIGHEST`; raw validated Win32 priority constants remain
+  available through the advanced native scheduling API without remapping.
+- **Correct pthread errors** -- pthread scheduling and affinity failures retain
+  the error number returned by the pthread API instead of consulting stale
+  `errno` state.
 - **Profiles preserve priority semantics** -- registry and detailed profile
   application now honor the profile's priority model, including Linux nice
   values, instead of silently treating every profile as platform-native.
@@ -64,6 +73,25 @@
 - **Integrated task reporting** -- `thread_pool_config::on_task_error` and
   `scheduled_pool_config::on_task_error` observe task failures without
   requiring the former adapter family.
+- **Deterministic periodic overrun behavior** -- periodic jobs never overlap
+  with themselves; missed fixed-rate deadlines are skipped instead of
+  blocking workers behind an overdue backlog.
+- **Lifecycle and registry hardening** -- pool self-shutdown/wait attempts
+  report `resource_deadlock_would_occur`, shutdown races release dropped
+  futures and captures, accepted concurrent submissions remain drainable, and
+  partial worker-construction failures unwind without hanging. Registry
+  controls cannot target exited, stale, or replaced thread registrations.
+- **Verified affinity application** -- portable thread and registry affinity
+  changes require exact readback and attempt rollback on partial OS
+  application. Worker distribution uses the caller's allowed CPU set.
+- **Windows processor-group topology** -- topology enumeration covers every
+  active processor group with flattened `group * 64 + index` CPU identifiers.
+  Each affinity value represents one group, and cross-group masks are rejected
+  instead of being silently truncated.
+- **Defined timed shutdown** -- `shutdown_for` closes submission before it
+  waits and reports success only when all accepted work completes by the
+  deadline. A timeout drops queued work, joins already-running work, and safely
+  coordinates concurrent shutdown callers.
 
 ### Advanced API
 
@@ -114,6 +142,10 @@
 - **Clean out-of-source builds** -- CMake keeps `compile_commands.json` in the
   selected build directory instead of writing generated tooling files into the
   source checkout.
+- **Failure-preserving release checks** -- clang-tidy failures are no longer
+  hidden by output truncation, prerelease and build-suffixed tags are checked
+  against the base project version, and the Doxygen setup works with the CI
+  image's supported version.
 
 ## v2.4.0
 

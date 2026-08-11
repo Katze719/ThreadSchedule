@@ -123,6 +123,8 @@ else if (auto result = worker->join(); !result)
 factories include `background`, `normal`, `interactive`, and `low_latency`.
 The operating system can reject a name, scheduling request, or CPU mask, for
 example because a CPU is unavailable or the process lacks permission.
+Affinity changes succeed only when readback exactly matches the requested
+mask; a partially applied mask is rolled back when the platform permits it.
 `create(...)` reports initial-configuration failures as an error value; the
 direct constructor reports them like `std::thread` construction. If initial
 configuration fails, the callable is not started. Configuration operations
@@ -172,6 +174,11 @@ After a move, the source pool has size zero. Submission, waiting, and worker
 configuration return `operation_canceled`; shutdown remains an idempotent
 success.
 
+Calling `wait()` or `shutdown()` from one of the same pool's worker tasks is
+rejected with `std::errc::resource_deadlock_would_occur`. Destroying a pool
+from one of its own tasks is unsupported because the task is still using that
+pool; arrange destruction from an external owner after the task returns.
+
 ## Scheduled work
 
 ```cpp
@@ -202,6 +209,8 @@ else
 
 Periodic intervals must be positive. Periodic tasks use fixed-rate scheduling:
 each next deadline is based on the preceding deadline, not task completion.
+An occurrence never overlaps with itself; deadlines missed while it is still
+running are skipped instead of building a worker-blocking backlog.
 Cancellation is cooperative and does not interrupt a running task. Scheduling
 after shutdown returns `std::errc::operation_canceled`.
 
@@ -209,7 +218,9 @@ after shutdown returns `std::errc::operation_canceled`.
 configuration, shutdown policy, and task-error callback as `thread_pool_config`,
 plus an independent `scheduler` thread configuration. Shutdown stops accepting
 and dispatching scheduled entries; the selected policy controls work already
-queued in the worker pool.
+queued in the worker pool. Calling shutdown from one of its worker tasks or
+from scheduler-thread cleanup is rejected with
+`std::errc::resource_deadlock_would_occur` before shutdown state changes.
 
 ## Registry
 
@@ -248,13 +259,16 @@ The portable factories are `background`, `normal`, `interactive`,
 `high`, and `highest`. Their Linux nice values are respectively 19, 5, 0, -5,
 and -20. `schedule::nice(value)` exposes the full -20 through 19 scale. Values
 outside that range fail with `invalid_argument` when the configuration is
-applied.
+applied. Portable realtime priorities use the native-style `1` through `99`
+range; other values likewise fail when applied instead of being clamped or
+reinterpreted as nice values.
 
 On Windows, normal priorities map to `IDLE`, `BELOW_NORMAL`, `NORMAL`,
 `ABOVE_NORMAL`, or `HIGHEST`. Exact nice values use the same safe mapping and
-never select `TIME_CRITICAL`; that level remains exclusive to explicit
-realtime scheduling. MinGW-w64 uses the same Win32 behavior through its
-pthread-to-`HANDLE` adapter.
+never select `TIME_CRITICAL`. Portable realtime requests map only to
+`ABOVE_NORMAL` or `HIGHEST`; `TIME_CRITICAL` remains available solely through
+the explicit advanced native-Windows priority API. MinGW-w64 uses the same
+Win32 behavior through its pthread-to-`HANDLE` adapter.
 
 `thread`, C++20 `jthread`, and `thread_view` provide `set_priority`,
 `set_nice`, `get_priority`, and error-preserving `get_affinity` operations. A

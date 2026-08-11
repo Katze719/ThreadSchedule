@@ -7,8 +7,8 @@
  *
  * Exposes lightweight discovery of CPU/NUMA topology and convenience
  * functions to construct NUMA-aware `native_thread_affinity` masks. On Linux,
- * NUMA nodes are detected via sysfs (nodeX/cpulist). On Windows, nodes
- * default to 1 and CPUs are assigned sequentially.
+ * NUMA nodes are detected via sysfs (nodeX/cpulist). On Windows, processor
+ * groups are enumerated and represented as flat @c group*64+index IDs.
  */
 
 #include "scheduler_policy.hpp"
@@ -46,7 +46,7 @@ struct cpu_topology
 
 /**
  * @brief Discover basic topology. Linux: reads /sys for NUMA nodes.
- *        Windows: single node, sequential CPU indices.
+ *        Windows: single node, processor-group-aware CPU indices.
  *
  * Called frequently by chaos/affinity helpers. The result is not
  * cached internally - consider caching the returned cpu_topology
@@ -63,8 +63,23 @@ read_topology() -> cpu_topology
 #ifdef _WIN32
   topo.numa_nodes = 1;
   topo.node_to_cpus = { {} };
-  for (int i = 0; i < topo.cpu_count; ++i)
-    topo.node_to_cpus[0].push_back(i);
+  topo.cpu_count = 0;
+  WORD const group_count = GetActiveProcessorGroupCount();
+  for (WORD group = 0; group < group_count; ++group)
+    {
+      DWORD const processor_count = GetActiveProcessorCount(group);
+      if (processor_count == 0)
+        continue;
+      topo.cpu_count += static_cast<int>(processor_count);
+      for (DWORD index = 0; index < processor_count; ++index)
+        topo.node_to_cpus[0].push_back(static_cast<int>(group) * 64
+                                       + static_cast<int>(index));
+    }
+  if (topo.node_to_cpus[0].empty())
+    {
+      topo.cpu_count = 1;
+      topo.node_to_cpus[0].push_back(0);
+    }
 #else
   // Try to detect NUMA nodes via sysfs
   int nodes = 0;
@@ -170,12 +185,13 @@ affinity_for_node(cpu_topology const& topo, int node_index, int thread_index,
   if (cpus.empty())
     return aff;
 
-  int const cpu = cpus[(thread_index) % static_cast<int>(cpus.size())];
+  int const cpu_count = static_cast<int>(cpus.size());
+  int const first = (thread_index % cpu_count + cpu_count) % cpu_count;
+  int const cpu = cpus[first];
   aff.add_cpu(cpu);
   for (int k = 1; k < threads_per_node; ++k)
     {
-      int const extra
-          = cpus[(thread_index + k) % static_cast<int>(cpus.size())];
+      int const extra = cpus[(first + k) % cpu_count];
       aff.add_cpu(extra);
     }
   return aff;

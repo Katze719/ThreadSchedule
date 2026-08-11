@@ -32,7 +32,12 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
 
     - name: Validate release version
-      run: test "$(tr -d '[:space:]' < VERSION)" = "${{ steps.get_version.outputs.version }}"
+      env:
+        RELEASE_VERSION: ${{ steps.get_version.outputs.version }}
+      run: |
+        BASE_VERSION="${RELEASE_VERSION%%-*}"
+        BASE_VERSION="${BASE_VERSION%%+*}"
+        test "$(tr -d '[:space:]' < VERSION)" = "$BASE_VERSION"
     
     - name: Create source archive
       run: |

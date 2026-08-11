@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <future>
@@ -99,6 +100,31 @@ TEST(V3Api, InvalidNiceValueDoesNotRunConfiguredThread)
   ASSERT_FALSE(worker.has_value());
   EXPECT_EQ(worker.error(), std::make_error_code(std::errc::invalid_argument));
   EXPECT_FALSE(ran.load());
+}
+
+TEST(V3Api, InvalidRealtimePriorityDoesNotRunConfiguredThread)
+{
+  std::array<threadschedule::scheduling_config, 4> const invalid{
+    threadschedule::schedule::realtime_fifo(-1),
+    threadschedule::schedule::realtime_rr(0),
+    threadschedule::schedule::realtime_fifo(100),
+    threadschedule::schedule::realtime_rr(100)
+  };
+
+  for (auto const scheduling : invalid)
+    {
+      threadschedule::thread_config config;
+      config.scheduling = scheduling;
+      std::atomic<bool> ran{ false };
+
+      auto worker = threadschedule::thread::create(
+          config, [&ran] { ran.store(true, std::memory_order_release); });
+
+      ASSERT_FALSE(worker.has_value());
+      EXPECT_EQ(worker.error(),
+                std::make_error_code(std::errc::invalid_argument));
+      EXPECT_FALSE(ran.load(std::memory_order_acquire));
+    }
 }
 
 #ifndef _WIN32
@@ -409,6 +435,32 @@ TEST(V3Api, ScheduledPoolReportsShutdown)
             std::make_error_code(std::errc::operation_canceled));
 }
 
+TEST(V3Api, ScheduledWorkerShutdownFailureDoesNotStopPool)
+{
+  threadschedule::scheduled_pool scheduler(1);
+  std::promise<std::error_code> attempted;
+  auto ready = attempted.get_future();
+  auto first = scheduler.schedule_after(
+      1ms,
+      [&]
+        {
+          auto result = scheduler.shutdown();
+          attempted.set_value(result ? std::error_code{} : result.error());
+        });
+  ASSERT_TRUE(first.has_value());
+
+  ASSERT_EQ(ready.wait_for(2s), std::future_status::ready);
+  EXPECT_EQ(ready.get(),
+            std::make_error_code(std::errc::resource_deadlock_would_occur));
+
+  std::promise<void> ran;
+  auto ran_ready = ran.get_future();
+  auto second = scheduler.schedule_after(1ms, [&ran] { ran.set_value(); });
+  ASSERT_TRUE(second.has_value());
+  EXPECT_EQ(ran_ready.wait_for(2s), std::future_status::ready);
+  EXPECT_TRUE(scheduler.shutdown().has_value());
+}
+
 TEST(V3Api, ScheduledPoolValidatesPeriodicIntervals)
 {
   threadschedule::scheduled_pool scheduler(1);
@@ -715,6 +767,95 @@ TEST(V3Api, MoveAssigningInjectedRegistryRetargetsGlobalRegistry)
   EXPECT_EQ(snapshot->front().name, "replacement");
   EXPECT_EQ(snapshot->front().component, "v3");
   EXPECT_TRUE(injected.unregister_current_thread().has_value());
+}
+
+TEST(V3Api, MoveAssigningGlobalRegistryPreservesGlobalFacade)
+{
+  threadschedule::use_global_registry(nullptr);
+  (void)threadschedule::global_registry().unregister_current_thread();
+
+  threadschedule::thread_registry local;
+  ASSERT_TRUE(local.register_current_thread("moved-global", "v3").has_value());
+  threadschedule::global_registry() = std::move(local);
+
+  EXPECT_EQ(threadschedule::global_registry().count(), 1u);
+  EXPECT_EQ(threadschedule::registry().count(), 1u);
+  ASSERT_TRUE(threadschedule::global_registry()
+                  .unregister_current_thread()
+                  .has_value());
+  {
+    threadschedule::auto_register_current_thread guard("global-guard", "v3");
+    EXPECT_EQ(threadschedule::global_registry().count(), 1u);
+    EXPECT_EQ(threadschedule::registry().count(), 1u);
+  }
+
+  threadschedule::use_global_registry(nullptr);
+}
+
+TEST(V3Api, DestroyingInjectedRegistryRestoresDefaultRegistry)
+{
+  {
+    threadschedule::thread_registry injected;
+    threadschedule::use_global_registry(&injected);
+    ASSERT_TRUE(threadschedule::global_registry()
+                    .register_current_thread("injected", "v3")
+                    .has_value());
+  }
+
+  auto registered = threadschedule::global_registry().register_current_thread(
+      "default", "v3");
+  ASSERT_TRUE(registered.has_value());
+  EXPECT_TRUE(threadschedule::global_registry()
+                  .unregister_current_thread()
+                  .has_value());
+}
+
+TEST(V3Api, MovingInjectedRegistryPreservesActiveGuardBackend)
+{
+  threadschedule::thread_registry injected;
+  threadschedule::use_global_registry(&injected);
+  std::promise<void> registered;
+  std::promise<void> release;
+  auto release_ready = release.get_future().share();
+  std::thread worker(
+      [&]
+        {
+          threadschedule::auto_register_current_thread guard("moving", "v3");
+          registered.set_value();
+          release_ready.wait();
+        });
+  registered.get_future().wait();
+
+  threadschedule::thread_registry replacement;
+  EXPECT_NO_THROW(injected = std::move(replacement));
+  release.set_value();
+  worker.join();
+
+  auto snapshot = threadschedule::global_registry().snapshot();
+  threadschedule::use_global_registry(nullptr);
+  ASSERT_TRUE(snapshot.has_value());
+  EXPECT_TRUE(snapshot->empty());
+}
+
+TEST(V3Api, MovingEmptyInjectedRegistryPreservesActiveGuardBackend)
+{
+  threadschedule::thread_registry injected;
+  threadschedule::use_global_registry(&injected);
+  {
+    threadschedule::auto_register_current_thread guard("moving-empty", "v3");
+    ASSERT_TRUE(threadschedule::global_registry()
+                    .unregister_current_thread()
+                    .has_value());
+    EXPECT_TRUE(injected.empty());
+
+    threadschedule::thread_registry replacement;
+    EXPECT_NO_THROW(injected = std::move(replacement));
+  }
+
+  auto snapshot = threadschedule::global_registry().snapshot();
+  threadschedule::use_global_registry(nullptr);
+  ASSERT_TRUE(snapshot.has_value());
+  EXPECT_TRUE(snapshot->empty());
 }
 
 TEST(V3Api, RegistrySetsAndReadsPortablePriority)
