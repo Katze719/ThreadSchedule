@@ -92,6 +92,8 @@
   waits and reports success only when all accepted work completes by the
   deadline. A timeout drops queued work, joins already-running work, and safely
   coordinates concurrent shutdown callers.
+- **Safe scheduled waits** -- scheduler deadlines remain valid while the queue
+  lock is released, preventing shutdown from invalidating an active timed wait.
 
 ### Advanced API
 

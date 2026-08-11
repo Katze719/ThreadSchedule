@@ -596,7 +596,11 @@ private:
         // Wait until it's time to execute
         if (it->first > now)
           {
-            condition_.wait_until(lock, it->first);
+            // wait_until releases the mutex while retaining a reference to
+            // its deadline. Shutdown may clear scheduled_tasks_ during that
+            // wait, so never pass a map key by reference here.
+            auto const next_run = it->first;
+            condition_.wait_until(lock, next_run);
 
             if (stop_)
               return;
