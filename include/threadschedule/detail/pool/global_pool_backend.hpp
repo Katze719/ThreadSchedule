@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file detail/pool/global.hpp
+ * @file detail/pool/global_pool_backend.hpp
  * @brief Process-wide pool facades and global parallel helpers.
  *
  * Internal implementation fragment included by backend.hpp inside

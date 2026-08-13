@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file detail/pool/worker_context.hpp
+ * @file detail/pool/worker_context_guard.hpp
  * @brief Worker identity, CPU selection, and registration helpers.
  *
  * Internal implementation fragment included by backend.hpp inside

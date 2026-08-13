@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file topology.hpp
+ * @file cpu_topology.hpp
  * @brief Hardware topology helpers (CPU count, NUMA nodes) and affinity
  * builders.
  *

@@ -130,6 +130,11 @@
   worker context, queue strategies, wait policies, specialized pools,
   scheduled task state, registry control/query/storage/composition, and
   Windows versus POSIX native control now live in separate `detail` headers.
+- **Class-matched header names** -- class-owning implementation and focused
+  Advanced headers now use the primary class name, for example
+  `work_stealing_pool_backend.hpp`, `move_callable.hpp`,
+  `chaos_controller.hpp`, and `composite_thread_registry.hpp`. Files without
+  a primary class keep responsibility-based names such as `bind.hpp`.
 - **Header self-containment matrix** -- every documented Core and Advanced
   header compiles in its own translation unit under the configured language
   standard.

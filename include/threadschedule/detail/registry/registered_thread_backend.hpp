@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file detail/registry/registered_thread.hpp
+ * @file detail/registry/registered_thread_backend.hpp
  * @brief Thread wrappers with automatic global registry registration.
  */
 

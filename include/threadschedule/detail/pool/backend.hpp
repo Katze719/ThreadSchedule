@@ -8,7 +8,7 @@
 
 #include "../../expected.hpp"
 #include "../callable/bind.hpp"
-#include "../callable/storage.hpp"
+#include "../callable/move_callable.hpp"
 #include "../registry/backend.hpp"
 #include "../scheduling/native.hpp"
 #include "../thread_backend.hpp"
@@ -35,13 +35,14 @@ namespace threadschedule::detail
 
 // These implementation fragments form a dependency chain; keep this order.
 // clang-format off
-#include "worker_context.hpp"
-#include "callable.hpp"
-#include "work_stealing.hpp"
-#include "wait_policy.hpp"
-#include "shared_pool.hpp"
-#include "lightweight.hpp"
-#include "global.hpp"
+#include "worker_context_guard.hpp"
+#include "sbo_callable.hpp"
+#include "work_stealing_pool_backend.hpp"
+#include "indefinite_wait.hpp"
+#include "polling_wait.hpp"
+#include "thread_pool_backend_base.hpp"
+#include "lightweight_pool_backend_base.hpp"
+#include "global_pool_backend.hpp"
 // clang-format on
 
 } // namespace threadschedule::detail

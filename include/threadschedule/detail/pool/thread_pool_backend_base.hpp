@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file detail/pool/shared_pool.hpp
+ * @file detail/pool/thread_pool_backend_base.hpp
  * @brief Shared-queue pool implementation and public detail aliases.
  *
  * Internal implementation fragment included by backend.hpp inside

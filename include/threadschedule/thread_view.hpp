@@ -8,4 +8,4 @@
  * never joins, detaches, or changes ownership.
  */
 
-#include "detail/thread/thread_view_impl.hpp"
+#include "detail/thread/thread_view.hpp"

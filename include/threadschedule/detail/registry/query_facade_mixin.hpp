@@ -1,6 +1,6 @@
 #pragma once
 
-/** @file detail/registry/query.hpp
+/** @file detail/registry/query_facade_mixin.hpp
  *  @brief Snapshot query facade shared by registry implementations.
  */
 

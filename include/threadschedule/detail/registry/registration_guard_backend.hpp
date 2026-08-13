@@ -1,6 +1,6 @@
 #pragma once
 
-/** @file detail/registry/registration.hpp
+/** @file detail/registry/registration_guard_backend.hpp
  *  @brief Internal RAII registration used by worker implementations.
  */
 

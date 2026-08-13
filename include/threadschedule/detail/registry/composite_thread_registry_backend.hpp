@@ -1,6 +1,6 @@
 #pragma once
 
-/** @file detail/registry/composite.hpp
+/** @file detail/registry/composite_thread_registry_backend.hpp
  *  @brief Multi-registry snapshot composition.
  */
 

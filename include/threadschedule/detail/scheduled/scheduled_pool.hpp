@@ -6,7 +6,7 @@
 #include "../pool/shutdown.hpp"
 #include "../thread/control.hpp"
 #include "backend.hpp"
-#include "task_impl.hpp"
+#include "scheduled_task.hpp"
 
 #include <atomic>
 #include <chrono>

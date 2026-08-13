@@ -1,6 +1,6 @@
 #pragma once
 
-/** @file detail/registry/storage.hpp
+/** @file detail/registry/thread_registry_backend.hpp
  *  @brief Registry storage, mutation, snapshots, and private runtime hooks.
  */
 

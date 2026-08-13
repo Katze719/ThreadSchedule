@@ -6,7 +6,7 @@
  */
 
 #include "../core.hpp"
-#include "../detail/pool/inline.hpp"
+#include "../detail/pool/inline_pool_backend.hpp"
 
 namespace threadschedule::advanced
 {

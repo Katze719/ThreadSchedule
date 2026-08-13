@@ -2,7 +2,7 @@
 #include <gtest/gtest.h>
 #include <set>
 #include <string>
-#include <threadschedule/detail/registry/registered_thread.hpp>
+#include <threadschedule/detail/registry/registered_thread_backend.hpp>
 #include <threadschedule/thread_registry.hpp>
 
 using namespace threadschedule;

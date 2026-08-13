@@ -8,4 +8,4 @@
  * explicitly needs a specialized implementation.
  */
 
-#include "detail/pool/public_impl.hpp"
+#include "detail/pool/thread_pool.hpp"

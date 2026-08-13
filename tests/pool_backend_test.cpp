@@ -5,7 +5,7 @@
 #include <memory>
 #include <mutex>
 #include <numeric>
-#include <threadschedule/advanced/chaos.hpp>
+#include <threadschedule/advanced/chaos_controller.hpp>
 #include <threadschedule/advanced/pools.hpp>
 #include <threadschedule/advanced/task_group.hpp>
 #include <threadschedule/threadschedule.hpp>

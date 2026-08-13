@@ -8,4 +8,4 @@
  * `result<T>`.
  */
 
-#include "detail/thread/this_thread_impl.hpp"
+#include "detail/thread/this_thread.hpp"

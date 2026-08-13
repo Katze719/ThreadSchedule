@@ -3,7 +3,7 @@
 #include <future>
 #include <gtest/gtest.h>
 #include <thread>
-#include <threadschedule/detail/registry/registered_thread.hpp>
+#include <threadschedule/detail/registry/registered_thread_backend.hpp>
 #include <threadschedule/thread_registry.hpp>
 #ifndef _WIN32
 #  include <sched.h>

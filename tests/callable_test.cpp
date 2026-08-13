@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <threadschedule/advanced/error_handler.hpp>
+#include <threadschedule/detail/callable/function_ref.hpp>
 #include <threadschedule/threadschedule.hpp>
 
 using namespace threadschedule;

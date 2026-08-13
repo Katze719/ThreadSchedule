@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file detail/pool/lightweight.hpp
+ * @file detail/pool/lightweight_pool_backend_base.hpp
  * @brief Low-overhead fire-and-forget pool implementation.
  *
  * Internal implementation fragment included by backend.hpp inside

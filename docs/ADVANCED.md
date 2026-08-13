@@ -73,9 +73,14 @@ using the shared runtime is not appropriate.
 Advanced facilities also have self-contained focused headers. Common choices
 are `<threadschedule/advanced/pools.hpp>`,
 `<threadschedule/advanced/native_thread.hpp>`,
-`<threadschedule/advanced/profiles.hpp>`, and
-`<threadschedule/advanced/registry.hpp>`. The full `advanced.hpp` umbrella is
-provided for applications that intentionally use several optional facilities.
+`<threadschedule/advanced/thread_profile.hpp>`, and
+`<threadschedule/advanced/composite_thread_registry.hpp>`. The full
+`advanced.hpp` umbrella is provided for applications that intentionally use
+several optional facilities.
+
+Focused headers that primarily define a class use that class name, including
+`cpu_topology.hpp` and `chaos_controller.hpp`. Function-only collections such
+as `futures.hpp` retain a responsibility-based name.
 
 ## Optional utilities
 

@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file advanced/registry.hpp
+ * @file advanced/composite_thread_registry.hpp
  * @brief Composite registry support for advanced multi-registry scenarios.
  */
 

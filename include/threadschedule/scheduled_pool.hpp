@@ -8,4 +8,4 @@
  * Worker and scheduler configuration remains transactional at construction.
  */
 
-#include "detail/scheduled/public_impl.hpp"
+#include "detail/scheduled/scheduled_pool.hpp"

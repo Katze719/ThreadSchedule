@@ -9,4 +9,4 @@
  * `auto_register_current_thread` accepts either that facade or an explicit `thread_registry&`.
  */
 
-#include "detail/registry/public_impl.hpp"
+#include "detail/registry/thread_registry.hpp"

@@ -8,4 +8,4 @@
  * stop-token injection, move-only arguments, and transactional configured startup without a C++17 emulation.
  */
 
-#include "detail/thread/jthread_impl.hpp"
+#include "detail/thread/jthread.hpp"

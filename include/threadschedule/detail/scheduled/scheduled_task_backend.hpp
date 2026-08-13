@@ -1,14 +1,10 @@
 #pragma once
 
-/** @file detail/scheduled/task_state.hpp
- *  @brief Shared cancellation state and scheduled task handles.
+/** @file detail/scheduled/scheduled_task_backend.hpp
+ *  @brief Internal cancellable scheduled-task handle.
  */
 
-struct scheduled_cancellation_state
-{
-  std::atomic<bool> user_cancelled{ false };
-  std::atomic<bool> pool_stopped{ false };
-};
+#include "scheduled_cancellation_state.hpp"
 
 /**
  * @brief Copyable handle for a cancellable scheduled task.

@@ -115,6 +115,15 @@ Optional root headers and root namespace copies were removed. Include
 `threadschedule::advanced`. Backend-focused tests inside the library may use
 `threadschedule::detail`; applications must not depend on it.
 
+Focused class headers follow the class name:
+
+| Removed root header | Focused Advanced header |
+| --- | --- |
+| `chaos.hpp` | `advanced/chaos_controller.hpp` |
+| `profiles.hpp` | `advanced/thread_profile.hpp` |
+| `topology.hpp` | `advanced/cpu_topology.hpp` |
+| Registry composition previously embedded in `thread_registry.hpp` | `advanced/composite_thread_registry.hpp` |
+
 For ordinary non-realtime priority, prefer the new core API instead of the
 native replacements:
 

@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file detail/pool/callable.hpp
+ * @file detail/pool/sbo_callable.hpp
  * @brief Pool-local move-only callable storage and task instrumentation.
  *
  * Internal implementation fragment included by backend.hpp inside

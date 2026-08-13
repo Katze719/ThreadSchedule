@@ -1,6 +1,6 @@
 #pragma once
 
-/** @file detail/scheduled/scheduler.hpp
+/** @file detail/scheduled/scheduled_pool_backend_base.hpp
  *  @brief Deadline queue, dispatch, periodic rescheduling, and scheduler lifecycle.
  */
 

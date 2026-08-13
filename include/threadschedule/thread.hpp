@@ -9,4 +9,4 @@
  * construction releases the user callable only after every requested setting has been applied successfully.
  */
 
-#include "detail/thread/thread_impl.hpp"
+#include "detail/thread/thread.hpp"

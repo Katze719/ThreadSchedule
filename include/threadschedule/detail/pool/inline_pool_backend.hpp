@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file inline_pool.hpp
+ * @file detail/pool/inline_pool_backend.hpp
  * @brief inline_pool_backend: deterministic, single-threaded pool for unit
  * testing.
  *

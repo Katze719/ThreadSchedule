@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file profiles.hpp
+ * @file thread_profile.hpp
  * @brief High-level thread configuration profiles and helpers.
  *
  * Provides simple presets (e.g. realtime, low_latency, throughput, background)

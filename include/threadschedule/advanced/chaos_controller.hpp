@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file chaos.hpp
+ * @file chaos_controller.hpp
  * @brief Test/chaos features to perturb scheduling at runtime.
  *
  * Provides `chaos_controller`, an RAII utility that periodically alters
@@ -13,7 +13,7 @@
 #include "../detail/scheduling/native.hpp"
 #include "../detail/thread_backend.hpp"
 #include "../thread_registry.hpp"
-#include "topology.hpp"
+#include "cpu_topology.hpp"
 #include <atomic>
 #include <chrono>
 #include <functional>

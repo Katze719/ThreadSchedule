@@ -1,6 +1,6 @@
 #pragma once
 
-/** @file detail/registry/control_block.hpp
+/** @file detail/registry/thread_control_block.hpp
  *  @brief Native thread metadata and lifecycle-safe control blocks.
  */
 

@@ -27,15 +27,15 @@ set(THREADSCHEDULE_SELF_CONTAINED_HEADERS
     threadschedule/core.hpp
     threadschedule/threadschedule.hpp
     threadschedule/advanced/cgroup.hpp
-    threadschedule/advanced/chaos.hpp
+    threadschedule/advanced/chaos_controller.hpp
+    threadschedule/advanced/composite_thread_registry.hpp
+    threadschedule/advanced/cpu_topology.hpp
     threadschedule/advanced/error_handler.hpp
     threadschedule/advanced/futures.hpp
     threadschedule/advanced/native_thread.hpp
     threadschedule/advanced/pools.hpp
-    threadschedule/advanced/profiles.hpp
-    threadschedule/advanced/registry.hpp
+    threadschedule/advanced/thread_profile.hpp
     threadschedule/advanced/task_group.hpp
-    threadschedule/advanced/topology.hpp
     threadschedule/advanced.hpp
 )
 

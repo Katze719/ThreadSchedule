@@ -31,7 +31,7 @@
 #include <benchmark/benchmark.h>
 #include <cstdint>
 #include <memory>
-#include <threadschedule/detail/callable/storage.hpp>
+#include <threadschedule/detail/callable/move_callable.hpp>
 #include <threadschedule/thread_pool.hpp>
 #include <vector>
 
