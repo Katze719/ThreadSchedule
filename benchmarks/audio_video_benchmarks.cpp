@@ -60,13 +60,11 @@ public:
   }
 
   bool
-  pop(T& frame,
-      std::chrono::milliseconds timeout = std::chrono::milliseconds(100))
+  pop(T& frame, std::chrono::milliseconds timeout = std::chrono::milliseconds(100))
   {
     std::unique_lock<std::mutex> lock(mutex_);
 
-    if (condition_.wait_for(lock, timeout,
-                            [this] { return !queue_.empty() || stopped_; }))
+    if (condition_.wait_for(lock, timeout, [this] { return !queue_.empty() || stopped_; }))
       {
         if (!queue_.empty())
           {
@@ -107,8 +105,7 @@ class AudioWorkloads
 public:
   // Simulate audio encoding (MP3, AAC, etc.)
   static std::vector<uint8_t>
-  encode_audio(AudioFrame const& frame, std::string const& codec,
-               int bitrate_kbps)
+  encode_audio(AudioFrame const& frame, std::string const& codec, int bitrate_kbps)
   {
     std::vector<uint8_t> encoded_data;
 
@@ -231,8 +228,7 @@ private:
   apply_equalizer(std::vector<float>& left, std::vector<float>& right)
   {
     // Simulate 10-band equalizer with different gains
-    std::vector<float> band_gains
-        = { 1.2f, 1.1f, 1.0f, 0.9f, 0.8f, 1.0f, 1.1f, 1.2f, 1.0f, 0.9f };
+    std::vector<float> band_gains = { 1.2f, 1.1f, 1.0f, 0.9f, 0.8f, 1.0f, 1.1f, 1.2f, 1.0f, 0.9f };
 
     // Apply band gains (simplified - in reality this would use FFT)
     for (size_t i = 0; i < left.size(); ++i)
@@ -263,21 +259,15 @@ private:
   }
 
   static void
-  mix_two_frames(AudioFrame& target, AudioFrame const& source,
-                 double master_volume)
+  mix_two_frames(AudioFrame& target, AudioFrame const& source, double master_volume)
   {
     // Mix two audio frames with volume control
-    size_t min_samples
-        = std::min(target.samples_left.size(), source.samples_left.size());
+    size_t min_samples = std::min(target.samples_left.size(), source.samples_left.size());
 
     for (size_t i = 0; i < min_samples; ++i)
       {
-        target.samples_left[i]
-            = (target.samples_left[i] + source.samples_left[i] * master_volume)
-              * 0.5f;
-        target.samples_right[i] = (target.samples_right[i]
-                                   + source.samples_right[i] * master_volume)
-                                  * 0.5f;
+        target.samples_left[i] = (target.samples_left[i] + source.samples_left[i] * master_volume) * 0.5f;
+        target.samples_right[i] = (target.samples_right[i] + source.samples_right[i] * master_volume) * 0.5f;
       }
   }
 };
@@ -288,8 +278,7 @@ class VideoWorkloads
 public:
   // Simulate video encoding (H.264, H.265, VP9, etc.)
   static std::vector<uint8_t>
-  encode_video_frame(VideoFrame const& frame, std::string const& codec,
-                     int bitrate_kbps)
+  encode_video_frame(VideoFrame const& frame, std::string const& codec, int bitrate_kbps)
   {
     std::vector<uint8_t> encoded_data;
 
@@ -298,14 +287,11 @@ public:
 
     // Simulate intra/inter prediction
     size_t macroblock_count = (frame.width / 16) * (frame.height / 16);
-    size_t intra_blocks
-        = static_cast<size_t>(macroblock_count * (1.0 - motion_complexity));
+    size_t intra_blocks = static_cast<size_t>(macroblock_count * (1.0 - motion_complexity));
 
     // Simulate entropy coding
-    size_t total_bits
-        = bitrate_kbps * 1000 * 0.033; // ~33ms per frame at 30fps
-    size_t compressed_bits
-        = static_cast<size_t>(total_bits * (0.3 + motion_complexity * 0.7));
+    size_t total_bits = bitrate_kbps * 1000 * 0.033; // ~33ms per frame at 30fps
+    size_t compressed_bits = static_cast<size_t>(total_bits * (0.3 + motion_complexity * 0.7));
 
     encoded_data.resize(compressed_bits / 8);
 
@@ -354,8 +340,7 @@ public:
 
   // Simulate video stabilization
   static VideoFrame
-  stabilize_video_frame(VideoFrame const& input,
-                        std::vector<float> const& motion_vectors)
+  stabilize_video_frame(VideoFrame const& input, std::vector<float> const& motion_vectors)
   {
     VideoFrame output = input;
 
@@ -401,8 +386,7 @@ private:
               {
                 for (size_t x = 0; x < 16; ++x)
                   {
-                    size_t pixel_idx
-                        = (block_y + y) * frame.stride_y + (block_x + x);
+                    size_t pixel_idx = (block_y + y) * frame.stride_y + (block_x + x);
                     if (pixel_idx < frame.y_plane.size())
                       {
                         variance += frame.y_plane[pixel_idx];
@@ -413,8 +397,7 @@ private:
           }
       }
 
-    return std::min(1.0, static_cast<double>(total_motion)
-                             / (block_count * 1000.0));
+    return std::min(1.0, static_cast<double>(total_motion) / (block_count * 1000.0));
   }
 
   static void
@@ -468,8 +451,7 @@ private:
         float v = frame.v_plane[i / 4] / 255.0f;
 
         // Apply brightness and contrast to luminance
-        y = std::min(
-            1.0f, std::max(0.0f, (y - 0.5f) * contrast + 0.5f + brightness));
+        y = std::min(1.0f, std::max(0.0f, (y - 0.5f) * contrast + 0.5f + brightness));
 
         // Apply saturation to chrominance
         float u_center = u - 0.5f;
@@ -541,12 +523,9 @@ private:
     float amount = 1.5f;
     for (size_t i = 0; i < frame.y_plane.size(); ++i)
       {
-        int diff = static_cast<int>(frame.y_plane[i])
-                   - static_cast<int>(blurred[i]);
-        int sharpened = static_cast<int>(frame.y_plane[i])
-                        + static_cast<int>(diff * amount);
-        frame.y_plane[i]
-            = static_cast<uint8_t>(std::min(255, std::max(0, sharpened)));
+        int diff = static_cast<int>(frame.y_plane[i]) - static_cast<int>(blurred[i]);
+        int sharpened = static_cast<int>(frame.y_plane[i]) + static_cast<int>(diff * amount);
+        frame.y_plane[i] = static_cast<uint8_t>(std::min(255, std::max(0, sharpened)));
       }
   }
 
@@ -563,11 +542,10 @@ private:
             int src_x = static_cast<int>(x + offset_x);
             int src_y = static_cast<int>(y + offset_y);
 
-            if (src_x >= 0 && src_x < static_cast<int>(frame.width)
-                && src_y >= 0 && src_y < static_cast<int>(frame.height))
+            if (src_x >= 0 && src_x < static_cast<int>(frame.width) && src_y >= 0
+                && src_y < static_cast<int>(frame.height))
               {
-                frame.y_plane[y * frame.stride_y + x]
-                    = temp_y[src_y * frame.stride_y + src_x];
+                frame.y_plane[y * frame.stride_y + x] = temp_y[src_y * frame.stride_y + src_x];
               }
           }
       }
@@ -609,45 +587,37 @@ BM_Audio_Encoding(benchmark::State& state)
           for (size_t j = 0; j < frame.samples_left.size(); ++j)
             {
               double t = static_cast<double>(j) / sample_rate;
-              frame.samples_left[j]
-                  = 0.5f * std::sin(2.0 * M_PI * 440.0 * t); // A4 note
+              frame.samples_left[j] = 0.5f * std::sin(2.0 * M_PI * 440.0 * t); // A4 note
               frame.samples_right[j] = 0.5f * std::sin(2.0 * M_PI * 440.0 * t);
             }
 
           pool.submit(
               [&frame, &encoded_frames, &total_bytes]()
                 {
-                  auto encoded
-                      = AudioWorkloads::encode_audio(frame, "AAC", 128);
+                  auto encoded = AudioWorkloads::encode_audio(frame, "AAC", 128);
                   encoded_frames.fetch_add(1, std::memory_order_relaxed);
-                  total_bytes.fetch_add(encoded.size(),
-                                        std::memory_order_relaxed);
+                  total_bytes.fetch_add(encoded.size(), std::memory_order_relaxed);
                 });
         }
 
       // Wait for completion
       auto stats = pool.get_statistics();
 
-      state.counters["encoded_frames"]
-          = benchmark::Counter(encoded_frames.load());
-      state.counters["total_bytes_mb"]
-          = benchmark::Counter(total_bytes.load() / (1024.0 * 1024.0));
+      state.counters["encoded_frames"] = benchmark::Counter(encoded_frames.load());
+      state.counters["total_bytes_mb"] = benchmark::Counter(total_bytes.load() / (1024.0 * 1024.0));
       state.counters["compression_ratio"] = benchmark::Counter(
           (total_bytes.load() / (1024.0 * 1024.0))
-          / (frames_per_batch * sample_rate * 2 * 2
-             / (1024.0 * 1024.0))); // 2 channels * 2 bytes per sample
+          / (frames_per_batch * sample_rate * 2 * 2 / (1024.0 * 1024.0))); // 2 channels * 2 bytes per sample
       state.counters["work_steal_ratio"]
-          = benchmark::Counter(100.0 * stats.stolen_tasks
-                               / std::max(stats.completed_tasks, size_t(1)));
-      state.counters["avg_task_time_ms"] = benchmark::Counter(
-          static_cast<double>(stats.avg_task_time.count()) / 1000.0);
+          = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
+      state.counters["avg_task_time_ms"]
+          = benchmark::Counter(static_cast<double>(stats.avg_task_time.count()) / 1000.0);
 
       benchmark::DoNotOptimize(encoded_frames.load());
     }
 
   state.SetItemsProcessed(state.iterations() * frames_per_batch);
-  state.SetLabel("threads=" + std::to_string(num_threads)
-                 + " frames=" + std::to_string(frames_per_batch));
+  state.SetLabel("threads=" + std::to_string(num_threads) + " frames=" + std::to_string(frames_per_batch));
 }
 
 static void
@@ -694,10 +664,8 @@ BM_Video_Encoding(benchmark::State& state)
                       size_t uv_idx = (y / 2) * (width / 2) + (x / 2);
                       if (uv_idx < frame.u_plane.size())
                         {
-                          frame.u_plane[uv_idx]
-                              = static_cast<uint8_t>(x % 256);
-                          frame.v_plane[uv_idx]
-                              = static_cast<uint8_t>(y % 256);
+                          frame.u_plane[uv_idx] = static_cast<uint8_t>(x % 256);
+                          frame.v_plane[uv_idx] = static_cast<uint8_t>(y % 256);
                         }
                     }
                 }
@@ -706,37 +674,31 @@ BM_Video_Encoding(benchmark::State& state)
           pool.submit(
               [&frame, &encoded_frames, &total_bytes]()
                 {
-                  auto encoded = VideoWorkloads::encode_video_frame(
-                      frame, "H264", 5000);
+                  auto encoded = VideoWorkloads::encode_video_frame(frame, "H264", 5000);
                   encoded_frames.fetch_add(1, std::memory_order_relaxed);
-                  total_bytes.fetch_add(encoded.size(),
-                                        std::memory_order_relaxed);
+                  total_bytes.fetch_add(encoded.size(), std::memory_order_relaxed);
                 });
         }
 
       // Wait for completion
       auto stats = pool.get_statistics();
 
-      state.counters["encoded_frames"]
-          = benchmark::Counter(encoded_frames.load());
-      state.counters["total_bytes_mb"]
-          = benchmark::Counter(total_bytes.load() / (1024.0 * 1024.0));
-      state.counters["compression_ratio"] = benchmark::Counter(
-          (total_bytes.load() / (1024.0 * 1024.0))
-          / ((width * height * 1.5)
-             / (1024.0 * 1024.0))); // YUV420P = 1.5 bytes per pixel
+      state.counters["encoded_frames"] = benchmark::Counter(encoded_frames.load());
+      state.counters["total_bytes_mb"] = benchmark::Counter(total_bytes.load() / (1024.0 * 1024.0));
+      state.counters["compression_ratio"]
+          = benchmark::Counter((total_bytes.load() / (1024.0 * 1024.0))
+                               / ((width * height * 1.5) / (1024.0 * 1024.0))); // YUV420P = 1.5 bytes per pixel
       state.counters["work_steal_ratio"]
-          = benchmark::Counter(100.0 * stats.stolen_tasks
-                               / std::max(stats.completed_tasks, size_t(1)));
-      state.counters["avg_task_time_ms"] = benchmark::Counter(
-          static_cast<double>(stats.avg_task_time.count()) / 1000.0);
+          = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
+      state.counters["avg_task_time_ms"]
+          = benchmark::Counter(static_cast<double>(stats.avg_task_time.count()) / 1000.0);
 
       benchmark::DoNotOptimize(encoded_frames.load());
     }
 
   state.SetItemsProcessed(state.iterations() * frames_per_batch);
-  state.SetLabel("threads=" + std::to_string(num_threads) + " frames="
-                 + std::to_string(frames_per_batch) + " resolution=1920x1080");
+  state.SetLabel("threads=" + std::to_string(num_threads) + " frames=" + std::to_string(frames_per_batch)
+                 + " resolution=1920x1080");
 }
 
 static void
@@ -762,58 +724,45 @@ BM_AudioVideo_Pipeline_Processing(benchmark::State& state)
         {
           // Audio processing task
           pool.submit(
-              [&audio_queue, &video_queue, &processed_queue,
-               &processed_frames]()
+              [&audio_queue, &video_queue, &processed_queue, &processed_frames]()
                 {
                   AudioFrame audio_frame;
-                  if (audio_queue.pop(audio_frame,
-                                      std::chrono::milliseconds(10)))
+                  if (audio_queue.pop(audio_frame, std::chrono::milliseconds(10)))
                     {
                       // Apply multiple audio filters
-                      audio_frame = AudioWorkloads::apply_audio_filter(
-                          audio_frame, "equalizer");
-                      audio_frame = AudioWorkloads::apply_audio_filter(
-                          audio_frame, "noise_reduction");
+                      audio_frame = AudioWorkloads::apply_audio_filter(audio_frame, "equalizer");
+                      audio_frame = AudioWorkloads::apply_audio_filter(audio_frame, "noise_reduction");
 
                       // Wait for corresponding video frame (simplified
                       // synchronization)
                       VideoFrame video_frame;
-                      if (video_queue.pop(video_frame,
-                                          std::chrono::milliseconds(10)))
+                      if (video_queue.pop(video_frame, std::chrono::milliseconds(10)))
                         {
                           processed_queue.push({ audio_frame, video_frame });
-                          processed_frames.fetch_add(
-                              1, std::memory_order_relaxed);
+                          processed_frames.fetch_add(1, std::memory_order_relaxed);
                         }
                     }
                 });
 
           // Video processing task
           pool.submit(
-              [&video_queue, &audio_queue, &processed_queue,
-               &processed_frames]()
+              [&video_queue, &audio_queue, &processed_queue, &processed_frames]()
                 {
                   VideoFrame video_frame;
-                  if (video_queue.pop(video_frame,
-                                      std::chrono::milliseconds(10)))
+                  if (video_queue.pop(video_frame, std::chrono::milliseconds(10)))
                     {
                       // Apply multiple video filters
-                      video_frame = VideoWorkloads::apply_video_filter(
-                          video_frame, "denoise");
-                      video_frame = VideoWorkloads::apply_video_filter(
-                          video_frame, "sharpen");
-                      video_frame = VideoWorkloads::apply_video_filter(
-                          video_frame, "color_correction");
+                      video_frame = VideoWorkloads::apply_video_filter(video_frame, "denoise");
+                      video_frame = VideoWorkloads::apply_video_filter(video_frame, "sharpen");
+                      video_frame = VideoWorkloads::apply_video_filter(video_frame, "color_correction");
 
                       // Wait for corresponding audio frame (simplified
                       // synchronization)
                       AudioFrame audio_frame;
-                      if (audio_queue.pop(audio_frame,
-                                          std::chrono::milliseconds(10)))
+                      if (audio_queue.pop(audio_frame, std::chrono::milliseconds(10)))
                         {
                           processed_queue.push({ audio_frame, video_frame });
-                          processed_frames.fetch_add(
-                              1, std::memory_order_relaxed);
+                          processed_frames.fetch_add(1, std::memory_order_relaxed);
                         }
                     }
                 });
@@ -843,22 +792,18 @@ BM_AudioVideo_Pipeline_Processing(benchmark::State& state)
       // Wait for completion
       auto stats = pool.get_statistics();
 
-      state.counters["processed_frames"]
-          = benchmark::Counter(processed_frames.load());
-      state.counters["pipeline_efficiency"] = benchmark::Counter(
-          100.0 * processed_frames.load() / frames_to_process);
+      state.counters["processed_frames"] = benchmark::Counter(processed_frames.load());
+      state.counters["pipeline_efficiency"] = benchmark::Counter(100.0 * processed_frames.load() / frames_to_process);
       state.counters["work_steal_ratio"]
-          = benchmark::Counter(100.0 * stats.stolen_tasks
-                               / std::max(stats.completed_tasks, size_t(1)));
-      state.counters["avg_task_time_ms"] = benchmark::Counter(
-          static_cast<double>(stats.avg_task_time.count()) / 1000.0);
+          = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
+      state.counters["avg_task_time_ms"]
+          = benchmark::Counter(static_cast<double>(stats.avg_task_time.count()) / 1000.0);
 
       benchmark::DoNotOptimize(processed_frames.load());
     }
 
   state.SetItemsProcessed(state.iterations() * frames_to_process);
-  state.SetLabel("threads=" + std::to_string(num_threads)
-                 + " frames=" + std::to_string(frames_to_process));
+  state.SetLabel("threads=" + std::to_string(num_threads) + " frames=" + std::to_string(frames_to_process));
 }
 
 static void
@@ -887,8 +832,7 @@ BM_RealTime_Streaming_Processing(benchmark::State& state)
       std::thread producer(
           [&]()
             {
-              for (size_t frame_num = 0;
-                   frame_num < fps * stream_duration_seconds; ++frame_num)
+              for (size_t frame_num = 0; frame_num < fps * stream_duration_seconds; ++frame_num)
                 {
                   VideoFrame frame;
                   frame.width = 1280;
@@ -921,8 +865,7 @@ BM_RealTime_Streaming_Processing(benchmark::State& state)
       for (size_t i = 0; i < fps * stream_duration_seconds; ++i)
         {
           pool.submit(
-              [&input_queue, &output_queue, &processed_frames,
-               &total_latency_ms, &start_time]()
+              [&input_queue, &output_queue, &processed_frames, &total_latency_ms, &start_time]()
                 {
                   auto submit_time = std::chrono::steady_clock::now();
 
@@ -931,24 +874,18 @@ BM_RealTime_Streaming_Processing(benchmark::State& state)
                     {
                       // Apply real-time processing (stabilization +
                       // enhancement)
-                      std::vector<float> motion_vectors
-                          = { 0.5f, -0.3f, 0.1f }; // Simulated motion data
-                      frame = VideoWorkloads::stabilize_video_frame(
-                          frame, motion_vectors);
-                      frame = VideoWorkloads::apply_video_filter(frame,
-                                                                 "sharpen");
+                      std::vector<float> motion_vectors = { 0.5f, -0.3f, 0.1f }; // Simulated motion data
+                      frame = VideoWorkloads::stabilize_video_frame(frame, motion_vectors);
+                      frame = VideoWorkloads::apply_video_filter(frame, "sharpen");
 
                       output_queue.push(frame);
                       processed_frames.fetch_add(1, std::memory_order_relaxed);
 
                       auto process_time = std::chrono::steady_clock::now();
-                      double latency = std::chrono::duration_cast<
-                                           std::chrono::microseconds>(
-                                           process_time - submit_time)
-                                           .count()
-                                       / 1000.0;
-                      total_latency_ms.fetch_add(latency,
-                                                 std::memory_order_relaxed);
+                      double latency
+                          = std::chrono::duration_cast<std::chrono::microseconds>(process_time - submit_time).count()
+                            / 1000.0;
+                      total_latency_ms.fetch_add(latency, std::memory_order_relaxed);
                     }
                 });
         }
@@ -958,31 +895,23 @@ BM_RealTime_Streaming_Processing(benchmark::State& state)
       // Wait for completion
       auto stats = pool.get_statistics();
 
-      state.counters["processed_frames"]
-          = benchmark::Counter(processed_frames.load());
-      state.counters["dropped_frames"]
-          = benchmark::Counter(dropped_frames.load());
+      state.counters["processed_frames"] = benchmark::Counter(processed_frames.load());
+      state.counters["dropped_frames"] = benchmark::Counter(dropped_frames.load());
       state.counters["target_fps"] = benchmark::Counter(fps);
       state.counters["actual_fps"]
-          = benchmark::Counter(static_cast<double>(processed_frames.load())
-                               / stream_duration_seconds);
+          = benchmark::Counter(static_cast<double>(processed_frames.load()) / stream_duration_seconds);
       state.counters["drop_rate_percent"] = benchmark::Counter(
-          100.0 * dropped_frames.load()
-          / std::max(processed_frames.load() + dropped_frames.load(),
-                     size_t(1)));
+          100.0 * dropped_frames.load() / std::max(processed_frames.load() + dropped_frames.load(), size_t(1)));
       state.counters["avg_latency_ms"]
-          = benchmark::Counter(total_latency_ms.load()
-                               / std::max(processed_frames.load(), size_t(1)));
+          = benchmark::Counter(total_latency_ms.load() / std::max(processed_frames.load(), size_t(1)));
       state.counters["work_steal_ratio"]
-          = benchmark::Counter(100.0 * stats.stolen_tasks
-                               / std::max(stats.completed_tasks, size_t(1)));
+          = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
 
       benchmark::DoNotOptimize(processed_frames.load());
     }
 
   state.SetItemsProcessed(state.iterations() * fps * stream_duration_seconds);
-  state.SetLabel("threads=" + std::to_string(num_threads)
-                 + " duration=" + std::to_string(stream_duration_seconds) + "s"
+  state.SetLabel("threads=" + std::to_string(num_threads) + " duration=" + std::to_string(stream_duration_seconds) + "s"
                  + " fps=" + std::to_string(fps));
 }
 

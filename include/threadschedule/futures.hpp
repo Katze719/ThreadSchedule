@@ -98,8 +98,7 @@ when_all(std::vector<std::future<void>>& futures)
  */
 template <typename T>
 auto
-when_all_settled(std::vector<std::future<T>>& futures)
-    -> std::vector<expected<T, std::exception_ptr>>
+when_all_settled(std::vector<std::future<T>>& futures) -> std::vector<expected<T, std::exception_ptr>>
 {
   std::vector<expected<T, std::exception_ptr>> results;
   results.reserve(futures.size());
@@ -124,8 +123,7 @@ when_all_settled(std::vector<std::future<T>>& futures)
  * slot.
  */
 inline auto
-when_all_settled(std::vector<std::future<void>>& futures)
-    -> std::vector<expected<void, std::exception_ptr>>
+when_all_settled(std::vector<std::future<void>>& futures) -> std::vector<expected<void, std::exception_ptr>>
 {
   std::vector<expected<void, std::exception_ptr>> results;
   results.reserve(futures.size());
@@ -175,8 +173,7 @@ when_any(std::vector<std::future<T>>& futures) -> std::pair<size_t, T>
       for (size_t k = 0; k < futures.size(); ++k)
         {
           size_t const i = (start + k) % futures.size();
-          if (futures[i].wait_for(std::chrono::milliseconds(1))
-              == std::future_status::ready)
+          if (futures[i].wait_for(std::chrono::milliseconds(1)) == std::future_status::ready)
             return { i, futures[i].get() };
         }
       std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
@@ -207,8 +204,7 @@ when_any(std::vector<std::future<void>>& futures) -> size_t
       for (size_t k = 0; k < futures.size(); ++k)
         {
           size_t const i = (start + k) % futures.size();
-          if (futures[i].wait_for(std::chrono::milliseconds(1))
-              == std::future_status::ready)
+          if (futures[i].wait_for(std::chrono::milliseconds(1)) == std::future_status::ready)
             {
               futures[i].get();
               return i;

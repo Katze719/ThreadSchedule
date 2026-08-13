@@ -39,8 +39,7 @@ template <typename Pool>
 class worker_context_guard
 {
 public:
-  worker_context_guard(Pool*& slot, Pool* current) noexcept
-      : slot_(slot), previous_(slot)
+  worker_context_guard(Pool*& slot, Pool* current) noexcept : slot_(slot), previous_(slot)
   {
     slot_ = current;
   }
@@ -51,8 +50,7 @@ public:
   }
 
   worker_context_guard(worker_context_guard const&) = delete;
-  auto operator=(worker_context_guard const&)
-      -> worker_context_guard& = delete;
+  auto operator=(worker_context_guard const&) -> worker_context_guard& = delete;
 
 private:
   Pool*& slot_;
@@ -62,9 +60,8 @@ private:
 [[noreturn]] inline void
 throw_worker_deadlock()
 {
-  throw std::system_error(
-      std::make_error_code(std::errc::resource_deadlock_would_occur),
-      "pool lifecycle operation called from its own worker");
+  throw std::system_error(std::make_error_code(std::errc::resource_deadlock_would_occur),
+                          "pool lifecycle operation called from its own worker");
 }
 
 inline auto
@@ -83,10 +80,8 @@ worker_thread_name(std::string const& name_prefix, size_t index) -> std::string
 
 template <typename WorkerRange>
 inline auto
-configure_worker_threads(WorkerRange& workers, std::string const& name_prefix,
-                         native_scheduling_policy policy,
-                         native_thread_priority priority)
-    -> expected<void, std::error_code>
+configure_worker_threads(WorkerRange& workers, std::string const& name_prefix, native_scheduling_policy policy,
+                         native_thread_priority priority) -> expected<void, std::error_code>
 {
   std::error_code first_error;
   for (size_t i = 0; i < workers.size(); ++i)
@@ -106,9 +101,7 @@ configure_worker_threads(WorkerRange& workers, std::string const& name_prefix,
 
 template <typename WorkerRange>
 inline auto
-configure_worker_threads(WorkerRange& workers,
-                         native_thread_config const& config)
-    -> expected<void, std::error_code>
+configure_worker_threads(WorkerRange& workers, native_thread_config const& config) -> expected<void, std::error_code>
 {
   std::error_code first_error;
   for (size_t i = 0; i < workers.size(); ++i)
@@ -137,9 +130,7 @@ configure_worker_threads(WorkerRange& workers,
 
 template <typename WorkerRange>
 inline auto
-set_worker_affinity(WorkerRange& workers,
-                    native_thread_affinity const& affinity)
-    -> expected<void, std::error_code>
+set_worker_affinity(WorkerRange& workers, native_thread_affinity const& affinity) -> expected<void, std::error_code>
 {
   std::error_code first_error;
   for (auto& worker : workers)
@@ -155,8 +146,7 @@ set_worker_affinity(WorkerRange& workers,
 
 template <typename WorkerRange>
 inline auto
-distribute_workers_across_cpus(WorkerRange& workers)
-    -> expected<void, std::error_code>
+distribute_workers_across_cpus(WorkerRange& workers) -> expected<void, std::error_code>
 {
   auto allowed = thread_info().get_affinity();
   if (!allowed)
@@ -181,8 +171,7 @@ distribute_workers_across_cpus(WorkerRange& workers)
 
 template <typename Pool, typename Iterator, typename F>
 inline void
-parallel_for_each_chunked(Pool& pool, Iterator begin, Iterator end, F&& func,
-                          size_t num_workers)
+parallel_for_each_chunked(Pool& pool, Iterator begin, Iterator end, F&& func, size_t num_workers)
 {
   auto const total = static_cast<size_t>(std::distance(begin, end));
   if (total == 0)
@@ -248,8 +237,7 @@ template <typename F, typename... Args>
 auto
 bind_args(F&& f, Args&&... args)
 {
-  return [fn = std::forward<F>(f),
-          tup = std::make_tuple(std::forward<Args>(args)...)]() mutable
+  return [fn = std::forward<F>(f), tup = std::make_tuple(std::forward<Args>(args)...)]() mutable
     { return std::apply(std::move(fn), std::move(tup)); };
 }
 
@@ -294,8 +282,7 @@ bind_args(F&& f, Args&&... args)
 template <size_t TaskSize = 64>
 class sbo_callable
 {
-  static_assert(TaskSize > sizeof(void*),
-                "TaskSize must be larger than a pointer");
+  static_assert(TaskSize > sizeof(void*), "TaskSize must be larger than a pointer");
 
   struct vtable
   {
@@ -308,8 +295,7 @@ class sbo_callable
 
   template <typename F>
   static constexpr bool fits_inline_v
-      = sizeof(F) <= buffer_size && alignof(F) <= alignof(std::max_align_t)
-        && std::is_nothrow_move_constructible_v<F>;
+      = sizeof(F) <= buffer_size && alignof(F) <= alignof(std::max_align_t) && std::is_nothrow_move_constructible_v<F>;
 
   template <typename F>
   static vtable const*
@@ -317,27 +303,23 @@ class sbo_callable
   {
     if constexpr (fits_inline_v<F>)
       {
-        static constexpr vtable vt{ [](void* s) { (*static_cast<F*>(s))(); },
-                                    [](void* s) { static_cast<F*>(s)->~F(); },
+        static constexpr vtable vt{ [](void* s) { (*static_cast<F*>(s))(); }, [](void* s) { static_cast<F*>(s)->~F(); },
                                     [](void* dst, void* src) noexcept
                                       {
-                                        ::new (dst) F(
-                                            std::move(*static_cast<F*>(src)));
+                                        ::new (dst) F(std::move(*static_cast<F*>(src)));
                                         static_cast<F*>(src)->~F();
                                       } };
         return &vt;
       }
     else
       {
-        static constexpr vtable vt{
-          [](void* s) { (*(*static_cast<F**>(s)))(); },
-          [](void* s) { delete *static_cast<F**>(s); },
-          [](void* dst, void* src) noexcept
-            {
-              *static_cast<F**>(dst) = *static_cast<F**>(src);
-              *static_cast<F**>(src) = nullptr;
-            }
-        };
+        static constexpr vtable vt{ [](void* s) { (*(*static_cast<F**>(s)))(); },
+                                    [](void* s) { delete *static_cast<F**>(s); },
+                                    [](void* dst, void* src) noexcept
+                                      {
+                                        *static_cast<F**>(dst) = *static_cast<F**>(src);
+                                        *static_cast<F**>(src) = nullptr;
+                                      } };
         return &vt;
       }
   }
@@ -345,9 +327,7 @@ class sbo_callable
 public:
   sbo_callable() = default;
 
-  template <typename F,
-            typename
-            = std::enable_if_t<!std::is_same_v<std::decay_t<F>, sbo_callable>>>
+  template <typename F, typename = std::enable_if_t<!std::is_same_v<std::decay_t<F>, sbo_callable>>>
   sbo_callable(F&& f) // NOLINT(google-explicit-constructor)
   {
     using decay_type = std::decay_t<F>;
@@ -355,8 +335,7 @@ public:
     if constexpr (fits_inline_v<decay_type>)
       ::new (buffer_) decay_type(std::forward<F>(f));
     else
-      *reinterpret_cast<decay_type**>(buffer_)
-          = new decay_type(std::forward<F>(f));
+      *reinterpret_cast<decay_type**>(buffer_) = new decay_type(std::forward<F>(f));
   }
 
   sbo_callable(sbo_callable&& other) noexcept : vtable_(other.vtable_)
@@ -459,13 +438,11 @@ private:
  */
 
 /// Callback invoked when a pool worker begins executing a task.
-using task_start_callback = detail::copyable_callable<void(
-    std::chrono::steady_clock::time_point, std::thread::id)>;
+using task_start_callback = detail::copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id)>;
 
 /// Callback invoked when a pool worker finishes executing a task.
-using task_end_callback = detail::copyable_callable<void(
-    std::chrono::steady_clock::time_point, std::thread::id,
-    std::chrono::microseconds elapsed)>;
+using task_end_callback = detail::copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id,
+                                                         std::chrono::microseconds elapsed)>;
 
 using task_start_callback_storage = task_start_callback;
 using task_end_callback_storage = task_end_callback;
@@ -483,8 +460,7 @@ private:
     T item;
     aligned_item() = default;
     aligned_item(T&& t) : item(std::move(t)) {}
-    template <typename U = T,
-              std::enable_if_t<std::is_copy_constructible_v<U>, int> = 0>
+    template <typename U = T, std::enable_if_t<std::is_copy_constructible_v<U>, int> = 0>
     aligned_item(T const& t) : item(t)
     {
     }
@@ -504,8 +480,7 @@ private:
 
 public:
   explicit work_stealing_deque(size_t capacity = default_capacity)
-      : buffer_(std::make_unique<aligned_item[]>(capacity)),
-        capacity_(capacity)
+      : buffer_(std::make_unique<aligned_item[]>(capacity)), capacity_(capacity)
   {
   }
 
@@ -526,8 +501,7 @@ public:
     return true;
   }
 
-  template <typename U = T,
-            std::enable_if_t<std::is_copy_constructible_v<U>, int> = 0>
+  template <typename U = T, std::enable_if_t<std::is_copy_constructible_v<U>, int> = 0>
   [[nodiscard]] auto
   push(T const& item) -> bool
   {
@@ -732,20 +706,16 @@ public:
     std::chrono::microseconds avg_task_time;
   };
 
-  explicit work_stealing_pool_backend(
-      size_t num_threads = std::thread::hardware_concurrency(),
-      size_t deque_capacity
-      = work_stealing_deque<queued_task>::default_capacity,
-      bool register_workers = false)
-      : num_threads_(num_threads == 0 ? 1 : num_threads),
-        register_workers_(register_workers), stop_(false), next_victim_(0),
-        start_time_(std::chrono::steady_clock::now())
+  explicit work_stealing_pool_backend(size_t num_threads = std::thread::hardware_concurrency(),
+                                      size_t deque_capacity = work_stealing_deque<queued_task>::default_capacity,
+                                      bool register_workers = false)
+      : num_threads_(num_threads == 0 ? 1 : num_threads), register_workers_(register_workers), stop_(false),
+        next_victim_(0), start_time_(std::chrono::steady_clock::now())
   {
     worker_queues_.resize(num_threads_);
     for (size_t i = 0; i < num_threads_; ++i)
       {
-        worker_queues_[i] = std::make_unique<work_stealing_deque<queued_task>>(
-            deque_capacity);
+        worker_queues_[i] = std::make_unique<work_stealing_deque<queued_task>>(deque_capacity);
       }
 
     workers_.reserve(num_threads_);
@@ -753,8 +723,7 @@ public:
     try
       {
         for (size_t i = 0; i < num_threads_; ++i)
-          workers_.emplace_back(&work_stealing_pool_backend::worker_function,
-                                this, i);
+          workers_.emplace_back(&work_stealing_pool_backend::worker_function, this, i);
       }
     catch (...)
       {
@@ -769,8 +738,7 @@ public:
   }
 
   work_stealing_pool_backend(work_stealing_pool_backend const&) = delete;
-  auto operator=(work_stealing_pool_backend const&)
-      -> work_stealing_pool_backend& = delete;
+  auto operator=(work_stealing_pool_backend const&) -> work_stealing_pool_backend& = delete;
 
   ~work_stealing_pool_backend()
   {
@@ -824,13 +792,11 @@ public:
 
     std::unique_lock<std::mutex> lock(completion_mutex_);
     bool const drained = completion_condition_.wait_until(
-        lock, deadline, [this]
-          { return outstanding_tasks_.load(std::memory_order_acquire) == 0; });
+        lock, deadline, [this] { return outstanding_tasks_.load(std::memory_order_acquire) == 0; });
     lock.unlock();
 
     shutdown_completed_all_
-        = finish_shutdown(drained ? shutdown_policy_backend::drain
-                                  : shutdown_policy_backend::drop_pending);
+        = finish_shutdown(drained ? shutdown_policy_backend::drain : shutdown_policy_backend::drop_pending);
     shutdown_completed_at_ = std::chrono::steady_clock::now();
     return drained;
   }
@@ -853,9 +819,7 @@ public:
    */
   template <typename F, typename... Args>
   auto
-  try_submit(F&& f, Args&&... args)
-      -> expected<std::future<std::invoke_result_t<F, Args...>>,
-                  std::error_code>
+  try_submit(F&& f, Args&&... args) -> expected<std::future<std::invoke_result_t<F, Args...>>, std::error_code>
   {
     using return_type = std::invoke_result_t<F, Args...>;
 
@@ -870,8 +834,7 @@ public:
     if (stop_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
 
-    size_t const preferred_queue
-        = next_victim_.fetch_add(1, std::memory_order_relaxed) % num_threads_;
+    size_t const preferred_queue = next_victim_.fetch_add(1, std::memory_order_relaxed) % num_threads_;
 
     outstanding_tasks_.fetch_add(1, std::memory_order_release);
     if (worker_queues_[preferred_queue]->push(std::move(queued)))
@@ -881,8 +844,7 @@ public:
       }
     outstanding_tasks_.fetch_sub(1, std::memory_order_acq_rel);
 
-    for (size_t attempts = 0; attempts < (std::min)(num_threads_, size_t(3));
-         ++attempts)
+    for (size_t attempts = 0; attempts < (std::min)(num_threads_, size_t(3)); ++attempts)
       {
         size_t const idx = (preferred_queue + attempts + 1) % num_threads_;
         outstanding_tasks_.fetch_add(1, std::memory_order_release);
@@ -921,8 +883,7 @@ public:
    */
   template <typename F, typename... Args>
   auto
-  submit(F&& f, Args&&... args)
-      -> std::future<std::invoke_result_t<F, Args...>>
+  submit(F&& f, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>
   {
     auto result = try_submit(std::forward<F>(f), std::forward<Args>(args)...);
     if (!result.has_value())
@@ -959,16 +920,15 @@ public:
   auto
   try_post(F&& f, Args&&... args) -> expected<void, std::error_code>
   {
-    queued_task bound(detail::make_move_callable<void()>(
-        detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...)));
+    queued_task bound(
+        detail::make_move_callable<void()>(detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...)));
 
     std::shared_lock<std::shared_mutex> submission_lock(submission_mutex_);
 
     if (stop_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
 
-    size_t const preferred_queue
-        = next_victim_.fetch_add(1, std::memory_order_relaxed) % num_threads_;
+    size_t const preferred_queue = next_victim_.fetch_add(1, std::memory_order_relaxed) % num_threads_;
 
     outstanding_tasks_.fetch_add(1, std::memory_order_release);
     if (worker_queues_[preferred_queue]->push(std::move(bound)))
@@ -978,8 +938,7 @@ public:
       }
     outstanding_tasks_.fetch_sub(1, std::memory_order_acq_rel);
 
-    for (size_t attempts = 0; attempts < (std::min)(num_threads_, size_t(3));
-         ++attempts)
+    for (size_t attempts = 0; attempts < (std::min)(num_threads_, size_t(3)); ++attempts)
       {
         size_t const idx = (preferred_queue + attempts + 1) % num_threads_;
         outstanding_tasks_.fetch_add(1, std::memory_order_release);
@@ -1022,8 +981,7 @@ public:
    */
   template <typename Iterator>
   auto
-  try_submit_batch(Iterator begin, Iterator end)
-      -> expected<std::vector<std::future<void>>, std::error_code>
+  try_submit_batch(Iterator begin, Iterator end) -> expected<std::vector<std::future<void>>, std::error_code>
   {
     std::vector<std::future<void>> futures;
     size_t const batch_size = std::distance(begin, end);
@@ -1043,9 +1001,7 @@ public:
     if (stop_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
 
-    size_t queue_idx
-        = next_victim_.fetch_add(batch_size, std::memory_order_relaxed)
-          % num_threads_;
+    size_t queue_idx = next_victim_.fetch_add(batch_size, std::memory_order_relaxed) % num_threads_;
 
     try
       {
@@ -1113,8 +1069,7 @@ public:
   {
     if (is_current_worker())
       detail::throw_worker_deadlock();
-    detail::parallel_for_each_chunked(*this, begin, end, std::forward<F>(func),
-                                      num_threads_);
+    detail::parallel_for_each_chunked(*this, begin, end, std::forward<F>(func), num_threads_);
   }
 
   /// @name Observers
@@ -1147,8 +1102,7 @@ public:
   get_statistics() const -> statistics
   {
     auto const now = std::chrono::steady_clock::now();
-    auto const elapsed
-        = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_);
+    auto const elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_);
 
     statistics stats;
     stats.total_threads = num_threads_;
@@ -1159,20 +1113,17 @@ public:
 
     if (elapsed.count() > 0)
       {
-        stats.tasks_per_second
-            = static_cast<double>(stats.completed_tasks) / elapsed.count();
+        stats.tasks_per_second = static_cast<double>(stats.completed_tasks) / elapsed.count();
       }
     else
       {
         stats.tasks_per_second = 0.0;
       }
 
-    auto const total_task_time
-        = total_task_time_.load(std::memory_order_acquire);
+    auto const total_task_time = total_task_time_.load(std::memory_order_acquire);
     if (stats.completed_tasks > 0)
       {
-        stats.avg_task_time = std::chrono::microseconds(
-            total_task_time / stats.completed_tasks);
+        stats.avg_task_time = std::chrono::microseconds(total_task_time / stats.completed_tasks);
       }
     else
       {
@@ -1196,28 +1147,22 @@ public:
    *         rejected any configuration call.
    */
   auto
-  configure_threads(std::string const& name_prefix,
-                    native_scheduling_policy policy
-                    = native_scheduling_policy::other,
-                    native_thread_priority priority
-                    = native_thread_priority::normal())
+  configure_threads(std::string const& name_prefix, native_scheduling_policy policy = native_scheduling_policy::other,
+                    native_thread_priority priority = native_thread_priority::normal())
       -> expected<void, std::error_code>
   {
-    return detail::configure_worker_threads(workers_, name_prefix, policy,
-                                            priority);
+    return detail::configure_worker_threads(workers_, name_prefix, policy, priority);
   }
 
   auto
-  configure_threads(native_thread_config const& config)
-      -> expected<void, std::error_code>
+  configure_threads(native_thread_config const& config) -> expected<void, std::error_code>
   {
     return detail::configure_worker_threads(workers_, config);
   }
 
   /// @brief Pin all workers to the same CPU set.
   auto
-  set_affinity(native_thread_affinity const& affinity)
-      -> expected<void, std::error_code>
+  set_affinity(native_thread_affinity const& affinity) -> expected<void, std::error_code>
   {
     return detail::set_worker_affinity(workers_, affinity);
   }
@@ -1241,9 +1186,7 @@ public:
     if (is_current_worker())
       detail::throw_worker_deadlock();
     std::unique_lock<std::mutex> lock(completion_mutex_);
-    completion_condition_.wait(
-        lock, [this]
-          { return outstanding_tasks_.load(std::memory_order_acquire) == 0; });
+    completion_condition_.wait(lock, [this] { return outstanding_tasks_.load(std::memory_order_acquire) == 0; });
   }
 
   [[nodiscard]] auto
@@ -1269,20 +1212,14 @@ public:
   }
 
   template <typename Callback,
-            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>,
-                                             task_start_callback>,
-                             int> = 0>
+            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, task_start_callback>, int> = 0>
   void
   set_on_task_start(Callback&& cb)
   {
-    static_assert(
-        std::is_invocable_r_v<void, Callback&,
-                              std::chrono::steady_clock::time_point,
-                              std::thread::id>,
-        "Task start callback must accept (time_point, std::thread::id)");
+    static_assert(std::is_invocable_r_v<void, Callback&, std::chrono::steady_clock::time_point, std::thread::id>,
+                  "Task start callback must accept (time_point, std::thread::id)");
     std::lock_guard<std::mutex> lock(trace_mutex_);
-    on_task_start_ = detail::make_copyable_callable<void(
-        std::chrono::steady_clock::time_point, std::thread::id)>(
+    on_task_start_ = detail::make_copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id)>(
         std::forward<Callback>(cb));
   }
 
@@ -1299,22 +1236,17 @@ public:
   }
 
   template <typename Callback,
-            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>,
-                                             task_end_callback>,
-                             int> = 0>
+            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, task_end_callback>, int> = 0>
   void
   set_on_task_end(Callback&& cb)
   {
-    static_assert(
-        std::is_invocable_r_v<void, Callback&,
-                              std::chrono::steady_clock::time_point,
-                              std::thread::id, std::chrono::microseconds>,
-        "Task end callback must accept (time_point, std::thread::id, "
-        "std::chrono::microseconds)");
+    static_assert(std::is_invocable_r_v<void, Callback&, std::chrono::steady_clock::time_point, std::thread::id,
+                                        std::chrono::microseconds>,
+                  "Task end callback must accept (time_point, std::thread::id, "
+                  "std::chrono::microseconds)");
     std::lock_guard<std::mutex> lock(trace_mutex_);
-    on_task_end_ = detail::make_copyable_callable<void(
-        std::chrono::steady_clock::time_point, std::thread::id,
-        std::chrono::microseconds)>(std::forward<Callback>(cb));
+    on_task_end_ = detail::make_copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id,
+                                                       std::chrono::microseconds)>(std::forward<Callback>(cb));
   }
 
   /// @}
@@ -1323,8 +1255,7 @@ private:
   size_t num_threads_;
   bool register_workers_;
   std::vector<detail::thread_backend> workers_;
-  std::vector<std::unique_ptr<work_stealing_deque<queued_task>>>
-      worker_queues_;
+  std::vector<std::unique_ptr<work_stealing_deque<queued_task>>> worker_queues_;
 
   std::queue<queued_task> overflow_tasks_;
   mutable std::mutex overflow_mutex_;
@@ -1353,8 +1284,7 @@ private:
   task_end_callback_storage on_task_end_;
 
   std::chrono::steady_clock::time_point start_time_;
-  inline static thread_local work_stealing_pool_backend* current_pool
-      = nullptr;
+  inline static thread_local work_stealing_pool_backend* current_pool = nullptr;
 
   auto
   finish_shutdown(shutdown_policy_backend policy) -> bool
@@ -1419,12 +1349,10 @@ private:
   void
   worker_function(size_t worker_id)
   {
-    detail::worker_context_guard<work_stealing_pool_backend> worker_context(
-        current_pool, this);
+    detail::worker_context_guard<work_stealing_pool_backend> worker_context(current_pool, this);
     std::optional<auto_register_current_thread> reg_guard;
     if (register_workers_)
-      reg_guard.emplace("hp_worker_" + std::to_string(worker_id),
-                        "threadschedule.pool");
+      reg_guard.emplace("hp_worker_" + std::to_string(worker_id), "threadschedule.pool");
 
     thread_local std::mt19937 gen = []()
       {
@@ -1445,14 +1373,11 @@ private:
           }
         else
           {
-            size_t const max_steal_attempts
-                = (std::min)(num_threads_, size_t(4));
-            for (size_t attempts = 0; attempts < max_steal_attempts;
-                 ++attempts)
+            size_t const max_steal_attempts = (std::min)(num_threads_, size_t(4));
+            for (size_t attempts = 0; attempts < max_steal_attempts; ++attempts)
               {
                 size_t const victim_id = dist(gen);
-                if (victim_id != worker_id
-                    && worker_queues_[victim_id]->steal(task))
+                if (victim_id != worker_id && worker_queues_[victim_id]->steal(task))
                   {
                     found_task = true;
                     stolen_tasks_.fetch_add(1, std::memory_order_relaxed);
@@ -1508,11 +1433,8 @@ private:
             task = queued_task{};
             auto const end_time = std::chrono::steady_clock::now();
 
-            auto const task_duration
-                = std::chrono::duration_cast<std::chrono::microseconds>(
-                    end_time - start_time);
-            total_task_time_.fetch_add(task_duration.count(),
-                                       std::memory_order_relaxed);
+            auto const task_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+            total_task_time_.fetch_add(task_duration.count(), std::memory_order_relaxed);
 
             try
               {
@@ -1540,8 +1462,7 @@ private:
           }
         else
           {
-            if (stop_.load(std::memory_order_acquire)
-                && submissions_quiesced_.load(std::memory_order_acquire)
+            if (stop_.load(std::memory_order_acquire) && submissions_quiesced_.load(std::memory_order_acquire)
                 && outstanding_tasks_.load(std::memory_order_acquire) == 0)
               {
                 break;
@@ -1668,11 +1589,9 @@ public:
     std::chrono::microseconds avg_task_time;
   };
 
-  explicit thread_pool_backend_base(size_t num_threads
-                                    = std::thread::hardware_concurrency(),
+  explicit thread_pool_backend_base(size_t num_threads = std::thread::hardware_concurrency(),
                                     bool register_workers = false)
-      : num_threads_(num_threads == 0 ? 1 : num_threads),
-        register_workers_(register_workers), stop_(false),
+      : num_threads_(num_threads == 0 ? 1 : num_threads), register_workers_(register_workers), stop_(false),
         start_time_(std::chrono::steady_clock::now())
   {
     workers_.reserve(num_threads_);
@@ -1680,8 +1599,7 @@ public:
     try
       {
         for (size_t i = 0; i < num_threads_; ++i)
-          workers_.emplace_back(&thread_pool_backend_base::worker_function,
-                                this, i);
+          workers_.emplace_back(&thread_pool_backend_base::worker_function, this, i);
       }
     catch (...)
       {
@@ -1695,8 +1613,7 @@ public:
   }
 
   thread_pool_backend_base(thread_pool_backend_base const&) = delete;
-  auto operator=(thread_pool_backend_base const&)
-      -> thread_pool_backend_base& = delete;
+  auto operator=(thread_pool_backend_base const&) -> thread_pool_backend_base& = delete;
 
   ~thread_pool_backend_base()
   {
@@ -1713,9 +1630,7 @@ public:
    */
   template <typename F, typename... Args>
   auto
-  try_submit(F&& f, Args&&... args)
-      -> expected<std::future<std::invoke_result_t<F, Args...>>,
-                  std::error_code>
+  try_submit(F&& f, Args&&... args) -> expected<std::future<std::invoke_result_t<F, Args...>>, std::error_code>
   {
     using return_type = std::invoke_result_t<F, Args...>;
 
@@ -1741,8 +1656,7 @@ public:
    */
   template <typename F, typename... Args>
   auto
-  submit(F&& f, Args&&... args)
-      -> std::future<std::invoke_result_t<F, Args...>>
+  submit(F&& f, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>
   {
     auto result = try_submit(std::forward<F>(f), std::forward<Args>(args)...);
     if (!result.has_value())
@@ -1776,8 +1690,7 @@ public:
   auto
   try_post(F&& f, Args&&... args) -> expected<void, std::error_code>
   {
-    queued_task task(
-        detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
+    queued_task task(detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
     {
       std::lock_guard<std::mutex> lock(queue_mutex_);
       if (stop_)
@@ -1795,8 +1708,7 @@ public:
    */
   template <typename Iterator>
   auto
-  try_submit_batch(Iterator begin, Iterator end)
-      -> expected<std::vector<std::future<void>>, std::error_code>
+  try_submit_batch(Iterator begin, Iterator end) -> expected<std::vector<std::future<void>>, std::error_code>
   {
     std::vector<std::future<void>> futures;
     size_t const batch_size = std::distance(begin, end);
@@ -1816,8 +1728,7 @@ public:
       {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         if (stop_)
-          return unexpected(
-              std::make_error_code(std::errc::operation_canceled));
+          return unexpected(std::make_error_code(std::errc::operation_canceled));
 
         for (auto const& task : prepared)
           {
@@ -1854,8 +1765,7 @@ public:
   {
     if (is_current_worker())
       detail::throw_worker_deadlock();
-    detail::parallel_for_each_chunked(*this, begin, end, std::forward<F>(func),
-                                      num_threads_);
+    detail::parallel_for_each_chunked(*this, begin, end, std::forward<F>(func), num_threads_);
   }
 
   /// @}
@@ -1888,28 +1798,22 @@ public:
    * @see work_stealing_pool_backend::configure_threads
    */
   auto
-  configure_threads(std::string const& name_prefix,
-                    native_scheduling_policy policy
-                    = native_scheduling_policy::other,
-                    native_thread_priority priority
-                    = native_thread_priority::normal())
+  configure_threads(std::string const& name_prefix, native_scheduling_policy policy = native_scheduling_policy::other,
+                    native_thread_priority priority = native_thread_priority::normal())
       -> expected<void, std::error_code>
   {
-    return detail::configure_worker_threads(workers_, name_prefix, policy,
-                                            priority);
+    return detail::configure_worker_threads(workers_, name_prefix, policy, priority);
   }
 
   auto
-  configure_threads(native_thread_config const& config)
-      -> expected<void, std::error_code>
+  configure_threads(native_thread_config const& config) -> expected<void, std::error_code>
   {
     return detail::configure_worker_threads(workers_, config);
   }
 
   /// @brief Pin all workers to the same CPU set.
   auto
-  set_affinity(native_thread_affinity const& affinity)
-      -> expected<void, std::error_code>
+  set_affinity(native_thread_affinity const& affinity) -> expected<void, std::error_code>
   {
     return detail::set_worker_affinity(workers_, affinity);
   }
@@ -1933,13 +1837,8 @@ public:
     if (is_current_worker())
       detail::throw_worker_deadlock();
     std::unique_lock<std::mutex> lock(queue_mutex_);
-    task_finished_condition_.wait(
-        lock,
-        [this]
-          {
-            return tasks_.empty()
-                   && active_tasks_.load(std::memory_order_acquire) == 0;
-          });
+    task_finished_condition_.wait(lock, [this]
+                                    { return tasks_.empty() && active_tasks_.load(std::memory_order_acquire) == 0; });
   }
 
   [[nodiscard]] auto
@@ -2011,12 +1910,7 @@ public:
     stop_ = true;
     condition_.notify_all();
     bool const drained = task_finished_condition_.wait_until(
-        lock, deadline,
-        [this]
-          {
-            return tasks_.empty()
-                   && active_tasks_.load(std::memory_order_acquire) == 0;
-          });
+        lock, deadline, [this] { return tasks_.empty() && active_tasks_.load(std::memory_order_acquire) == 0; });
     std::queue<queued_task> discarded;
     if (!drained)
       tasks_.swap(discarded);
@@ -2047,8 +1941,7 @@ public:
   get_statistics() const -> statistics
   {
     auto const now = std::chrono::steady_clock::now();
-    auto const elapsed
-        = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_);
+    auto const elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_);
 
     std::lock_guard<std::mutex> lock(queue_mutex_);
     statistics stats;
@@ -2059,20 +1952,17 @@ public:
 
     if (elapsed.count() > 0)
       {
-        stats.tasks_per_second
-            = static_cast<double>(stats.completed_tasks) / elapsed.count();
+        stats.tasks_per_second = static_cast<double>(stats.completed_tasks) / elapsed.count();
       }
     else
       {
         stats.tasks_per_second = 0.0;
       }
 
-    auto const total_task_time
-        = total_task_time_.load(std::memory_order_acquire);
+    auto const total_task_time = total_task_time_.load(std::memory_order_acquire);
     if (stats.completed_tasks > 0)
       {
-        stats.avg_task_time = std::chrono::microseconds(
-            total_task_time / stats.completed_tasks);
+        stats.avg_task_time = std::chrono::microseconds(total_task_time / stats.completed_tasks);
       }
     else
       {
@@ -2099,20 +1989,14 @@ public:
   }
 
   template <typename Callback,
-            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>,
-                                             task_start_callback>,
-                             int> = 0>
+            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, task_start_callback>, int> = 0>
   void
   set_on_task_start(Callback&& cb)
   {
-    static_assert(
-        std::is_invocable_r_v<void, Callback&,
-                              std::chrono::steady_clock::time_point,
-                              std::thread::id>,
-        "Task start callback must accept (time_point, std::thread::id)");
+    static_assert(std::is_invocable_r_v<void, Callback&, std::chrono::steady_clock::time_point, std::thread::id>,
+                  "Task start callback must accept (time_point, std::thread::id)");
     std::lock_guard<std::mutex> lock(trace_mutex_);
-    on_task_start_ = detail::make_copyable_callable<void(
-        std::chrono::steady_clock::time_point, std::thread::id)>(
+    on_task_start_ = detail::make_copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id)>(
         std::forward<Callback>(cb));
   }
 
@@ -2129,22 +2013,17 @@ public:
   }
 
   template <typename Callback,
-            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>,
-                                             task_end_callback>,
-                             int> = 0>
+            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, task_end_callback>, int> = 0>
   void
   set_on_task_end(Callback&& cb)
   {
-    static_assert(
-        std::is_invocable_r_v<void, Callback&,
-                              std::chrono::steady_clock::time_point,
-                              std::thread::id, std::chrono::microseconds>,
-        "Task end callback must accept (time_point, std::thread::id, "
-        "std::chrono::microseconds)");
+    static_assert(std::is_invocable_r_v<void, Callback&, std::chrono::steady_clock::time_point, std::thread::id,
+                                        std::chrono::microseconds>,
+                  "Task end callback must accept (time_point, std::thread::id, "
+                  "std::chrono::microseconds)");
     std::lock_guard<std::mutex> lock(trace_mutex_);
-    on_task_end_ = detail::make_copyable_callable<void(
-        std::chrono::steady_clock::time_point, std::thread::id,
-        std::chrono::microseconds)>(std::forward<Callback>(cb));
+    on_task_end_ = detail::make_copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id,
+                                                       std::chrono::microseconds)>(std::forward<Callback>(cb));
   }
 
   /// @}
@@ -2176,12 +2055,10 @@ private:
   void
   worker_function(size_t worker_id)
   {
-    detail::worker_context_guard<thread_pool_backend_base> worker_context(
-        current_pool, this);
+    detail::worker_context_guard<thread_pool_backend_base> worker_context(current_pool, this);
     std::optional<auto_register_current_thread> reg_guard;
     if (register_workers_)
-      reg_guard.emplace("pool_worker_" + std::to_string(worker_id),
-                        "threadschedule.pool");
+      reg_guard.emplace("pool_worker_" + std::to_string(worker_id), "threadschedule.pool");
 
     while (true)
       {
@@ -2191,8 +2068,7 @@ private:
         {
           std::unique_lock<std::mutex> lock(queue_mutex_);
 
-          if (WaitPolicy::wait(condition_, lock,
-                               [this] { return stop_ || !tasks_.empty(); }))
+          if (WaitPolicy::wait(condition_, lock, [this] { return stop_ || !tasks_.empty(); }))
             {
               if (stop_ && tasks_.empty())
                 {
@@ -2242,11 +2118,8 @@ private:
               }
             auto const end_time = std::chrono::steady_clock::now();
 
-            auto const task_duration
-                = std::chrono::duration_cast<std::chrono::microseconds>(
-                    end_time - start_time);
-            total_task_time_.fetch_add(task_duration.count(),
-                                       std::memory_order_relaxed);
+            auto const task_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+            total_task_time_.fetch_add(task_duration.count(), std::memory_order_relaxed);
 
             try
               {
@@ -2381,16 +2254,14 @@ public:
    * @param num_threads Number of worker threads (clamped to at least 1).
    *                    Defaults to @c std::thread::hardware_concurrency().
    */
-  explicit lightweight_pool_backend_base(size_t num_threads
-                                         = std::thread::hardware_concurrency())
+  explicit lightweight_pool_backend_base(size_t num_threads = std::thread::hardware_concurrency())
       : num_threads_(num_threads == 0 ? 1 : num_threads)
   {
     workers_.reserve(num_threads_);
     try
       {
         for (size_t i = 0; i < num_threads_; ++i)
-          workers_.emplace_back(&lightweight_pool_backend_base::worker_loop,
-                                this);
+          workers_.emplace_back(&lightweight_pool_backend_base::worker_loop, this);
       }
     catch (...)
       {
@@ -2404,8 +2275,7 @@ public:
   }
 
   lightweight_pool_backend_base(lightweight_pool_backend_base const&) = delete;
-  auto operator=(lightweight_pool_backend_base const&)
-      -> lightweight_pool_backend_base& = delete;
+  auto operator=(lightweight_pool_backend_base const&) -> lightweight_pool_backend_base& = delete;
 
   ~lightweight_pool_backend_base()
   {
@@ -2445,8 +2315,7 @@ public:
   auto
   try_post(F&& f, Args&&... args) -> expected<void, std::error_code>
   {
-    detail::sbo_callable<TaskSize> task(
-        detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
+    detail::sbo_callable<TaskSize> task(detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (stop_)
@@ -2482,8 +2351,7 @@ public:
    */
   template <typename Iterator>
   auto
-  try_post_batch(Iterator begin, Iterator end)
-      -> expected<void, std::error_code>
+  try_post_batch(Iterator begin, Iterator end) -> expected<void, std::error_code>
   {
     std::vector<detail::sbo_callable<TaskSize>> prepared;
     prepared.reserve(std::distance(begin, end));
@@ -2495,8 +2363,7 @@ public:
       {
         std::lock_guard<std::mutex> lock(mutex_);
         if (stop_)
-          return unexpected(
-              std::make_error_code(std::errc::operation_canceled));
+          return unexpected(std::make_error_code(std::errc::operation_canceled));
         for (auto& task : prepared)
           {
             tasks_.push(std::move(task));
@@ -2582,12 +2449,7 @@ public:
     stop_ = true;
     condition_.notify_all();
     bool const drained = drain_condition_.wait_until(
-        lock, deadline,
-        [this]
-          {
-            return tasks_.empty()
-                   && active_tasks_.load(std::memory_order_acquire) == 0;
-          });
+        lock, deadline, [this] { return tasks_.empty() && active_tasks_.load(std::memory_order_acquire) == 0; });
     std::queue<detail::sbo_callable<TaskSize>> discarded;
     if (!drained)
       tasks_.swap(discarded);
@@ -2636,28 +2498,22 @@ public:
    * Workers are named @c name_prefix + "_0", @c "_1", etc.
    */
   auto
-  configure_threads(std::string const& name_prefix,
-                    native_scheduling_policy policy
-                    = native_scheduling_policy::other,
-                    native_thread_priority priority
-                    = native_thread_priority::normal())
+  configure_threads(std::string const& name_prefix, native_scheduling_policy policy = native_scheduling_policy::other,
+                    native_thread_priority priority = native_thread_priority::normal())
       -> expected<void, std::error_code>
   {
-    return detail::configure_worker_threads(workers_, name_prefix, policy,
-                                            priority);
+    return detail::configure_worker_threads(workers_, name_prefix, policy, priority);
   }
 
   auto
-  configure_threads(native_thread_config const& config)
-      -> expected<void, std::error_code>
+  configure_threads(native_thread_config const& config) -> expected<void, std::error_code>
   {
     return detail::configure_worker_threads(workers_, config);
   }
 
   /// @brief Pin all workers to the same CPU set.
   auto
-  set_affinity(native_thread_affinity const& affinity)
-      -> expected<void, std::error_code>
+  set_affinity(native_thread_affinity const& affinity) -> expected<void, std::error_code>
   {
     return detail::set_worker_affinity(workers_, affinity);
   }
@@ -2683,14 +2539,12 @@ private:
   bool shutdown_completed_all_{ true };
   std::chrono::steady_clock::time_point shutdown_completed_at_{};
   std::atomic<size_t> active_tasks_{ 0 };
-  inline static thread_local lightweight_pool_backend_base* current_pool
-      = nullptr;
+  inline static thread_local lightweight_pool_backend_base* current_pool = nullptr;
 
   void
   worker_loop()
   {
-    detail::worker_context_guard<lightweight_pool_backend_base> worker_context(
-        current_pool, this);
+    detail::worker_context_guard<lightweight_pool_backend_base> worker_context(current_pool, this);
     while (true)
       {
         detail::sbo_callable<TaskSize> task;
@@ -2775,8 +2629,7 @@ public:
   static void
   init(size_t num_threads)
   {
-    std::call_once(init_flag(),
-                   [num_threads] { thread_count() = num_threads; });
+    std::call_once(init_flag(), [num_threads] { thread_count() = num_threads; });
   }
 
   /// @brief Access the singleton pool instance (created on first call).
@@ -2802,8 +2655,7 @@ public:
   static auto
   try_submit(F&& f, Args&&... args)
   {
-    return instance().try_submit(std::forward<F>(f),
-                                 std::forward<Args>(args)...);
+    return instance().try_submit(std::forward<F>(f), std::forward<Args>(args)...);
   }
 
   template <typename F, typename... Args>
@@ -2817,8 +2669,7 @@ public:
   static auto
   try_post(F&& f, Args&&... args)
   {
-    return instance().try_post(std::forward<F>(f),
-                               std::forward<Args>(args)...);
+    return instance().try_post(std::forward<F>(f), std::forward<Args>(args)...);
   }
 
   template <typename Iterator>
@@ -2874,8 +2725,7 @@ using global_thread_pool_backend = global_pool_backend<thread_pool_backend>;
  * @brief Singleton accessor for the process-wide @ref
  * work_stealing_pool_backend instance.
  */
-using global_work_stealing_pool_backend
-    = global_pool_backend<work_stealing_pool_backend>;
+using global_work_stealing_pool_backend = global_pool_backend<work_stealing_pool_backend>;
 
 /**
  * @brief Convenience wrapper that applies a callable to every element of a
@@ -2900,8 +2750,7 @@ template <typename Container, typename F>
 void
 parallel_for_each(Container& container, F&& func)
 {
-  global_thread_pool_backend::parallel_for_each(
-      container.begin(), container.end(), std::forward<F>(func));
+  global_thread_pool_backend::parallel_for_each(container.begin(), container.end(), std::forward<F>(func));
 }
 
 } // namespace threadschedule

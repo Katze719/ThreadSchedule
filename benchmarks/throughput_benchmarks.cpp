@@ -19,8 +19,7 @@ BM_HighThroughput_HighPerformancePool(benchmark::State& state)
   size_t const tasks_per_iteration = state.range(1);
 
   work_stealing_pool_backend pool(num_threads);
-  pool.configure_threads("htp_bench", native_scheduling_policy::other,
-                         native_thread_priority::normal());
+  pool.configure_threads("htp_bench", native_scheduling_policy::other, native_thread_priority::normal());
   pool.distribute_across_cpus();
 
   for (auto _ : state)
@@ -47,10 +46,9 @@ BM_HighThroughput_HighPerformancePool(benchmark::State& state)
     }
 
   auto stats = pool.get_statistics();
-  state.counters["tasks_per_second"]
-      = benchmark::Counter(stats.tasks_per_second);
-  state.counters["work_steal_ratio"] = benchmark::Counter(
-      100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
+  state.counters["tasks_per_second"] = benchmark::Counter(stats.tasks_per_second);
+  state.counters["work_steal_ratio"]
+      = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
   state.SetItemsProcessed(state.iterations() * tasks_per_iteration);
 }
 
@@ -80,8 +78,7 @@ BM_HighThroughput_FastThreadPool(benchmark::State& state)
     }
 
   auto stats = pool.get_statistics();
-  state.counters["tasks_per_second"]
-      = benchmark::Counter(stats.tasks_per_second);
+  state.counters["tasks_per_second"] = benchmark::Counter(stats.tasks_per_second);
   state.SetItemsProcessed(state.iterations() * tasks_per_iteration);
 }
 
@@ -96,8 +93,7 @@ BM_Scalability_WorkStealing(benchmark::State& state)
   size_t const num_tasks = 50000; // Fixed task count
 
   work_stealing_pool_backend pool(num_threads);
-  pool.configure_threads("scale_bench", native_scheduling_policy::other,
-                         native_thread_priority::normal());
+  pool.configure_threads("scale_bench", native_scheduling_policy::other, native_thread_priority::normal());
   pool.distribute_across_cpus();
 
   // Create variable workload to encourage work stealing
@@ -131,10 +127,9 @@ BM_Scalability_WorkStealing(benchmark::State& state)
     }
 
   auto stats = pool.get_statistics();
-  state.counters["work_steal_ratio"] = benchmark::Counter(
-      100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
-  state.counters["efficiency"] = benchmark::Counter(
-      static_cast<double>(num_tasks) / num_threads / state.iterations());
+  state.counters["work_steal_ratio"]
+      = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
+  state.counters["efficiency"] = benchmark::Counter(static_cast<double>(num_tasks) / num_threads / state.iterations());
   state.SetItemsProcessed(state.iterations() * num_tasks);
 }
 
@@ -146,8 +141,7 @@ static void
 BM_Contention_SubmissionStorm(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
-  size_t const num_submitters
-      = state.range(1); // Number of threads submitting tasks
+  size_t const num_submitters = state.range(1); // Number of threads submitting tasks
 
   work_stealing_pool_backend pool(num_threads);
   pool.configure_threads("contention_bench");
@@ -171,12 +165,8 @@ BM_Contention_SubmissionStorm(benchmark::State& state)
 
                   for (size_t j = 0; j < tasks_per_submitter; ++j)
                     {
-                      futures.push_back(pool.submit(
-                          [&completed_tasks]()
-                            {
-                              completed_tasks.fetch_add(
-                                  1, std::memory_order_relaxed);
-                            }));
+                      futures.push_back(pool.submit([&completed_tasks]()
+                                                      { completed_tasks.fetch_add(1, std::memory_order_relaxed); }));
                       submitted_tasks.fetch_add(1, std::memory_order_relaxed);
                     }
 
@@ -217,16 +207,14 @@ BM_MemoryAccess_Sequential(benchmark::State& state)
     {
       std::atomic<long long> sum{ 0 };
 
-      pool.parallel_for_each(
-          data.begin(), data.end(), [&sum](int value)
-            { sum.fetch_add(value, std::memory_order_relaxed); });
+      pool.parallel_for_each(data.begin(), data.end(),
+                             [&sum](int value) { sum.fetch_add(value, std::memory_order_relaxed); });
 
       benchmark::DoNotOptimize(sum.load());
     }
 
   state.SetItemsProcessed(state.iterations() * data_size);
-  state.counters["elements_per_second"]
-      = benchmark::Counter(data_size, benchmark::Counter::kIsRate);
+  state.counters["elements_per_second"] = benchmark::Counter(data_size, benchmark::Counter::kIsRate);
 }
 
 static void
@@ -252,16 +240,14 @@ BM_MemoryAccess_Random(benchmark::State& state)
     {
       std::atomic<long long> sum{ 0 };
 
-      pool.parallel_for_each(
-          indices.begin(), indices.end(), [&sum, &data](size_t idx)
-            { sum.fetch_add(data[idx], std::memory_order_relaxed); });
+      pool.parallel_for_each(indices.begin(), indices.end(),
+                             [&sum, &data](size_t idx) { sum.fetch_add(data[idx], std::memory_order_relaxed); });
 
       benchmark::DoNotOptimize(sum.load());
     }
 
   state.SetItemsProcessed(state.iterations() * data_size);
-  state.counters["elements_per_second"]
-      = benchmark::Counter(data_size, benchmark::Counter::kIsRate);
+  state.counters["elements_per_second"] = benchmark::Counter(data_size, benchmark::Counter::kIsRate);
 }
 
 // =============================================================================

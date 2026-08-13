@@ -87,8 +87,7 @@ struct registered_thread_info_backend
   std::shared_ptr<class thread_control_block> control;
 };
 
-using registry_callback
-    = detail::copyable_callable<void(registered_thread_info_backend const&)>;
+using registry_callback = detail::copyable_callable<void(registered_thread_info_backend const&)>;
 
 /**
  * @brief Per-thread control handle for OS-level scheduling operations.
@@ -135,8 +134,7 @@ class thread_control_block
 public:
   thread_control_block() = default;
   thread_control_block(thread_control_block const&) = delete;
-  auto operator=(thread_control_block const&)
-      -> thread_control_block& = delete;
+  auto operator=(thread_control_block const&) -> thread_control_block& = delete;
   thread_control_block(thread_control_block&&) = delete;
   auto operator=(thread_control_block&&) -> thread_control_block& = delete;
 
@@ -175,8 +173,7 @@ private:
 
 public:
   [[nodiscard]] auto
-  set_affinity(native_thread_affinity const& affinity) const
-      -> expected<void, std::error_code>
+  set_affinity(native_thread_affinity const& affinity) const -> expected<void, std::error_code>
   {
     std::shared_lock<std::shared_mutex> lock(lifecycle_mutex_);
     if (!target_is_active())
@@ -189,8 +186,7 @@ public:
   }
 
   [[nodiscard]] auto
-  set_priority(native_thread_priority priority) const
-      -> expected<void, std::error_code>
+  set_priority(native_thread_priority priority) const -> expected<void, std::error_code>
   {
     std::shared_lock<std::shared_mutex> lock(lifecycle_mutex_);
     if (!target_is_active())
@@ -229,8 +225,7 @@ public:
   }
 
   [[nodiscard]] auto
-  set_scheduling_policy(native_scheduling_policy policy,
-                        native_thread_priority priority) const
+  set_scheduling_policy(native_scheduling_policy policy, native_thread_priority priority) const
       -> expected<void, std::error_code>
   {
     std::shared_lock<std::shared_mutex> lock(lifecycle_mutex_);
@@ -244,8 +239,7 @@ public:
   }
 
   [[nodiscard]] auto
-  configure(native_scheduling_config const& config) const
-      -> expected<void, std::error_code>
+  configure(native_scheduling_config const& config) const -> expected<void, std::error_code>
   {
     std::shared_lock<std::shared_mutex> lock(lifecycle_mutex_);
     if (!target_is_active())
@@ -278,10 +272,8 @@ public:
     block->std_id_ = std::this_thread::get_id();
 #ifdef _WIN32
     HANDLE realHandle = nullptr;
-    if (DuplicateHandle(GetCurrentProcess(), GetCurrentThread(),
-                        GetCurrentProcess(), &realHandle,
-                        THREAD_SET_INFORMATION | THREAD_QUERY_INFORMATION,
-                        FALSE, 0)
+    if (DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &realHandle,
+                        THREAD_SET_INFORMATION | THREAD_QUERY_INFORMATION, FALSE, 0)
         == 0)
       throw std::system_error(detail::last_win32_error(), "DuplicateHandle");
     block->handle_ = realHandle;
@@ -299,10 +291,9 @@ private:
     void
     add(std::shared_ptr<thread_control_block> const& control)
     {
-      controls_.erase(std::remove_if(controls_.begin(), controls_.end(),
-                                     [](auto const& item)
-                                       { return item.expired(); }),
-                      controls_.end());
+      controls_.erase(
+          std::remove_if(controls_.begin(), controls_.end(), [](auto const& item) { return item.expired(); }),
+          controls_.end());
       controls_.push_back(control);
     }
 
@@ -349,13 +340,11 @@ private:
 
 #ifndef _WIN32
   [[nodiscard]] static auto
-  read_start_time(native_thread_id tid) noexcept
-      -> std::optional<std::uint64_t>
+  read_start_time(native_thread_id tid) noexcept -> std::optional<std::uint64_t>
   {
     try
       {
-        std::ifstream input("/proc/self/task/" + std::to_string(tid)
-                            + "/stat");
+        std::ifstream input("/proc/self/task/" + std::to_string(tid) + "/stat");
         std::string line;
         if (!std::getline(input, line))
           return std::nullopt;
@@ -456,24 +445,19 @@ public:
   void
   apply(Predicate&& pred, Fn&& fn) const
   {
-    self()
-        .query()
-        .filter(std::forward<Predicate>(pred))
-        .for_each(std::forward<Fn>(fn));
+    self().query().filter(std::forward<Predicate>(pred)).for_each(std::forward<Fn>(fn));
   }
 
   template <typename Fn>
   [[nodiscard]] auto
-  map(Fn&& fn) const -> std::vector<
-      std::invoke_result_t<Fn, registered_thread_info_backend const&>>
+  map(Fn&& fn) const -> std::vector<std::invoke_result_t<Fn, registered_thread_info_backend const&>>
   {
     return self().query().map(std::forward<Fn>(fn));
   }
 
   template <typename Predicate>
   [[nodiscard]] auto
-  find_if(Predicate&& pred) const
-      -> std::optional<registered_thread_info_backend>
+  find_if(Predicate&& pred) const -> std::optional<registered_thread_info_backend>
   {
     return self().query().find_if(std::forward<Predicate>(pred));
   }
@@ -561,8 +545,7 @@ public:
  * and delegate to the control block.  Returns @c std::errc::no_such_process if
  * the TID is not registered or has no control block.
  */
-class thread_registry_backend
-    : public detail::query_facade_mixin<thread_registry_backend>
+class thread_registry_backend : public detail::query_facade_mixin<thread_registry_backend>
 {
 public:
   thread_registry_backend() = default;
@@ -574,12 +557,10 @@ public:
         entry.second.control->deactivate();
   }
   thread_registry_backend(thread_registry_backend const&) = delete;
-  auto operator=(thread_registry_backend const&)
-      -> thread_registry_backend& = delete;
+  auto operator=(thread_registry_backend const&) -> thread_registry_backend& = delete;
 
   void
-  register_current_thread(std::string name = std::string(),
-                          std::string component = std::string())
+  register_current_thread(std::string name = std::string(), std::string component = std::string())
   {
     registered_thread_info_backend info;
     info.tid = thread_info::get_thread_id();
@@ -591,9 +572,8 @@ public:
   }
 
   void
-  register_current_thread(
-      std::shared_ptr<thread_control_block> const& control_block,
-      std::string name = std::string(), std::string component = std::string())
+  register_current_thread(std::shared_ptr<thread_control_block> const& control_block, std::string name = std::string(),
+                          std::string component = std::string())
   {
     if (!control_block)
       return;
@@ -615,17 +595,13 @@ public:
 
 private:
   void
-  unregister_thread(native_thread_id tid,
-                    thread_control_block const* expected_control
-                    = nullptr) noexcept
+  unregister_thread(native_thread_id tid, thread_control_block const* expected_control = nullptr) noexcept
   {
     try
       {
         std::unique_lock<std::shared_mutex> lock(mutex_);
         auto it = threads_.find(tid);
-        if (it == threads_.end()
-            || (expected_control != nullptr
-                && it->second.control.get() != expected_control))
+        if (it == threads_.end() || (expected_control != nullptr && it->second.control.get() != expected_control))
           return;
 
         auto info = std::move(it->second);
@@ -665,8 +641,7 @@ private:
 public:
   // Lookup
   [[nodiscard]] auto
-  get(native_thread_id tid) const
-      -> std::optional<registered_thread_info_backend>
+  get(native_thread_id tid) const -> std::optional<registered_thread_info_backend>
   {
     std::shared_lock<std::shared_mutex> lock(mutex_);
     auto it = threads_.find(tid);
@@ -714,10 +689,7 @@ public:
   class query_view
   {
   public:
-    explicit query_view(std::vector<registered_thread_info_backend> entries)
-        : entries_(std::move(entries))
-    {
-    }
+    explicit query_view(std::vector<registered_thread_info_backend> entries) : entries_(std::move(entries)) {}
 
     template <typename Predicate>
     auto
@@ -764,12 +736,9 @@ public:
     // Transform entries to a vector of another type
     template <typename Fn>
     [[nodiscard]] auto
-    map(Fn&& fn) const -> std::vector<
-        std::invoke_result_t<Fn, registered_thread_info_backend const&>>
+    map(Fn&& fn) const -> std::vector<std::invoke_result_t<Fn, registered_thread_info_backend const&>>
     {
-      std::vector<
-          std::invoke_result_t<Fn, registered_thread_info_backend const&>>
-          result;
+      std::vector<std::invoke_result_t<Fn, registered_thread_info_backend const&>> result;
       result.reserve(entries_.size());
       for (auto const& entry : entries_)
         {
@@ -781,8 +750,7 @@ public:
     // Find first entry matching predicate
     template <typename Predicate>
     [[nodiscard]] auto
-    find_if(Predicate&& pred) const
-        -> std::optional<registered_thread_info_backend>
+    find_if(Predicate&& pred) const -> std::optional<registered_thread_info_backend>
     {
       for (auto const& entry : entries_)
         {
@@ -862,9 +830,7 @@ public:
   }
 
   [[nodiscard]] auto
-  set_affinity(native_thread_id tid,
-               native_thread_affinity const& affinity) const
-      -> expected<void, std::error_code>
+  set_affinity(native_thread_id tid, native_thread_affinity const& affinity) const -> expected<void, std::error_code>
   {
     auto blk = lock_block(tid);
     if (!blk)
@@ -873,8 +839,7 @@ public:
   }
 
   [[nodiscard]] auto
-  set_priority(native_thread_id tid, native_thread_priority priority) const
-      -> expected<void, std::error_code>
+  set_priority(native_thread_id tid, native_thread_priority priority) const -> expected<void, std::error_code>
   {
     auto blk = lock_block(tid);
     if (!blk)
@@ -883,8 +848,7 @@ public:
   }
 
   [[nodiscard]] auto
-  set_nice_value(native_thread_id tid, int nice_value) const
-      -> expected<void, std::error_code>
+  set_nice_value(native_thread_id tid, int nice_value) const -> expected<void, std::error_code>
   {
     auto blk = lock_block(tid);
     if (!blk)
@@ -902,8 +866,7 @@ public:
   }
 
   [[nodiscard]] auto
-  set_scheduling_policy(native_thread_id tid, native_scheduling_policy policy,
-                        native_thread_priority priority) const
+  set_scheduling_policy(native_thread_id tid, native_scheduling_policy policy, native_thread_priority priority) const
       -> expected<void, std::error_code>
   {
     auto blk = lock_block(tid);
@@ -913,8 +876,7 @@ public:
   }
 
   [[nodiscard]] auto
-  configure(native_thread_id tid, native_scheduling_config const& config) const
-      -> expected<void, std::error_code>
+  configure(native_thread_id tid, native_scheduling_config const& config) const -> expected<void, std::error_code>
   {
     auto blk = lock_block(tid);
     if (!blk)
@@ -923,8 +885,7 @@ public:
   }
 
   [[nodiscard]] auto
-  configure(native_thread_id tid, native_thread_config const& config) const
-      -> expected<void, std::error_code>
+  configure(native_thread_id tid, native_thread_config const& config) const -> expected<void, std::error_code>
   {
     if (!config.name.empty())
       {
@@ -941,8 +902,7 @@ public:
   }
 
   [[nodiscard]] auto
-  set_name(native_thread_id tid, std::string const& name) const
-      -> expected<void, std::error_code>
+  set_name(native_thread_id tid, std::string const& name) const -> expected<void, std::error_code>
   {
     auto blk = lock_block(tid);
     if (!blk)
@@ -959,20 +919,17 @@ public:
   }
 
   template <typename Callback,
-            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>,
-                                             registry_callback>,
-                             int> = 0>
+            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, registry_callback>, int> = 0>
   void
   set_on_register(Callback&& cb)
   {
-    static_assert(std::is_invocable_r_v<void, Callback&,
-                                        registered_thread_info_backend const&>,
+    static_assert(std::is_invocable_r_v<void, Callback&, registered_thread_info_backend const&>,
                   "Register callback must be invocable with "
                   "registered_thread_info_backend "
                   "const&");
     std::unique_lock<std::shared_mutex> lock(mutex_);
-    on_register_ = detail::make_copyable_callable<void(
-        registered_thread_info_backend const&)>(std::forward<Callback>(cb));
+    on_register_
+        = detail::make_copyable_callable<void(registered_thread_info_backend const&)>(std::forward<Callback>(cb));
   }
 
   void
@@ -983,20 +940,17 @@ public:
   }
 
   template <typename Callback,
-            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>,
-                                             registry_callback>,
-                             int> = 0>
+            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, registry_callback>, int> = 0>
   void
   set_on_unregister(Callback&& cb)
   {
-    static_assert(std::is_invocable_r_v<void, Callback&,
-                                        registered_thread_info_backend const&>,
+    static_assert(std::is_invocable_r_v<void, Callback&, registered_thread_info_backend const&>,
                   "Unregister callback must be invocable with "
                   "registered_thread_info_backend "
                   "const&");
     std::unique_lock<std::shared_mutex> lock(mutex_);
-    on_unregister_ = detail::make_copyable_callable<void(
-        registered_thread_info_backend const&)>(std::forward<Callback>(cb));
+    on_unregister_
+        = detail::make_copyable_callable<void(registered_thread_info_backend const&)>(std::forward<Callback>(cb));
   }
 
 private:
@@ -1035,8 +989,8 @@ private:
   }
 
   [[nodiscard]] auto
-  register_guard(std::shared_ptr<thread_control_block> const& control_block,
-                 std::string const& name, std::string const& component) -> bool
+  register_guard(std::shared_ptr<thread_control_block> const& control_block, std::string const& name,
+                 std::string const& component) -> bool
   {
     if (!control_block)
       return false;
@@ -1051,8 +1005,7 @@ private:
   }
 
   [[nodiscard]] auto
-  lock_block(native_thread_id tid) const
-      -> std::shared_ptr<thread_control_block>
+  lock_block(native_thread_id tid) const -> std::shared_ptr<thread_control_block>
   {
     std::shared_lock<std::shared_mutex> lock(mutex_);
     auto it = threads_.find(tid);
@@ -1061,8 +1014,7 @@ private:
     return it->second.control;
   }
   mutable std::shared_mutex mutex_;
-  std::unordered_map<native_thread_id, registered_thread_info_backend>
-      threads_;
+  std::unordered_map<native_thread_id, registered_thread_info_backend> threads_;
 
   registry_callback on_register_;
   registry_callback on_unregister_;
@@ -1095,8 +1047,7 @@ namespace detail
 {
 #if defined(THREADSCHEDULE_RUNTIME)
 THREADSCHEDULE_API auto runtime_registry() -> thread_registry_backend&;
-THREADSCHEDULE_API void
-runtime_set_external_registry(thread_registry_backend* reg);
+THREADSCHEDULE_API void runtime_set_external_registry(thread_registry_backend* reg);
 #else
 /** @cond INTERNAL */
 inline auto
@@ -1192,8 +1143,7 @@ namespace threadschedule
 {
 
 #if defined(THREADSCHEDULE_RUNTIME)
-inline constexpr bool is_runtime_build
-    = true; ///< @c true when compiled with @c THREADSCHEDULE_RUNTIME.
+inline constexpr bool is_runtime_build = true; ///< @c true when compiled with @c THREADSCHEDULE_RUNTIME.
 
 /**
  * @brief Returns the build mode detected at compile time (runtime variant).
@@ -1201,8 +1151,7 @@ inline constexpr bool is_runtime_build
  */
 THREADSCHEDULE_API auto current_build_mode() -> build_mode;
 #else
-inline constexpr bool is_runtime_build
-    = false; ///< @c true when compiled with @c THREADSCHEDULE_RUNTIME.
+inline constexpr bool is_runtime_build = false; ///< @c true when compiled with @c THREADSCHEDULE_RUNTIME.
 
 /**
  * @brief Returns the build mode detected at compile time (header-only
@@ -1259,8 +1208,7 @@ build_mode_string() -> char const*
  * helpers (filter, map, for_each, etc.) are inherited from the
  * @c detail::query_facade_mixin implementation.
  */
-class composite_thread_registry_backend
-    : public detail::query_facade_mixin<composite_thread_registry_backend>
+class composite_thread_registry_backend : public detail::query_facade_mixin<composite_thread_registry_backend>
 {
 public:
   void
@@ -1339,10 +1287,8 @@ private:
 class auto_register_current_thread
 {
 public:
-  explicit auto_register_current_thread(std::string const& name
-                                        = std::string(),
-                                        std::string const& component
-                                        = std::string())
+  explicit auto_register_current_thread(std::string const& name = std::string(),
+                                        std::string const& component = std::string())
       : registry_(&detail::runtime_registry())
   {
     auto block = thread_control_block::create_for_current_thread();
@@ -1352,11 +1298,8 @@ public:
     control_ = std::move(block);
   }
 
-  explicit auto_register_current_thread(thread_registry_backend& reg,
-                                        std::string const& name
-                                        = std::string(),
-                                        std::string const& component
-                                        = std::string())
+  explicit auto_register_current_thread(thread_registry_backend& reg, std::string const& name = std::string(),
+                                        std::string const& component = std::string())
       : registry_(&reg)
   {
     auto block = thread_control_block::create_for_current_thread();
@@ -1371,19 +1314,16 @@ public:
       registry_->unregister_thread(tid_, control_.get());
   }
   auto_register_current_thread(auto_register_current_thread const&) = delete;
-  auto operator=(auto_register_current_thread const&)
-      -> auto_register_current_thread& = delete;
+  auto operator=(auto_register_current_thread const&) -> auto_register_current_thread& = delete;
   auto_register_current_thread(auto_register_current_thread&& other) noexcept
-      : active_(other.active_), registry_(other.registry_), tid_(other.tid_),
-        control_(std::move(other.control_))
+      : active_(other.active_), registry_(other.registry_), tid_(other.tid_), control_(std::move(other.control_))
   {
     other.active_ = false;
     other.registry_ = nullptr;
     other.tid_ = {};
   }
   auto
-  operator=(auto_register_current_thread&& other) noexcept
-      -> auto_register_current_thread&
+  operator=(auto_register_current_thread&& other) noexcept -> auto_register_current_thread&
   {
     if (this != &other)
       {
@@ -1436,11 +1376,9 @@ namespace threadschedule
  *       to cgroup control files.
  */
 inline auto
-cgroup_attach_tid(std::string const& cgroup_dir, native_thread_id tid)
-    -> expected<void, std::error_code>
+cgroup_attach_tid(std::string const& cgroup_dir, native_thread_id tid) -> expected<void, std::error_code>
 {
-  std::vector<std::string> candidates
-      = { "cgroup.threads", "tasks", "cgroup.procs" };
+  std::vector<std::string> candidates = { "cgroup.threads", "tasks", "cgroup.procs" };
   for (auto const& file : candidates)
     {
       std::string path = cgroup_dir + "/" + file;

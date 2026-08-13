@@ -65,13 +65,11 @@ public:
   }
 
   bool
-  pop(T& item,
-      std::chrono::milliseconds timeout = std::chrono::milliseconds(100))
+  pop(T& item, std::chrono::milliseconds timeout = std::chrono::milliseconds(100))
   {
     std::unique_lock<std::mutex> lock(mutex_);
 
-    if (condition_.wait_for(lock, timeout,
-                            [this] { return !queue_.empty() || stopped_; }))
+    if (condition_.wait_for(lock, timeout, [this] { return !queue_.empty() || stopped_; }))
       {
         if (!queue_.empty())
           {
@@ -111,8 +109,7 @@ class ImageResampler
 {
 public:
   static ResampledImage
-  resample_bilinear(SimulatedImage const& input, size_t new_width,
-                    size_t new_height)
+  resample_bilinear(SimulatedImage const& input, size_t new_width, size_t new_height)
   {
     ResampledImage output(new_width, new_height);
 
@@ -135,27 +132,20 @@ public:
             double const y_weight = py - y_floor;
 
             // Bilinear interpolation with simulated heavy computation
-            uint32_t const top_left
-                = input.pixels[y_floor * input.width + x_floor];
-            uint32_t const top_right
-                = input.pixels[y_floor * input.width + x_ceil];
-            uint32_t const bottom_left
-                = input.pixels[y_ceil * input.width + x_floor];
-            uint32_t const bottom_right
-                = input.pixels[y_ceil * input.width + x_ceil];
+            uint32_t const top_left = input.pixels[y_floor * input.width + x_floor];
+            uint32_t const top_right = input.pixels[y_floor * input.width + x_ceil];
+            uint32_t const bottom_left = input.pixels[y_ceil * input.width + x_floor];
+            uint32_t const bottom_right = input.pixels[y_ceil * input.width + x_ceil];
 
             // Simulate heavy computation by doing multiple interpolations
             uint32_t result = 0;
             for (int iter = 0; iter < 50; ++iter)
               {
                 double const top
-                    = static_cast<double>(top_left) * (1.0 - x_weight)
-                      + static_cast<double>(top_right) * x_weight;
-                double const bottom
-                    = static_cast<double>(bottom_left) * (1.0 - x_weight)
-                      + static_cast<double>(bottom_right) * x_weight;
-                result += static_cast<uint32_t>(top * (1.0 - y_weight)
-                                                + bottom * y_weight);
+                    = static_cast<double>(top_left) * (1.0 - x_weight) + static_cast<double>(top_right) * x_weight;
+                double const bottom = static_cast<double>(bottom_left) * (1.0 - x_weight)
+                                      + static_cast<double>(bottom_right) * x_weight;
+                result += static_cast<uint32_t>(top * (1.0 - y_weight) + bottom * y_weight);
               }
 
             output.pixels[y * new_width + x] = result;
@@ -180,8 +170,7 @@ BM_Resampling_HighPerformancePool_4Core(benchmark::State& state)
   // 4 cores: 1 producer + 3 workers (your scenario)
   size_t const num_workers = 3;
   work_stealing_pool_backend pool(num_workers);
-  pool.configure_threads("resampling_worker", native_scheduling_policy::other,
-                         native_thread_priority::normal());
+  pool.configure_threads("resampling_worker", native_scheduling_policy::other, native_thread_priority::normal());
   pool.distribute_across_cpus();
 
   for (auto _ : state)
@@ -197,8 +186,7 @@ BM_Resampling_HighPerformancePool_4Core(benchmark::State& state)
             {
               for (size_t i = 0; i < num_images; ++i)
                 {
-                  auto image = std::make_shared<SimulatedImage>(image_width,
-                                                                image_height);
+                  auto image = std::make_shared<SimulatedImage>(image_width, image_height);
                   input_queue.push(image);
 
                   // Simulate realistic producer timing (camera frame rate
@@ -221,10 +209,8 @@ BM_Resampling_HighPerformancePool_4Core(benchmark::State& state)
                   [&output_queue, &processed_images, input_image]()
                     {
                       // Heavy resampling computation (your actual workload)
-                      auto resampled = std::make_shared<ResampledImage>(
-                          ImageResampler::resample_bilinear(
-                              *input_image, input_image->width / 2,
-                              input_image->height / 2));
+                      auto resampled = std::make_shared<ResampledImage>(ImageResampler::resample_bilinear(
+                          *input_image, input_image->width / 2, input_image->height / 2));
 
                       output_queue.push(resampled);
                       processed_images.fetch_add(1, std::memory_order_relaxed);
@@ -241,18 +227,14 @@ BM_Resampling_HighPerformancePool_4Core(benchmark::State& state)
       producer.join();
 
       auto stats = pool.get_statistics();
-      state.counters["work_steal_ratio"]
-          = 100.0 * stats.stolen_tasks
-            / std::max(stats.completed_tasks, size_t(1));
-      state.counters["avg_task_time_ms"]
-          = static_cast<double>(stats.avg_task_time.count()) / 1000.0;
+      state.counters["work_steal_ratio"] = 100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1));
+      state.counters["avg_task_time_ms"] = static_cast<double>(stats.avg_task_time.count()) / 1000.0;
 
       benchmark::DoNotOptimize(processed_images.load());
     }
 
   state.SetItemsProcessed(state.iterations() * num_images);
-  state.SetLabel("size=" + std::to_string(image_width) + "x"
-                 + std::to_string(image_height)
+  state.SetLabel("size=" + std::to_string(image_width) + "x" + std::to_string(image_height)
                  + " images=" + std::to_string(num_images));
 }
 
@@ -279,8 +261,7 @@ BM_Resampling_FastThreadPool_4Core(benchmark::State& state)
             {
               for (size_t i = 0; i < num_images; ++i)
                 {
-                  auto image = std::make_shared<SimulatedImage>(image_width,
-                                                                image_height);
+                  auto image = std::make_shared<SimulatedImage>(image_width, image_height);
                   input_queue.push(image);
                   std::this_thread::sleep_for(std::chrono::microseconds(100));
                 }
@@ -298,10 +279,8 @@ BM_Resampling_FastThreadPool_4Core(benchmark::State& state)
               futures.push_back(pool.submit(
                   [&output_queue, &processed_images, input_image]()
                     {
-                      auto resampled = std::make_shared<ResampledImage>(
-                          ImageResampler::resample_bilinear(
-                              *input_image, input_image->width / 2,
-                              input_image->height / 2));
+                      auto resampled = std::make_shared<ResampledImage>(ImageResampler::resample_bilinear(
+                          *input_image, input_image->width / 2, input_image->height / 2));
 
                       output_queue.push(resampled);
                       processed_images.fetch_add(1, std::memory_order_relaxed);
@@ -317,15 +296,13 @@ BM_Resampling_FastThreadPool_4Core(benchmark::State& state)
       producer.join();
 
       auto stats = pool.get_statistics();
-      state.counters["avg_task_time_ms"]
-          = static_cast<double>(stats.avg_task_time.count()) / 1000.0;
+      state.counters["avg_task_time_ms"] = static_cast<double>(stats.avg_task_time.count()) / 1000.0;
 
       benchmark::DoNotOptimize(processed_images.load());
     }
 
   state.SetItemsProcessed(state.iterations() * num_images);
-  state.SetLabel("size=" + std::to_string(image_width) + "x"
-                 + std::to_string(image_height)
+  state.SetLabel("size=" + std::to_string(image_width) + "x" + std::to_string(image_height)
                  + " images=" + std::to_string(num_images));
 }
 
@@ -341,8 +318,7 @@ BM_Resampling_RealTimeVideo(benchmark::State& state)
   size_t const num_workers = 3;
 
   work_stealing_pool_backend pool(num_workers);
-  pool.configure_threads("video_worker", native_scheduling_policy::other,
-                         native_thread_priority::normal());
+  pool.configure_threads("video_worker", native_scheduling_policy::other, native_thread_priority::normal());
   pool.distribute_across_cpus();
 
   // Standard video resolution
@@ -365,11 +341,9 @@ BM_Resampling_RealTimeVideo(benchmark::State& state)
               auto const start_time = std::chrono::steady_clock::now();
               size_t frame_count = 0;
 
-              while (std::chrono::steady_clock::now() - start_time
-                     < std::chrono::seconds(duration_seconds))
+              while (std::chrono::steady_clock::now() - start_time < std::chrono::seconds(duration_seconds))
                 {
-                  auto image = std::make_shared<SimulatedImage>(image_width,
-                                                                image_height);
+                  auto image = std::make_shared<SimulatedImage>(image_width, image_height);
 
                   // Check if we can keep up with real-time processing
                   if (input_queue.size() > 5)
@@ -384,8 +358,7 @@ BM_Resampling_RealTimeVideo(benchmark::State& state)
                   frame_count++;
 
                   // Wait for next frame
-                  auto next_frame_time
-                      = start_time + frame_count * frame_interval;
+                  auto next_frame_time = start_time + frame_count * frame_interval;
                   std::this_thread::sleep_until(next_frame_time);
                 }
               should_stop.store(true);
@@ -405,9 +378,8 @@ BM_Resampling_RealTimeVideo(benchmark::State& state)
                     {
                       // Heavy resampling computation (downscale to half
                       // resolution)
-                      auto resampled = std::make_shared<ResampledImage>(
-                          ImageResampler::resample_bilinear(*input_image, 640,
-                                                            360));
+                      auto resampled
+                          = std::make_shared<ResampledImage>(ImageResampler::resample_bilinear(*input_image, 640, 360));
 
                       output_queue.push(resampled);
                       frames_processed.fetch_add(1, std::memory_order_relaxed);
@@ -424,17 +396,11 @@ BM_Resampling_RealTimeVideo(benchmark::State& state)
 
       auto stats = pool.get_statistics();
       state.counters["fps_target"] = static_cast<double>(fps);
-      state.counters["fps_achieved"]
-          = static_cast<double>(frames_processed.load()) / duration_seconds;
-      state.counters["frames_dropped"]
-          = static_cast<double>(frames_dropped.load());
+      state.counters["fps_achieved"] = static_cast<double>(frames_processed.load()) / duration_seconds;
+      state.counters["frames_dropped"] = static_cast<double>(frames_dropped.load());
       state.counters["drop_rate_percent"]
-          = 100.0 * frames_dropped.load()
-            / std::max(frames_processed.load() + frames_dropped.load(),
-                       size_t(1));
-      state.counters["work_steal_ratio"]
-          = 100.0 * stats.stolen_tasks
-            / std::max(stats.completed_tasks, size_t(1));
+          = 100.0 * frames_dropped.load() / std::max(frames_processed.load() + frames_dropped.load(), size_t(1));
+      state.counters["work_steal_ratio"] = 100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1));
 
       benchmark::DoNotOptimize(frames_processed.load());
     }
@@ -451,9 +417,8 @@ static void
 BM_Resampling_PoolComparison(benchmark::State& state)
 {
   size_t const num_images = state.range(0);
-  int const pool_type
-      = state.range(1); // 0=thread_pool_backend, 1=polling_pool_backend,
-                        // 2=work_stealing_pool_backend
+  int const pool_type = state.range(1); // 0=thread_pool_backend, 1=polling_pool_backend,
+                                        // 2=work_stealing_pool_backend
 
   size_t const num_workers = 3;
   size_t const image_width = 1024;
@@ -485,9 +450,7 @@ BM_Resampling_PoolComparison(benchmark::State& state)
       else
         {
           hp_pool = std::make_unique<work_stealing_pool_backend>(num_workers);
-          hp_pool->configure_threads("resampling",
-                                     native_scheduling_policy::other,
-                                     native_thread_priority::normal());
+          hp_pool->configure_threads("resampling", native_scheduling_policy::other, native_thread_priority::normal());
           hp_pool->distribute_across_cpus();
         }
 
@@ -497,8 +460,7 @@ BM_Resampling_PoolComparison(benchmark::State& state)
             {
               for (size_t i = 0; i < num_images; ++i)
                 {
-                  auto image = std::make_shared<SimulatedImage>(image_width,
-                                                                image_height);
+                  auto image = std::make_shared<SimulatedImage>(image_width, image_height);
                   input_queue.push(image);
                   std::this_thread::sleep_for(std::chrono::microseconds(200));
                 }
@@ -519,52 +481,37 @@ BM_Resampling_PoolComparison(benchmark::State& state)
               if (pool_type == 0)
                 {
                   futures.push_back(simple_pool->submit(
-                      [&output_queue, &processed_images,
-                       &total_pixels_processed, pixels, input_image]()
+                      [&output_queue, &processed_images, &total_pixels_processed, pixels, input_image]()
                         {
-                          auto resampled = std::make_shared<ResampledImage>(
-                              ImageResampler::resample_bilinear(
-                                  *input_image, input_image->width / 2,
-                                  input_image->height / 2));
+                          auto resampled = std::make_shared<ResampledImage>(ImageResampler::resample_bilinear(
+                              *input_image, input_image->width / 2, input_image->height / 2));
                           output_queue.push(resampled);
-                          processed_images.fetch_add(
-                              1, std::memory_order_relaxed);
-                          total_pixels_processed.fetch_add(
-                              pixels, std::memory_order_relaxed);
+                          processed_images.fetch_add(1, std::memory_order_relaxed);
+                          total_pixels_processed.fetch_add(pixels, std::memory_order_relaxed);
                         }));
                 }
               else if (pool_type == 1)
                 {
                   futures.push_back(fast_pool->submit(
-                      [&output_queue, &processed_images,
-                       &total_pixels_processed, pixels, input_image]()
+                      [&output_queue, &processed_images, &total_pixels_processed, pixels, input_image]()
                         {
-                          auto resampled = std::make_shared<ResampledImage>(
-                              ImageResampler::resample_bilinear(
-                                  *input_image, input_image->width / 2,
-                                  input_image->height / 2));
+                          auto resampled = std::make_shared<ResampledImage>(ImageResampler::resample_bilinear(
+                              *input_image, input_image->width / 2, input_image->height / 2));
                           output_queue.push(resampled);
-                          processed_images.fetch_add(
-                              1, std::memory_order_relaxed);
-                          total_pixels_processed.fetch_add(
-                              pixels, std::memory_order_relaxed);
+                          processed_images.fetch_add(1, std::memory_order_relaxed);
+                          total_pixels_processed.fetch_add(pixels, std::memory_order_relaxed);
                         }));
                 }
               else
                 {
                   futures.push_back(hp_pool->submit(
-                      [&output_queue, &processed_images,
-                       &total_pixels_processed, pixels, input_image]()
+                      [&output_queue, &processed_images, &total_pixels_processed, pixels, input_image]()
                         {
-                          auto resampled = std::make_shared<ResampledImage>(
-                              ImageResampler::resample_bilinear(
-                                  *input_image, input_image->width / 2,
-                                  input_image->height / 2));
+                          auto resampled = std::make_shared<ResampledImage>(ImageResampler::resample_bilinear(
+                              *input_image, input_image->width / 2, input_image->height / 2));
                           output_queue.push(resampled);
-                          processed_images.fetch_add(
-                              1, std::memory_order_relaxed);
-                          total_pixels_processed.fetch_add(
-                              pixels, std::memory_order_relaxed);
+                          processed_images.fetch_add(1, std::memory_order_relaxed);
+                          total_pixels_processed.fetch_add(pixels, std::memory_order_relaxed);
                         }));
                 }
             }
@@ -582,28 +529,20 @@ BM_Resampling_PoolComparison(benchmark::State& state)
       if (pool_type == 2 && hp_pool)
         {
           auto stats = hp_pool->get_statistics();
-          state.counters["work_steal_ratio"]
-              = 100.0 * stats.stolen_tasks
-                / std::max(stats.completed_tasks, size_t(1));
-          state.counters["avg_task_time_ms"]
-              = static_cast<double>(stats.avg_task_time.count()) / 1000.0;
+          state.counters["work_steal_ratio"] = 100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1));
+          state.counters["avg_task_time_ms"] = static_cast<double>(stats.avg_task_time.count()) / 1000.0;
         }
 
-      state.counters["total_pixels"]
-          = static_cast<double>(total_pixels_processed.load());
-      state.counters["avg_pixels_per_image"]
-          = static_cast<double>(total_pixels_processed.load()) / num_images;
+      state.counters["total_pixels"] = static_cast<double>(total_pixels_processed.load());
+      state.counters["avg_pixels_per_image"] = static_cast<double>(total_pixels_processed.load()) / num_images;
 
       benchmark::DoNotOptimize(processed_images.load());
       benchmark::DoNotOptimize(output_queue.size());
     }
 
-  std::vector<std::string> pool_names
-      = { "thread_pool_backend", "polling_pool_backend",
-          "work_stealing_pool_backend" };
+  std::vector<std::string> pool_names = { "thread_pool_backend", "polling_pool_backend", "work_stealing_pool_backend" };
   state.SetItemsProcessed(state.iterations() * num_images);
-  state.SetLabel(pool_names[pool_type]
-                 + " images=" + std::to_string(num_images));
+  state.SetLabel(pool_names[pool_type] + " images=" + std::to_string(num_images));
 }
 
 // =============================================================================
@@ -635,12 +574,10 @@ BM_Resampling_QueueDepthImpact(benchmark::State& state)
               for (size_t i = 0; i < num_images; ++i)
                 {
                   // Wait if queue is too deep (backpressure simulation)
-                  while (input_queue.size() >= max_queue_depth
-                         && !producer_done.load())
+                  while (input_queue.size() >= max_queue_depth && !producer_done.load())
                     {
                       queue_overflows.fetch_add(1, std::memory_order_relaxed);
-                      std::this_thread::sleep_for(
-                          std::chrono::microseconds(50));
+                      std::this_thread::sleep_for(std::chrono::microseconds(50));
                     }
 
                   auto image = std::make_shared<SimulatedImage>(512, 512);
@@ -661,9 +598,8 @@ BM_Resampling_QueueDepthImpact(benchmark::State& state)
               futures.push_back(pool.submit(
                   [&output_queue, &processed_images, input_image]()
                     {
-                      auto resampled = std::make_shared<ResampledImage>(
-                          ImageResampler::resample_bilinear(*input_image, 256,
-                                                            256));
+                      auto resampled
+                          = std::make_shared<ResampledImage>(ImageResampler::resample_bilinear(*input_image, 256, 256));
 
                       output_queue.push(resampled);
                       processed_images.fetch_add(1, std::memory_order_relaxed);
@@ -678,10 +614,8 @@ BM_Resampling_QueueDepthImpact(benchmark::State& state)
 
       producer.join();
 
-      state.counters["queue_overflows"]
-          = static_cast<double>(queue_overflows.load());
-      state.counters["overflow_rate_percent"]
-          = 100.0 * queue_overflows.load() / num_images;
+      state.counters["queue_overflows"] = static_cast<double>(queue_overflows.load());
+      state.counters["overflow_rate_percent"] = 100.0 * queue_overflows.load() / num_images;
 
       benchmark::DoNotOptimize(processed_images.load());
     }

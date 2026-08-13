@@ -21,6 +21,7 @@ are supported only through the explicitly named `advanced` surface.
 | --- | --- |
 | One owning thread | `thread` |
 | Cooperative cancellation under C++20 | `jthread` |
+| Configure the calling thread | `this_thread` |
 | General-purpose task execution | `thread_pool` |
 | Delayed or periodic execution | `scheduled_pool` |
 | Process thread discovery and control | `thread_registry` |
@@ -130,6 +131,36 @@ direct constructor reports them like `std::thread` construction. If initial
 configuration fails, the callable is not started. Configuration operations
 preserve the specific error from the first failed name, scheduling, or
 affinity step.
+
+### Calling-thread configuration
+
+The `this_thread` namespace applies the same portable settings to the calling
+thread, including threads created by another library:
+
+```cpp
+auto allowed = threadschedule::this_thread::get_affinity();
+if (!allowed)
+    {
+        report(allowed.error());
+    }
+else
+    {
+        threadschedule::thread_affinity pinned({ allowed->cpus().front() });
+        if (auto result = threadschedule::this_thread::set_affinity(pinned);
+            !result)
+            report(result.error());
+    }
+
+if (auto result = threadschedule::this_thread::set_priority(
+        threadschedule::priority_level::low);
+    !result)
+    report(result.error());
+```
+
+`this_thread` provides `configure`, `set_priority`, `set_nice`,
+`get_priority`, `set_name`, `get_name`, `set_affinity`, and `get_affinity`.
+All operations return `result<T>` and use the same validation and exact
+affinity readback as `thread`.
 
 Under C++20, `jthread` mirrors `std::jthread` construction and cancellation:
 

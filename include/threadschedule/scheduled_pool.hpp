@@ -45,14 +45,12 @@ class scheduled_task_backend
 {
 public:
   explicit scheduled_task_backend(uint64_t id)
-      : id_(id),
-        cancellation_(std::make_shared<detail::scheduled_cancellation_state>())
+      : id_(id), cancellation_(std::make_shared<detail::scheduled_cancellation_state>())
   {
   }
 
   scheduled_task_backend(scheduled_task_backend const&) = default;
-  auto operator=(scheduled_task_backend const&)
-      -> scheduled_task_backend& = default;
+  auto operator=(scheduled_task_backend const&) -> scheduled_task_backend& = default;
 
   scheduled_task_backend(scheduled_task_backend&& other) noexcept
       : id_(other.id_), cancellation_(std::move(other.cancellation_))
@@ -82,8 +80,7 @@ public:
   [[nodiscard]] auto
   is_cancelled() const noexcept -> bool
   {
-    return !cancellation_
-           || cancellation_->user_cancelled.load(std::memory_order_acquire)
+    return !cancellation_ || cancellation_->user_cancelled.load(std::memory_order_acquire)
            || cancellation_->pool_stopped.load(std::memory_order_acquire);
   }
 
@@ -100,8 +97,7 @@ private:
   template <typename>
   friend class scheduled_pool_backend_base;
   [[nodiscard]] auto
-  get_cancellation() const
-      -> std::shared_ptr<detail::scheduled_cancellation_state>
+  get_cancellation() const -> std::shared_ptr<detail::scheduled_cancellation_state>
   {
     return cancellation_;
   }
@@ -190,10 +186,7 @@ public:
 
   struct periodic_task_state
   {
-    explicit periodic_task_state(periodic_task_type task_value)
-        : task(std::move(task_value))
-    {
-    }
+    explicit periodic_task_state(periodic_task_type task_value) : task(std::move(task_value)) {}
 
     periodic_task_type task;
     std::atomic<bool> running{ false };
@@ -215,15 +208,13 @@ public:
    * @param worker_threads Number of worker threads for executing tasks
    * (default: hardware concurrency)
    */
-  explicit scheduled_pool_backend_base(size_t worker_threads
-                                       = std::thread::hardware_concurrency())
+  explicit scheduled_pool_backend_base(size_t worker_threads = std::thread::hardware_concurrency())
       : pool_(worker_threads), stop_(false), next_task_id_(1)
   {
     start_scheduler();
   }
 
-  template <typename T = PoolType,
-            std::enable_if_t<std::is_same_v<T, thread_pool_backend>, int> = 0>
+  template <typename T = PoolType, std::enable_if_t<std::is_same_v<T, thread_pool_backend>, int> = 0>
   scheduled_pool_backend_base(size_t worker_threads, bool register_workers)
       : pool_(worker_threads, register_workers), stop_(false), next_task_id_(1)
   {
@@ -231,8 +222,7 @@ public:
   }
 
   scheduled_pool_backend_base(scheduled_pool_backend_base const&) = delete;
-  auto operator=(scheduled_pool_backend_base const&)
-      -> scheduled_pool_backend_base& = delete;
+  auto operator=(scheduled_pool_backend_base const&) -> scheduled_pool_backend_base& = delete;
 
   ~scheduled_pool_backend_base()
   {
@@ -249,20 +239,15 @@ public:
   schedule_after(duration delay, task_type task) -> scheduled_task_backend
   {
     auto run_time = std::chrono::steady_clock::now() + delay;
-    return insert_one_shot_task(
-        run_time, detail::make_move_callable<void()>(std::move(task)));
+    return insert_one_shot_task(run_time, detail::make_move_callable<void()>(std::move(task)));
   }
 
-  template <
-      typename F,
-      std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<F>, task_type>,
-                       int> = 0>
+  template <typename F, std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<F>, task_type>, int> = 0>
   auto
   schedule_after(duration delay, F&& task) -> scheduled_task_backend
   {
     auto run_time = std::chrono::steady_clock::now() + delay;
-    return insert_one_shot_task(
-        run_time, detail::make_move_callable<void()>(std::forward<F>(task)));
+    return insert_one_shot_task(run_time, detail::make_move_callable<void()>(std::forward<F>(task)));
   }
 
   /**
@@ -274,19 +259,14 @@ public:
   auto
   schedule_at(time_point time_point, task_type task) -> scheduled_task_backend
   {
-    return insert_one_shot_task(
-        time_point, detail::make_move_callable<void()>(std::move(task)));
+    return insert_one_shot_task(time_point, detail::make_move_callable<void()>(std::move(task)));
   }
 
-  template <
-      typename F,
-      std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<F>, task_type>,
-                       int> = 0>
+  template <typename F, std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<F>, task_type>, int> = 0>
   auto
   schedule_at(time_point time_point, F&& task) -> scheduled_task_backend
   {
-    return insert_one_shot_task(
-        time_point, detail::make_move_callable<void()>(std::forward<F>(task)));
+    return insert_one_shot_task(time_point, detail::make_move_callable<void()>(std::forward<F>(task)));
   }
 
   /**
@@ -299,22 +279,16 @@ public:
    * Use schedule_periodic_after() if you want to delay the first execution.
    */
   auto
-  schedule_periodic(duration interval, task_type task)
-      -> scheduled_task_backend
+  schedule_periodic(duration interval, task_type task) -> scheduled_task_backend
   {
-    return schedule_periodic_after(duration::zero(), interval,
-                                   std::move(task));
+    return schedule_periodic_after(duration::zero(), interval, std::move(task));
   }
 
-  template <
-      typename F,
-      std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<F>, task_type>,
-                       int> = 0>
+  template <typename F, std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<F>, task_type>, int> = 0>
   auto
   schedule_periodic(duration interval, F&& task) -> scheduled_task_backend
   {
-    return schedule_periodic_after(duration::zero(), interval,
-                                   std::forward<F>(task));
+    return schedule_periodic_after(duration::zero(), interval, std::forward<F>(task));
   }
 
   /**
@@ -325,33 +299,22 @@ public:
    * @return Handle to cancel the periodic task
    */
   auto
-  schedule_periodic_after(duration initial_delay, duration interval,
-                          task_type task) -> scheduled_task_backend
+  schedule_periodic_after(duration initial_delay, duration interval, task_type task) -> scheduled_task_backend
   {
     if (interval <= duration::zero())
-      throw std::invalid_argument(
-          "scheduled_pool periodic interval must be positive");
+      throw std::invalid_argument("scheduled_pool periodic interval must be positive");
     auto const run_time = std::chrono::steady_clock::now() + initial_delay;
-    return insert_periodic_task(
-        run_time, interval,
-        detail::make_move_callable<void()>(std::move(task)));
+    return insert_periodic_task(run_time, interval, detail::make_move_callable<void()>(std::move(task)));
   }
 
-  template <
-      typename F,
-      std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<F>, task_type>,
-                       int> = 0>
+  template <typename F, std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<F>, task_type>, int> = 0>
   auto
-  schedule_periodic_after(duration initial_delay, duration interval, F&& task)
-      -> scheduled_task_backend
+  schedule_periodic_after(duration initial_delay, duration interval, F&& task) -> scheduled_task_backend
   {
     if (interval <= duration::zero())
-      throw std::invalid_argument(
-          "scheduled_pool periodic interval must be positive");
+      throw std::invalid_argument("scheduled_pool periodic interval must be positive");
     auto const run_time = std::chrono::steady_clock::now() + initial_delay;
-    return insert_periodic_task(
-        run_time, interval,
-        detail::make_move_callable<void()>(std::forward<F>(task)));
+    return insert_periodic_task(run_time, interval, detail::make_move_callable<void()>(std::forward<F>(task)));
   }
 
   /**
@@ -391,9 +354,7 @@ public:
   void
   shutdown(shutdown_policy_backend policy = shutdown_policy_backend::drain)
   {
-    if (pool_.is_current_worker()
-        || (scheduler_thread_.joinable()
-            && thread_info::get_thread_id() == scheduler_tid_))
+    if (pool_.is_current_worker() || (scheduler_thread_.joinable() && thread_info::get_thread_id() == scheduler_tid_))
       detail::throw_worker_deadlock();
     std::lock_guard<std::recursive_mutex> shutdown_lock(shutdown_mutex_);
     std::multimap<time_point, scheduled_task_info> discarded;
@@ -403,8 +364,7 @@ public:
         return;
       stop_ = true;
       for (auto const& task : scheduled_tasks_)
-        task.second.cancellation->pool_stopped.store(
-            true, std::memory_order_release);
+        task.second.cancellation->pool_stopped.store(true, std::memory_order_release);
       scheduled_tasks_.swap(discarded);
     }
 
@@ -427,18 +387,14 @@ public:
    * Returns expected<void, std::error_code> from the underlying pool.
    */
   auto
-  configure_threads(std::string const& name_prefix,
-                    native_scheduling_policy policy
-                    = native_scheduling_policy::other,
-                    native_thread_priority priority
-                    = native_thread_priority::normal())
+  configure_threads(std::string const& name_prefix, native_scheduling_policy policy = native_scheduling_policy::other,
+                    native_thread_priority priority = native_thread_priority::normal())
   {
     return pool_.configure_threads(name_prefix, policy, priority);
   }
 
   auto
-  configure_threads(native_thread_config const& config)
-      -> expected<void, std::error_code>
+  configure_threads(native_thread_config const& config) -> expected<void, std::error_code>
   {
     return pool_.configure_threads(config);
   }
@@ -452,11 +408,8 @@ public:
   }
 
   auto
-  configure_scheduler_thread(std::string const& name,
-                             native_scheduling_policy policy
-                             = native_scheduling_policy::other,
-                             native_thread_priority priority
-                             = native_thread_priority::normal())
+  configure_scheduler_thread(std::string const& name, native_scheduling_policy policy = native_scheduling_policy::other,
+                             native_thread_priority priority = native_thread_priority::normal())
       -> expected<void, std::error_code>
   {
     auto info = scheduler_thread_info();
@@ -466,8 +419,7 @@ public:
   }
 
   auto
-  configure_scheduler_thread(native_thread_config const& config)
-      -> expected<void, std::error_code>
+  configure_scheduler_thread(native_thread_config const& config) -> expected<void, std::error_code>
   {
     auto info = scheduler_thread_info();
     if (!info.has_value())
@@ -506,8 +458,7 @@ private:
   }
 
   auto
-  insert_one_shot_task(time_point run_time, one_shot_task_type task)
-      -> scheduled_task_backend
+  insert_one_shot_task(time_point run_time, one_shot_task_type task) -> scheduled_task_backend
   {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -535,8 +486,7 @@ private:
   }
 
   auto
-  insert_periodic_task(time_point run_time, duration interval,
-                       periodic_task_type task) -> scheduled_task_backend
+  insert_periodic_task(time_point run_time, duration interval, periodic_task_type task) -> scheduled_task_backend
   {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -553,8 +503,7 @@ private:
     info.id = task_id;
     info.next_run = run_time;
     info.interval = interval;
-    info.periodic_task
-        = std::make_shared<periodic_task_state>(std::move(task));
+    info.periodic_task = std::make_shared<periodic_task_state>(std::move(task));
     info.cancellation = handle.get_cancellation();
     info.periodic = true;
 
@@ -577,8 +526,7 @@ private:
         // Wait until we have tasks or need to stop
         if (scheduled_tasks_.empty())
           {
-            condition_.wait(lock, [this]
-                              { return stop_ || !scheduled_tasks_.empty(); });
+            condition_.wait(lock, [this] { return stop_ || !scheduled_tasks_.empty(); });
 
             if (stop_)
               return;
@@ -627,8 +575,7 @@ private:
             if (info.periodic)
               {
                 auto periodic_task = info.periodic_task;
-                bool const already_running = periodic_task->running.exchange(
-                    true, std::memory_order_acq_rel);
+                bool const already_running = periodic_task->running.exchange(true, std::memory_order_acq_rel);
                 if (!already_running)
                   {
                     try
@@ -638,24 +585,20 @@ private:
                               {
                                 try
                                   {
-                                    if (!cancellation->user_cancelled.load(
-                                            std::memory_order_acquire))
+                                    if (!cancellation->user_cancelled.load(std::memory_order_acquire))
                                       periodic_task->task();
                                   }
                                 catch (...)
                                   {
-                                    periodic_task->running.store(
-                                        false, std::memory_order_release);
+                                    periodic_task->running.store(false, std::memory_order_release);
                                     throw;
                                   }
-                                periodic_task->running.store(
-                                    false, std::memory_order_release);
+                                periodic_task->running.store(false, std::memory_order_release);
                               });
                       }
                     catch (...)
                       {
-                        periodic_task->running.store(
-                            false, std::memory_order_release);
+                        periodic_task->running.store(false, std::memory_order_release);
                         throw;
                       }
                   }
@@ -664,14 +607,11 @@ private:
                 auto const current = std::chrono::steady_clock::now();
                 if (info.next_run <= current)
                   {
-                    auto const missed
-                        = (current - info.next_run) / info.interval + 1;
+                    auto const missed = (current - info.next_run) / info.interval + 1;
                     info.next_run += info.interval * missed;
                   }
                 std::lock_guard<std::mutex> schedule_lock(mutex_);
-                if (!stop_
-                    && !cancellation->user_cancelled.load(
-                        std::memory_order_acquire))
+                if (!stop_ && !cancellation->user_cancelled.load(std::memory_order_acquire))
                   scheduled_tasks_.insert({ info.next_run, std::move(info) });
               }
             else
@@ -680,8 +620,7 @@ private:
                 pool_.post(
                     [task = std::move(one_shot_task), cancellation]() mutable
                       {
-                        if (!cancellation->user_cancelled.load(
-                                std::memory_order_acquire))
+                        if (!cancellation->user_cancelled.load(std::memory_order_acquire))
                           {
                             task();
                           }
@@ -690,8 +629,7 @@ private:
           }
         catch (...)
           {
-            info.cancellation->pool_stopped.store(true,
-                                                  std::memory_order_release);
+            info.cancellation->pool_stopped.store(true, std::memory_order_release);
             // Thread pool might be shutting down
           }
       }
@@ -701,20 +639,16 @@ private:
 /** @brief @ref scheduled_pool_backend_base using the default @c
  * thread_pool_backend backend.
  */
-using scheduled_pool_backend
-    = scheduled_pool_backend_base<thread_pool_backend>;
+using scheduled_pool_backend = scheduled_pool_backend_base<thread_pool_backend>;
 /** @brief @ref scheduled_pool_backend_base using @ref
  * work_stealing_pool_backend as backend.
  */
-using scheduled_work_stealing_pool_backend
-    = scheduled_pool_backend_base<work_stealing_pool_backend>;
+using scheduled_work_stealing_pool_backend = scheduled_pool_backend_base<work_stealing_pool_backend>;
 /** @brief @ref scheduled_pool_backend_base using @c polling_pool_backend as
  * backend. */
-using scheduled_polling_pool_backend
-    = scheduled_pool_backend_base<polling_pool_backend>;
+using scheduled_polling_pool_backend = scheduled_pool_backend_base<polling_pool_backend>;
 /** @brief @ref scheduled_pool_backend_base using @c lightweight_pool_backend
  * as backend (minimal overhead). */
-using scheduled_lightweight_pool_backend
-    = scheduled_pool_backend_base<lightweight_pool_backend>;
+using scheduled_lightweight_pool_backend = scheduled_pool_backend_base<lightweight_pool_backend>;
 
 } // namespace threadschedule

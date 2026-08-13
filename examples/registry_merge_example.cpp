@@ -31,8 +31,7 @@ main()
   if (!first_entries || !second_entries)
     return 3;
 
-  std::vector<threadschedule::registered_thread> merged
-      = std::move(*first_entries);
+  std::vector<threadschedule::registered_thread> merged = std::move(*first_entries);
   merged.insert(merged.end(), second_entries->begin(), second_entries->end());
 
   auto first_joined = first_worker.join();

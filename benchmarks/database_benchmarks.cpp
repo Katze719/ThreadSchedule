@@ -81,8 +81,7 @@ public:
   }
 
   bool
-  update_record(std::string const& id,
-                std::unordered_map<std::string, std::string> const& updates)
+  update_record(std::string const& id, std::unordered_map<std::string, std::string> const& updates)
   {
     std::unique_lock lock(mutex_);
 
@@ -122,8 +121,7 @@ public:
 
   // Complex queries
   QueryResult
-  query_by_user(std::string const& user_id, size_t limit = 100,
-                size_t offset = 0)
+  query_by_user(std::string const& user_id, size_t limit = 100, size_t offset = 0)
   {
     QueryResult result;
     result.query_time_ms = simulate_query_latency();
@@ -174,8 +172,7 @@ public:
   }
 
   QueryResult
-  complex_aggregation_query(std::string const& user_id,
-                            [[maybe_unused]] std::string const& date_range)
+  complex_aggregation_query(std::string const& user_id, [[maybe_unused]] std::string const& date_range)
   {
     QueryResult result;
     result.query_time_ms = simulate_query_latency();
@@ -231,8 +228,7 @@ public:
 
   // Transaction simulation
   bool
-  transfer_ownership(std::string const& record_id,
-                     std::string const& new_user_id)
+  transfer_ownership(std::string const& record_id, std::string const& new_user_id)
   {
     std::unique_lock lock(mutex_);
 
@@ -273,8 +269,7 @@ private:
   }
 
   void
-  simulate_transaction_validation(std::string const& old_user,
-                                  std::string const& new_user)
+  simulate_transaction_validation(std::string const& old_user, std::string const& new_user)
   {
     // Simulate expensive validation logic
     volatile size_t validation_hash = 0;
@@ -295,13 +290,11 @@ public:
   {
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_int_distribution<int> op_dist(
-        0, 3); // 0=create, 1=read, 2=update, 3=delete
+    std::uniform_int_distribution<int> op_dist(0, 3); // 0=create, 1=read, 2=update, 3=delete
     std::uniform_int_distribution<int> category_dist(0, 4);
     std::uniform_int_distribution<int> user_dist(1, 100);
 
-    std::vector<std::string> categories
-        = { "documents", "images", "videos", "audio", "archives" };
+    std::vector<std::string> categories = { "documents", "images", "videos", "audio", "archives" };
 
     for (size_t i = 0; i < num_operations; ++i)
       {
@@ -348,8 +341,7 @@ public:
           case 2: // UPDATE
             {
               // Simulate finding record to update
-              std::string update_id
-                  = "record_" + std::to_string((i % 1000) + 1);
+              std::string update_id = "record_" + std::to_string((i % 1000) + 1);
               std::unordered_map<std::string, std::string> updates
                   = { { "title", "Updated_File_" + std::to_string(i) },
                       { "content", "Updated content " + std::to_string(i) } };
@@ -358,8 +350,7 @@ public:
             }
           case 3: // DELETE
             {
-              std::string delete_id
-                  = "record_" + std::to_string((i % 1000) + 1);
+              std::string delete_id = "record_" + std::to_string((i % 1000) + 1);
               db.delete_record(delete_id);
               break;
             }
@@ -376,8 +367,7 @@ public:
     std::uniform_int_distribution<int> user_dist(1, 100);
     std::uniform_int_distribution<int> category_dist(0, 4);
 
-    std::vector<std::string> categories
-        = { "documents", "images", "videos", "audio", "archives" };
+    std::vector<std::string> categories = { "documents", "images", "videos", "audio", "archives" };
 
     for (size_t i = 0; i < num_queries; ++i)
       {
@@ -409,8 +399,7 @@ public:
 
   // Simulate concurrent transactions
   static void
-  perform_concurrent_transactions(SimulatedDatabase& db,
-                                  size_t num_transactions)
+  perform_concurrent_transactions(SimulatedDatabase& db, size_t num_transactions)
   {
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -476,22 +465,16 @@ BM_Database_CRUD_Operations(benchmark::State& state)
       for (size_t t = 0; t < num_threads; ++t)
         {
           pool.submit(
-              [&db, operations_per_thread, num_threads, &completed_operations,
-               &failed_operations]()
+              [&db, operations_per_thread, num_threads, &completed_operations, &failed_operations]()
                 {
                   try
                     {
-                      DatabaseWorkloads::perform_crud_operations(
-                          db, operations_per_thread / num_threads);
-                      completed_operations.fetch_add(
-                          operations_per_thread / num_threads,
-                          std::memory_order_relaxed);
+                      DatabaseWorkloads::perform_crud_operations(db, operations_per_thread / num_threads);
+                      completed_operations.fetch_add(operations_per_thread / num_threads, std::memory_order_relaxed);
                     }
                   catch (std::exception const&)
                     {
-                      failed_operations.fetch_add(operations_per_thread
-                                                      / num_threads,
-                                                  std::memory_order_relaxed);
+                      failed_operations.fetch_add(operations_per_thread / num_threads, std::memory_order_relaxed);
                     }
                 });
         }
@@ -499,27 +482,21 @@ BM_Database_CRUD_Operations(benchmark::State& state)
       // Wait for completion
       auto stats = pool.get_statistics();
 
-      state.counters["completed_operations"]
-          = benchmark::Counter(completed_operations.load());
-      state.counters["failed_operations"]
-          = benchmark::Counter(failed_operations.load());
-      state.counters["success_rate_percent"] = benchmark::Counter(
-          100.0 * completed_operations.load()
-          / std::max(completed_operations.load() + failed_operations.load(),
-                     size_t(1)));
+      state.counters["completed_operations"] = benchmark::Counter(completed_operations.load());
+      state.counters["failed_operations"] = benchmark::Counter(failed_operations.load());
+      state.counters["success_rate_percent"]
+          = benchmark::Counter(100.0 * completed_operations.load()
+                               / std::max(completed_operations.load() + failed_operations.load(), size_t(1)));
       state.counters["work_steal_ratio"]
-          = benchmark::Counter(100.0 * stats.stolen_tasks
-                               / std::max(stats.completed_tasks, size_t(1)));
-      state.counters["avg_task_time_ms"] = benchmark::Counter(
-          static_cast<double>(stats.avg_task_time.count()) / 1000.0);
+          = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
+      state.counters["avg_task_time_ms"]
+          = benchmark::Counter(static_cast<double>(stats.avg_task_time.count()) / 1000.0);
 
       benchmark::DoNotOptimize(completed_operations.load());
     }
 
-  state.SetItemsProcessed(state.iterations() * num_threads
-                          * operations_per_thread);
-  state.SetLabel("threads=" + std::to_string(num_threads)
-                 + " ops_per_thread=" + std::to_string(operations_per_thread));
+  state.SetItemsProcessed(state.iterations() * num_threads * operations_per_thread);
+  state.SetLabel("threads=" + std::to_string(num_threads) + " ops_per_thread=" + std::to_string(operations_per_thread));
 }
 
 static void
@@ -547,9 +524,7 @@ BM_Database_AnalyticalQueries(benchmark::State& state)
       record.title = "Analytics_File_" + std::to_string(i);
       record.content = "Analytics content " + std::to_string(i);
       record.metadata["size"] = std::to_string((i % 10000) + 1);
-      record.metadata["priority"] = (i % 3 == 0)   ? "high"
-                                    : (i % 3 == 1) ? "medium"
-                                                   : "low";
+      record.metadata["priority"] = (i % 3 == 0) ? "high" : (i % 3 == 1) ? "medium" : "low";
       record.is_active = (i % 10 != 0); // 90% active
       db.create_record(record);
     }
@@ -563,25 +538,19 @@ BM_Database_AnalyticalQueries(benchmark::State& state)
       for (size_t t = 0; t < num_threads; ++t)
         {
           pool.submit(
-              [&db, queries_per_thread, num_threads, &completed_queries,
-               &total_query_time]()
+              [&db, queries_per_thread, num_threads, &completed_queries, &total_query_time]()
                 {
                   auto start_time = std::chrono::steady_clock::now();
 
                   try
                     {
-                      DatabaseWorkloads::perform_analytical_queries(
-                          db, queries_per_thread / num_threads);
+                      DatabaseWorkloads::perform_analytical_queries(db, queries_per_thread / num_threads);
 
                       auto end_time = std::chrono::steady_clock::now();
-                      auto duration = std::chrono::duration_cast<
-                          std::chrono::microseconds>(end_time - start_time);
+                      auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
 
-                      completed_queries.fetch_add(queries_per_thread
-                                                      / num_threads,
-                                                  std::memory_order_relaxed);
-                      total_query_time.fetch_add(duration.count(),
-                                                 std::memory_order_relaxed);
+                      completed_queries.fetch_add(queries_per_thread / num_threads, std::memory_order_relaxed);
+                      total_query_time.fetch_add(duration.count(), std::memory_order_relaxed);
                     }
                   catch (std::exception const&)
                     {
@@ -593,25 +562,20 @@ BM_Database_AnalyticalQueries(benchmark::State& state)
       // Wait for completion
       auto stats = pool.get_statistics();
 
-      state.counters["completed_queries"]
-          = benchmark::Counter(completed_queries.load());
-      state.counters["avg_query_time_ms"] = benchmark::Counter(
-          total_query_time.load()
-          / std::max(completed_queries.load(), size_t(1)) / 1000.0);
+      state.counters["completed_queries"] = benchmark::Counter(completed_queries.load());
+      state.counters["avg_query_time_ms"]
+          = benchmark::Counter(total_query_time.load() / std::max(completed_queries.load(), size_t(1)) / 1000.0);
       state.counters["work_steal_ratio"]
-          = benchmark::Counter(100.0 * stats.stolen_tasks
-                               / std::max(stats.completed_tasks, size_t(1)));
-      state.counters["queries_per_second"] = benchmark::Counter(
-          completed_queries.load() / (total_query_time.load() / 1e6));
+          = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
+      state.counters["queries_per_second"]
+          = benchmark::Counter(completed_queries.load() / (total_query_time.load() / 1e6));
 
       benchmark::DoNotOptimize(completed_queries.load());
     }
 
-  state.SetItemsProcessed(state.iterations() * num_threads
-                          * queries_per_thread);
+  state.SetItemsProcessed(state.iterations() * num_threads * queries_per_thread);
   state.SetLabel("threads=" + std::to_string(num_threads)
-                 + " queries_per_thread="
-                 + std::to_string(queries_per_thread));
+                 + " queries_per_thread=" + std::to_string(queries_per_thread));
 }
 
 static void
@@ -648,25 +612,20 @@ BM_Database_ConcurrentTransactions(benchmark::State& state)
       for (size_t t = 0; t < num_threads; ++t)
         {
           pool.submit(
-              [&db, transactions_per_thread, num_threads,
-               &successful_transactions, &failed_transactions,
+              [&db, transactions_per_thread, num_threads, &successful_transactions, &failed_transactions,
                &rollback_count]()
                 {
                   try
                     {
-                      DatabaseWorkloads::perform_concurrent_transactions(
-                          db, transactions_per_thread / num_threads);
-                      successful_transactions.fetch_add(
-                          transactions_per_thread / num_threads,
-                          std::memory_order_relaxed);
+                      DatabaseWorkloads::perform_concurrent_transactions(db, transactions_per_thread / num_threads);
+                      successful_transactions.fetch_add(transactions_per_thread / num_threads,
+                                                        std::memory_order_relaxed);
                     }
                   catch (std::exception const&)
                     {
                       // Transaction failed, simulate rollback
                       rollback_count.fetch_add(1, std::memory_order_relaxed);
-                      failed_transactions.fetch_add(transactions_per_thread
-                                                        / num_threads,
-                                                    std::memory_order_relaxed);
+                      failed_transactions.fetch_add(transactions_per_thread / num_threads, std::memory_order_relaxed);
                     }
                 });
         }
@@ -674,30 +633,23 @@ BM_Database_ConcurrentTransactions(benchmark::State& state)
       // Wait for completion
       auto stats = pool.get_statistics();
 
-      state.counters["successful_transactions"]
-          = benchmark::Counter(successful_transactions.load());
-      state.counters["failed_transactions"]
-          = benchmark::Counter(failed_transactions.load());
-      state.counters["rollback_count"]
-          = benchmark::Counter(rollback_count.load());
+      state.counters["successful_transactions"] = benchmark::Counter(successful_transactions.load());
+      state.counters["failed_transactions"] = benchmark::Counter(failed_transactions.load());
+      state.counters["rollback_count"] = benchmark::Counter(rollback_count.load());
       state.counters["success_rate_percent"]
           = benchmark::Counter(100.0 * successful_transactions.load()
-                               / std::max(successful_transactions.load()
-                                              + failed_transactions.load(),
-                                          size_t(1)));
+                               / std::max(successful_transactions.load() + failed_transactions.load(), size_t(1)));
       state.counters["work_steal_ratio"]
-          = benchmark::Counter(100.0 * stats.stolen_tasks
-                               / std::max(stats.completed_tasks, size_t(1)));
-      state.counters["avg_task_time_ms"] = benchmark::Counter(
-          static_cast<double>(stats.avg_task_time.count()) / 1000.0);
+          = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
+      state.counters["avg_task_time_ms"]
+          = benchmark::Counter(static_cast<double>(stats.avg_task_time.count()) / 1000.0);
 
       benchmark::DoNotOptimize(successful_transactions.load());
     }
 
-  state.SetItemsProcessed(state.iterations() * num_threads
-                          * transactions_per_thread);
-  state.SetLabel("threads=" + std::to_string(num_threads) + " txns_per_thread="
-                 + std::to_string(transactions_per_thread));
+  state.SetItemsProcessed(state.iterations() * num_threads * transactions_per_thread);
+  state.SetLabel("threads=" + std::to_string(num_threads)
+                 + " txns_per_thread=" + std::to_string(transactions_per_thread));
 }
 
 static void
@@ -749,14 +701,11 @@ BM_Database_MixedWorkload(benchmark::State& state)
                     {
                       DatabaseWorkloads::perform_crud_operations(db, 1);
                       auto end_time = std::chrono::steady_clock::now();
-                      double latency = std::chrono::duration_cast<
-                                           std::chrono::microseconds>(
-                                           end_time - start_time)
-                                           .count()
-                                       / 1000.0;
+                      double latency
+                          = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()
+                            / 1000.0;
                       crud_operations.fetch_add(1, std::memory_order_relaxed);
-                      total_latency_ms.fetch_add(latency,
-                                                 std::memory_order_relaxed);
+                      total_latency_ms.fetch_add(latency, std::memory_order_relaxed);
                     });
             }
           else if (workload_type == 1) // Analytics
@@ -766,15 +715,11 @@ BM_Database_MixedWorkload(benchmark::State& state)
                     {
                       DatabaseWorkloads::perform_analytical_queries(db, 1);
                       auto end_time = std::chrono::steady_clock::now();
-                      double latency = std::chrono::duration_cast<
-                                           std::chrono::microseconds>(
-                                           end_time - start_time)
-                                           .count()
-                                       / 1000.0;
-                      analytical_queries.fetch_add(1,
-                                                   std::memory_order_relaxed);
-                      total_latency_ms.fetch_add(latency,
-                                                 std::memory_order_relaxed);
+                      double latency
+                          = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()
+                            / 1000.0;
+                      analytical_queries.fetch_add(1, std::memory_order_relaxed);
+                      total_latency_ms.fetch_add(latency, std::memory_order_relaxed);
                     });
             }
           else // Transactions
@@ -782,17 +727,13 @@ BM_Database_MixedWorkload(benchmark::State& state)
               pool.submit(
                   [&db, &transactions, &total_latency_ms, start_time]()
                     {
-                      DatabaseWorkloads::perform_concurrent_transactions(db,
-                                                                         1);
+                      DatabaseWorkloads::perform_concurrent_transactions(db, 1);
                       auto end_time = std::chrono::steady_clock::now();
-                      double latency = std::chrono::duration_cast<
-                                           std::chrono::microseconds>(
-                                           end_time - start_time)
-                                           .count()
-                                       / 1000.0;
+                      double latency
+                          = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()
+                            / 1000.0;
                       transactions.fetch_add(1, std::memory_order_relaxed);
-                      total_latency_ms.fetch_add(latency,
-                                                 std::memory_order_relaxed);
+                      total_latency_ms.fetch_add(latency, std::memory_order_relaxed);
                     });
             }
         }
@@ -800,25 +741,21 @@ BM_Database_MixedWorkload(benchmark::State& state)
       // Wait for completion
       auto stats = pool.get_statistics();
 
-      state.counters["crud_operations"]
-          = benchmark::Counter(crud_operations.load());
-      state.counters["analytical_queries"]
-          = benchmark::Counter(analytical_queries.load());
+      state.counters["crud_operations"] = benchmark::Counter(crud_operations.load());
+      state.counters["analytical_queries"] = benchmark::Counter(analytical_queries.load());
       state.counters["transactions"] = benchmark::Counter(transactions.load());
-      state.counters["avg_latency_ms"] = benchmark::Counter(
-          total_latency_ms.load() / std::max(total_operations, size_t(1)));
+      state.counters["avg_latency_ms"]
+          = benchmark::Counter(total_latency_ms.load() / std::max(total_operations, size_t(1)));
       state.counters["work_steal_ratio"]
-          = benchmark::Counter(100.0 * stats.stolen_tasks
-                               / std::max(stats.completed_tasks, size_t(1)));
-      state.counters["operations_per_second"] = benchmark::Counter(
-          total_operations / (stats.avg_task_time.count() / 1e9));
+          = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
+      state.counters["operations_per_second"]
+          = benchmark::Counter(total_operations / (stats.avg_task_time.count() / 1e9));
 
       benchmark::DoNotOptimize(crud_operations.load());
     }
 
   state.SetItemsProcessed(state.iterations() * total_operations);
-  state.SetLabel("threads=" + std::to_string(num_threads)
-                 + " total_ops=" + std::to_string(total_operations));
+  state.SetLabel("threads=" + std::to_string(num_threads) + " total_ops=" + std::to_string(total_operations));
 }
 
 // =============================================================================

@@ -18,8 +18,7 @@ TEST(ThreadRegistryTest, RegistersAndApplies)
                                       [&]
                                         {
                                           ran = true;
-                                          std::this_thread::sleep_for(
-                                              std::chrono::milliseconds(100));
+                                          std::this_thread::sleep_for(std::chrono::milliseconds(100));
                                         });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -33,9 +32,7 @@ TEST(ThreadRegistryTest, RegistersAndApplies)
           return e.component == "test";
         },
       [&](registered_thread_info_backend const& e)
-        {
-          (void)registry().set_priority(e.tid, native_thread_priority{ 0 });
-        });
+        { (void)registry().set_priority(e.tid, native_thread_priority{ 0 }); });
 
   EXPECT_TRUE(found);
 
@@ -46,9 +43,8 @@ TEST(ThreadRegistryTest, RegistersAndApplies)
 #ifndef _WIN32
 TEST(ThreadRegistryTest, LinuxAffinitySet)
 {
-  detail::registered_thread_backend t(
-      "treg2", "aff",
-      [] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
+  detail::registered_thread_backend t("treg2", "aff",
+                                      [] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
@@ -57,8 +53,7 @@ TEST(ThreadRegistryTest, LinuxAffinitySet)
   aff.add_cpu(0);
 
   bool attempted = false;
-  registry().apply([](registered_thread_info_backend const& e)
-                     { return e.component == "aff"; },
+  registry().apply([](registered_thread_info_backend const& e) { return e.component == "aff"; },
                    [&](registered_thread_info_backend const& e)
                      {
                        attempted = true;
@@ -79,8 +74,7 @@ TEST(ThreadRegistryTest, DuplicateRegistrationIsNoOp)
   auto_register_current_thread guard1("first-name", "first-comp");
 
   // Attempt duplicate registration for the same thread id
-  registry().register_current_thread(std::string("second-name"),
-                                     std::string("second-comp"));
+  registry().register_current_thread(std::string("second-name"), std::string("second-comp"));
 
   // Snapshot and checks
   auto snapshot = registry().query().entries();
@@ -89,8 +83,7 @@ TEST(ThreadRegistryTest, DuplicateRegistrationIsNoOp)
   // Find this current thread's entry by std::thread::id
   auto selfStdId = std::this_thread::get_id();
   auto it = std::find_if(snapshot.begin(), snapshot.end(),
-                         [&](registered_thread_info_backend const& e)
-                           { return e.std_id == selfStdId; });
+                         [&](registered_thread_info_backend const& e) { return e.std_id == selfStdId; });
   ASSERT_TRUE(it != snapshot.end());
 
   // Expect first registration values to persist
@@ -152,12 +145,7 @@ TEST(ThreadRegistryTest, StandaloneControlCannotAffectCallerAfterThreadExit)
   ASSERT_FALSE(main_affinity->get_cpus().empty());
 
   std::promise<std::shared_ptr<thread_control_block>> published;
-  std::thread worker(
-      [&published]
-        {
-          published.set_value(
-              thread_control_block::create_for_current_thread());
-        });
+  std::thread worker([&published] { published.set_value(thread_control_block::create_for_current_thread()); });
   auto control = published.get_future().get();
   worker.join();
 
@@ -209,8 +197,7 @@ TEST(ThreadRegistryTest, AffinityRejectsAndRollsBackPartialApplication)
       GTEST_SKIP() << "No unavailable CPU within cpu_set_t";
     }
 
-  native_thread_affinity requested(
-      { original->get_cpus().front(), unavailable });
+  native_thread_affinity requested({ original->get_cpus().front(), unavailable });
   auto result = control->set_affinity(requested);
   auto effective = thread_info(control->tid()).get_affinity();
   release.set_value();
@@ -252,11 +239,9 @@ TEST(ThreadRegistryTest, GuardDoesNotRemoveReplacementRegistration)
 TEST(ThreadRegistryTest, ThrowingCallbacksDoNotEscapeRegistryOperations)
 {
   thread_registry_backend local;
-  local.set_on_register([](registered_thread_info_backend const&)
-                          { throw std::runtime_error("register callback"); });
-  local.set_on_unregister(
-      [](registered_thread_info_backend const&)
-        { throw std::runtime_error("unregister callback"); });
+  local.set_on_register([](registered_thread_info_backend const&) { throw std::runtime_error("register callback"); });
+  local.set_on_unregister([](registered_thread_info_backend const&)
+                            { throw std::runtime_error("unregister callback"); });
 
   EXPECT_NO_THROW({
     auto_register_current_thread guard(local, "callbacks", "test");
@@ -287,8 +272,7 @@ TEST(ThreadRegistryTest, CallbackOnRegisterFires)
   {
     auto_register_current_thread guard("cb-name", "cb-comp");
     EXPECT_GE(calls.load(std::memory_order_relaxed), 1);
-    EXPECT_EQ(lastTid.load(std::memory_order_relaxed),
-              thread_info::get_thread_id());
+    EXPECT_EQ(lastTid.load(std::memory_order_relaxed), thread_info::get_thread_id());
     EXPECT_EQ(lastName, std::string("cb-name"));
     EXPECT_EQ(lastComp, std::string("cb-comp"));
   }
@@ -307,8 +291,7 @@ TEST(ThreadRegistryTest, RegisteredThreadBackendMoveAssign)
                                         [&]
                                           {
                                             ran = true;
-                                            std::this_thread::sleep_for(
-                                                std::chrono::milliseconds(50));
+                                            std::this_thread::sleep_for(std::chrono::milliseconds(50));
                                           });
 
   EXPECT_TRUE(t.joinable());
@@ -321,8 +304,7 @@ TEST(ThreadRegistryTest, RegisteredThreadBackendAcceptsPackagedTask)
   std::packaged_task<int()> task([] { return 42; });
   auto result = task.get_future();
 
-  detail::registered_thread_backend t("packaged", "move-only",
-                                      std::move(task));
+  detail::registered_thread_backend t("packaged", "move-only", std::move(task));
 
   t.join();
   EXPECT_EQ(result.get(), 42);

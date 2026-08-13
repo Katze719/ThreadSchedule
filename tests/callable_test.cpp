@@ -38,8 +38,7 @@ TEST(CallableTest, FunctionRefWrapsLambdaReference)
 
 TEST(CallableTest, PublicCallbackAliasesAcceptLambdas)
 {
-  task_start_callback on_start
-      = [](std::chrono::steady_clock::time_point, std::thread::id) {};
+  task_start_callback on_start = [](std::chrono::steady_clock::time_point, std::thread::id) {};
   error_callback_backend on_error = [](task_error_backend const&) {};
 
   EXPECT_TRUE(static_cast<bool>(on_start));
@@ -49,8 +48,7 @@ TEST(CallableTest, PublicCallbackAliasesAcceptLambdas)
 TEST(CallableTest, MoveCallableAcceptsMoveOnlyTargetsInCxx17)
 {
   auto payload = std::make_unique<int>(42);
-  detail::move_callable<int()> callable([payload = std::move(payload)]
-                                          { return *payload; });
+  detail::move_callable<int()> callable([payload = std::move(payload)] { return *payload; });
 
   static_assert(!std::is_copy_constructible_v<decltype(callable)>);
   EXPECT_EQ(callable(), 42);

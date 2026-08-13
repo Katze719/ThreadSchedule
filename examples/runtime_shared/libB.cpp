@@ -8,7 +8,7 @@ extern "C"
     __declspec(dllexport)
 #endif
     void
-    libB_start()
+    lib_b_start()
 {
   threadschedule::thread worker(
       []

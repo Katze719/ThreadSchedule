@@ -30,8 +30,7 @@ TEST(FuturesTest, WhenAllRethrowsFirstException)
   thread_pool_backend pool(2);
   std::vector<std::future<int>> futures;
   futures.push_back(pool.submit([] { return 1; }));
-  futures.push_back(
-      pool.submit([]() -> int { throw std::runtime_error("boom"); }));
+  futures.push_back(pool.submit([]() -> int { throw std::runtime_error("boom"); }));
   futures.push_back(pool.submit([] { return 3; }));
 
   EXPECT_THROW(when_all(futures), std::runtime_error);
@@ -52,8 +51,7 @@ TEST(FuturesTest, WhenAllVoidCompletes)
   std::atomic<int> count{ 0 };
   std::vector<std::future<void>> futures;
   for (int i = 0; i < 5; ++i)
-    futures.push_back(pool.submit(
-        [&count] { count.fetch_add(1, std::memory_order_relaxed); }));
+    futures.push_back(pool.submit([&count] { count.fetch_add(1, std::memory_order_relaxed); }));
 
   when_all(futures);
   EXPECT_EQ(count.load(), 5);
@@ -92,8 +90,7 @@ TEST(FuturesTest, WhenAllSettledWithExceptions)
   thread_pool_backend pool(2);
   std::vector<std::future<int>> futures;
   futures.push_back(pool.submit([] { return 1; }));
-  futures.push_back(
-      pool.submit([]() -> int { throw std::runtime_error("err"); }));
+  futures.push_back(pool.submit([]() -> int { throw std::runtime_error("err"); }));
   futures.push_back(pool.submit([] { return 3; }));
 
   auto results = when_all_settled(futures);
@@ -159,8 +156,7 @@ TEST(FuturesTest, WhenAnyVoidReturnsFirst)
   std::atomic<int> count{ 0 };
   std::vector<std::future<void>> futures;
   for (int i = 0; i < 3; ++i)
-    futures.push_back(pool.submit(
-        [&count] { count.fetch_add(1, std::memory_order_relaxed); }));
+    futures.push_back(pool.submit([&count] { count.fetch_add(1, std::memory_order_relaxed); }));
 
   size_t idx = when_any(futures);
   EXPECT_LT(idx, 3u);

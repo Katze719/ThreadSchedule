@@ -167,10 +167,8 @@ protected:
 
 template <typename ThreadLike>
 inline auto
-configure_thread(ThreadLike& thread, std::string const& name,
-                 native_scheduling_policy policy,
-                 native_thread_priority priority)
-    -> expected<void, std::error_code>
+configure_thread(ThreadLike& thread, std::string const& name, native_scheduling_policy policy,
+                 native_thread_priority priority) -> expected<void, std::error_code>
 {
   auto named = thread.set_name(name);
   if (!named)
@@ -180,8 +178,7 @@ configure_thread(ThreadLike& thread, std::string const& name,
 
 template <typename ThreadLike>
 inline auto
-configure_thread(ThreadLike& thread, native_thread_config const& config)
-    -> expected<void, std::error_code>
+configure_thread(ThreadLike& thread, native_thread_config const& config) -> expected<void, std::error_code>
 {
   if (!config.name.empty())
     {
@@ -262,18 +259,14 @@ namespace detail
 {
 
 template <typename ThreadType, typename OwnershipTag = detail::owning_tag>
-class basic_thread_backend
-    : protected detail::thread_storage<ThreadType, OwnershipTag>
+class basic_thread_backend : protected detail::thread_storage<ThreadType, OwnershipTag>
 {
 public:
   using native_handle_type = typename ThreadType::native_handle_type;
   using id = typename ThreadType::id;
 
   basic_thread_backend() = default;
-  explicit basic_thread_backend(ThreadType& t)
-      : detail::thread_storage<ThreadType, OwnershipTag>(t)
-  {
-  }
+  explicit basic_thread_backend(ThreadType& t) : detail::thread_storage<ThreadType, OwnershipTag>(t) {}
   basic_thread_backend(ThreadType& t, native_thread_id tid)
       : detail::thread_storage<ThreadType, OwnershipTag>(t), native_id_(tid)
   {
@@ -332,13 +325,11 @@ public:
   {
     if (!joinable())
       return no_such_thread();
-    return detail::read_name(
-        const_cast<basic_thread_backend*>(this)->native_handle());
+    return detail::read_name(const_cast<basic_thread_backend*>(this)->native_handle());
   }
 
   [[nodiscard]] auto
-  set_priority(native_thread_priority priority)
-      -> expected<void, std::error_code>
+  set_priority(native_thread_priority priority) -> expected<void, std::error_code>
   {
     if (!joinable())
       return no_such_thread();
@@ -346,8 +337,7 @@ public:
   }
 
   [[nodiscard]] auto
-  set_scheduling_policy(native_scheduling_policy policy,
-                        native_thread_priority priority)
+  set_scheduling_policy(native_scheduling_policy policy, native_thread_priority priority)
       -> expected<void, std::error_code>
   {
     if (!joinable())
@@ -356,13 +346,11 @@ public:
   }
 
   [[nodiscard]] auto
-  configure(native_scheduling_config const& config)
-      -> expected<void, std::error_code>
+  configure(native_scheduling_config const& config) -> expected<void, std::error_code>
   {
     if (!joinable())
       return no_such_thread();
-    return detail::apply_scheduling_config(native_handle(), native_id_,
-                                           config);
+    return detail::apply_scheduling_config(native_handle(), native_id_, config);
   }
 
   [[nodiscard]] auto
@@ -374,8 +362,7 @@ public:
     return detail::apply_nice_value(native_handle(), nice_value);
 #else
     if (native_id_ <= 0)
-      return unexpected(
-          std::make_error_code(std::errc::operation_not_supported));
+      return unexpected(std::make_error_code(std::errc::operation_not_supported));
     return detail::apply_nice_value(native_id_, nice_value);
 #endif
   }
@@ -385,20 +372,17 @@ public:
   {
     if (!joinable())
       return no_such_thread();
-    return detail::read_effective_nice(
-        const_cast<basic_thread_backend*>(this)->native_handle(), native_id_);
+    return detail::read_effective_nice(const_cast<basic_thread_backend*>(this)->native_handle(), native_id_);
   }
 
   [[nodiscard]] auto
-  configure(native_thread_config const& config)
-      -> expected<void, std::error_code>
+  configure(native_thread_config const& config) -> expected<void, std::error_code>
   {
     return detail::configure_thread(*this, config);
   }
 
   [[nodiscard]] auto
-  set_affinity(native_thread_affinity const& affinity)
-      -> expected<void, std::error_code>
+  set_affinity(native_thread_affinity const& affinity) -> expected<void, std::error_code>
   {
     if (!joinable())
       return no_such_thread();
@@ -410,8 +394,7 @@ public:
   {
     if (!joinable())
       return no_such_thread();
-    return detail::read_affinity(
-        const_cast<basic_thread_backend*>(this)->native_handle());
+    return detail::read_affinity(const_cast<basic_thread_backend*>(this)->native_handle());
   }
 
   [[nodiscard]] auto
@@ -476,8 +459,7 @@ protected:
  * Not thread-safe. A single thread_backend must not be mutated concurrently
  * from multiple threads.
  */
-class thread_backend
-    : public basic_thread_backend<std::thread, detail::owning_tag>
+class thread_backend : public basic_thread_backend<std::thread, detail::owning_tag>
 {
 public:
   thread_backend() = default;
@@ -501,17 +483,12 @@ public:
     using function_type = std::decay_t<F>;
     auto arguments = std::make_tuple(std::forward<Args>(args)...);
     this->underlying() = std::thread(
-        [identity, function = function_type(std::forward<F>(f)),
-         arguments = std::move(arguments)]() mutable
+        [identity, function = function_type(std::forward<F>(f)), arguments = std::move(arguments)]() mutable
           {
             identity->publish(current_native_thread_id());
-            std::apply(
-                [&function](auto&&... stored)
-                  {
-                    std::invoke(std::move(function),
-                                std::forward<decltype(stored)>(stored)...);
-                  },
-                std::move(arguments));
+            std::apply([&function](auto&&... stored)
+                         { std::invoke(std::move(function), std::forward<decltype(stored)>(stored)...); },
+                       std::move(arguments));
           });
     this->set_native_id(identity->wait());
   }
@@ -568,9 +545,8 @@ public:
   // Factory methods
   template <typename F, typename... Args>
   static auto
-  create_with_config(std::string const& name, native_scheduling_policy policy,
-                     native_thread_priority priority, F&& f, Args&&... args)
-      -> thread_backend
+  create_with_config(std::string const& name, native_scheduling_policy policy, native_thread_priority priority, F&& f,
+                     Args&&... args) -> thread_backend
   {
     thread_backend wrapper(std::forward<F>(f), std::forward<Args>(args)...);
     (void)wrapper.set_name(name);
@@ -580,8 +556,7 @@ public:
 
   template <typename F, typename... Args>
   static auto
-  create_with_config(native_thread_config const& config, F&& f, Args&&... args)
-      -> thread_backend
+  create_with_config(native_thread_config const& config, F&& f, Args&&... args) -> thread_backend
   {
     thread_backend wrapper(std::forward<F>(f), std::forward<Args>(args)...);
     (void)wrapper.configure(config);
@@ -609,14 +584,10 @@ public:
  * Same caveats as basic_thread_backend. Concurrent use of a view and direct
  * use of the underlying thread must be externally synchronized.
  */
-class thread_view_backend
-    : public basic_thread_backend<std::thread, detail::non_owning_tag>
+class thread_view_backend : public basic_thread_backend<std::thread, detail::non_owning_tag>
 {
 public:
-  thread_view_backend(std::thread& t)
-      : basic_thread_backend<std::thread, detail::non_owning_tag>(t)
-  {
-  }
+  thread_view_backend(std::thread& t) : basic_thread_backend<std::thread, detail::non_owning_tag>(t) {}
 
   thread_view_backend(std::thread& t, native_thread_id tid)
       : basic_thread_backend<std::thread, detail::non_owning_tag>(t, tid)
@@ -725,8 +696,7 @@ public:
   }
 
   [[nodiscard]] auto
-  set_name([[maybe_unused]] std::string const& name) const
-      -> expected<void, std::error_code>
+  set_name([[maybe_unused]] std::string const& name) const -> expected<void, std::error_code>
   {
 #ifdef _WIN32
     return unexpected(std::make_error_code(std::errc::function_not_supported));
@@ -756,8 +726,7 @@ public:
   }
 
   [[nodiscard]] auto
-  set_priority([[maybe_unused]] native_thread_priority priority) const
-      -> expected<void, std::error_code>
+  set_priority([[maybe_unused]] native_thread_priority priority) const -> expected<void, std::error_code>
   {
 #ifdef _WIN32
     return unexpected(std::make_error_code(std::errc::function_not_supported));
@@ -770,8 +739,7 @@ public:
 
   [[nodiscard]] auto
   set_scheduling_policy([[maybe_unused]] native_scheduling_policy policy,
-                        [[maybe_unused]] native_thread_priority priority) const
-      -> expected<void, std::error_code>
+                        [[maybe_unused]] native_thread_priority priority) const -> expected<void, std::error_code>
   {
 #ifdef _WIN32
     return unexpected(std::make_error_code(std::errc::function_not_supported));
@@ -783,8 +751,7 @@ public:
   }
 
   [[nodiscard]] auto
-  configure(native_scheduling_config const& config) const
-      -> expected<void, std::error_code>
+  configure(native_scheduling_config const& config) const -> expected<void, std::error_code>
   {
 #ifdef _WIN32
     (void)config;
@@ -795,15 +762,13 @@ public:
   }
 
   [[nodiscard]] auto
-  configure(native_thread_config const& config) const
-      -> expected<void, std::error_code>
+  configure(native_thread_config const& config) const -> expected<void, std::error_code>
   {
     return detail::configure_thread(*this, config);
   }
 
   [[nodiscard]] auto
-  set_affinity([[maybe_unused]] native_thread_affinity const& affinity) const
-      -> expected<void, std::error_code>
+  set_affinity([[maybe_unused]] native_thread_affinity const& affinity) const -> expected<void, std::error_code>
   {
 #ifdef _WIN32
     return unexpected(std::make_error_code(std::errc::function_not_supported));
@@ -886,8 +851,7 @@ public:
   }
 
   [[nodiscard]] auto
-  set_priority(native_thread_priority priority) const
-      -> expected<void, std::error_code>
+  set_priority(native_thread_priority priority) const -> expected<void, std::error_code>
   {
     if (has_native_handle())
       return detail::apply_priority(native_handle(), priority);
@@ -895,19 +859,16 @@ public:
   }
 
   [[nodiscard]] auto
-  set_scheduling_policy(native_scheduling_policy policy,
-                        native_thread_priority priority) const
+  set_scheduling_policy(native_scheduling_policy policy, native_thread_priority priority) const
       -> expected<void, std::error_code>
   {
     if (has_native_handle())
-      return detail::apply_scheduling_policy(native_handle(), policy,
-                                             priority);
+      return detail::apply_scheduling_policy(native_handle(), policy, priority);
     return detail::apply_scheduling_policy(tid_, policy, priority);
   }
 
   [[nodiscard]] auto
-  configure(native_scheduling_config const& config) const
-      -> expected<void, std::error_code>
+  configure(native_scheduling_config const& config) const -> expected<void, std::error_code>
   {
     if (has_native_handle())
       return detail::apply_scheduling_config(native_handle(), tid_, config);
@@ -915,19 +876,17 @@ public:
   }
 
   [[nodiscard]] auto
-  configure(native_thread_config const& config) const
-      -> expected<void, std::error_code>
+  configure(native_thread_config const& config) const -> expected<void, std::error_code>
   {
     return detail::configure_thread(*this, config);
   }
 
   [[nodiscard]] auto
-  set_affinity(native_thread_affinity const& affinity) const
-      -> expected<void, std::error_code>
+  set_affinity(native_thread_affinity const& affinity) const -> expected<void, std::error_code>
   {
     if (has_native_handle())
-      return detail::apply_affinity(native_handle(), affinity);
-    return detail::apply_affinity(tid_, affinity);
+      return detail::apply_affinity_checked(native_handle(), affinity);
+    return detail::apply_affinity_checked(tid_, affinity);
   }
 
   [[nodiscard]] auto
@@ -988,20 +947,17 @@ private:
   {
 #ifdef _WIN32
     HANDLE real_handle = nullptr;
-    if (DuplicateHandle(GetCurrentProcess(), GetCurrentThread(),
-                        GetCurrentProcess(), &real_handle,
-                        THREAD_SET_INFORMATION | THREAD_QUERY_INFORMATION,
-                        FALSE, 0)
+    if (DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &real_handle,
+                        THREAD_SET_INFORMATION | THREAD_QUERY_INFORMATION, FALSE, 0)
         != 0)
       {
         native_handle_ = real_handle;
-        native_handle_owner_ = std::shared_ptr<void>(
-            real_handle,
-            [](void* handle)
-              {
-                if (handle)
-                  CloseHandle(static_cast<HANDLE>(handle));
-              });
+        native_handle_owner_ = std::shared_ptr<void>(real_handle,
+                                                     [](void* handle)
+                                                       {
+                                                         if (handle)
+                                                           CloseHandle(static_cast<HANDLE>(handle));
+                                                       });
         has_native_handle_ = true;
       }
 #else

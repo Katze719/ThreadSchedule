@@ -47,8 +47,7 @@
 #if defined(__cpp_lib_expected) && __cpp_lib_expected >= 202202L
 #  include <expected>
 #  define THREADSCHEDULE_HAS_STD_EXPECTED 1
-#elif (defined(__cplusplus) && __cplusplus >= 202302L)                        \
-    || (defined(_MSVC_LANG) && _MSVC_LANG >= 202302L)
+#elif (defined(__cplusplus) && __cplusplus >= 202302L) || (defined(_MSVC_LANG) && _MSVC_LANG >= 202302L)
 #  include <expected>
 #  define THREADSCHEDULE_HAS_STD_EXPECTED 1
 #else
@@ -225,17 +224,13 @@ public:
   using unexpected_type = unexpected<E>;
 
   // constructors
-  template <typename u = T,
-            typename std::enable_if_t<std::is_default_constructible_v<u>, int>
-            = 0>
+  template <typename u = T, typename std::enable_if_t<std::is_default_constructible_v<u>, int> = 0>
   constexpr expected() : has_(true)
   {
     new (&storage_.value_) T();
   }
 
-  template <typename u = T,
-            typename std::enable_if_t<!std::is_default_constructible_v<u>, int>
-            = 0>
+  template <typename u = T, typename std::enable_if_t<!std::is_default_constructible_v<u>, int> = 0>
   constexpr expected() = delete;
 
   constexpr expected(expected const& other) : has_(other.has_)
@@ -246,9 +241,8 @@ public:
       new (&storage_.error_) E(other.storage_.error_);
   }
 
-  constexpr expected(expected&& other) noexcept(
-      std::is_nothrow_move_constructible_v<T>
-      && std::is_nothrow_move_constructible_v<E>)
+  constexpr expected(expected&& other) noexcept(std::is_nothrow_move_constructible_v<T>
+                                                && std::is_nothrow_move_constructible_v<E>)
       : has_(other.has_)
   {
     if (has_)
@@ -259,34 +253,25 @@ public:
 
   template <typename u = T,
             typename = std::enable_if_t<
-                !std::is_same_v<std::decay_t<u>, expected>
-                && !std::is_same_v<std::decay_t<u>, std::in_place_t>
-                && !std::is_same_v<std::decay_t<u>, unexpected<E>>
-                && std::is_constructible_v<T, u>>>
-  constexpr expected(
-      u&& value,
-      std::enable_if_t<std::is_convertible_v<u, T>, int> /*unused*/ = 0)
-      : has_(true)
+                !std::is_same_v<std::decay_t<u>, expected> && !std::is_same_v<std::decay_t<u>, std::in_place_t>
+                && !std::is_same_v<std::decay_t<u>, unexpected<E>> && std::is_constructible_v<T, u>>>
+  constexpr expected(u&& value, std::enable_if_t<std::is_convertible_v<u, T>, int> /*unused*/ = 0) : has_(true)
   {
     new (&storage_.value_) T(std::forward<u>(value));
   }
 
-  template <
-      typename u = T,
-      typename = std::enable_if_t<
-          !std::is_same_v<std::decay_t<u>, expected>
-          && !std::is_same_v<std::decay_t<u>, std::in_place_t>
-          && !std::is_same_v<std::decay_t<u>, unexpected<E>>
-          && std::is_constructible_v<T, u> && !std::is_convertible_v<u, T>>>
+  template <typename u = T,
+            typename = std::enable_if_t<!std::is_same_v<std::decay_t<u>, expected>
+                                        && !std::is_same_v<std::decay_t<u>, std::in_place_t>
+                                        && !std::is_same_v<std::decay_t<u>, unexpected<E>>
+                                        && std::is_constructible_v<T, u> && !std::is_convertible_v<u, T>>>
   constexpr explicit expected(u&& value) : has_(true)
   {
     new (&storage_.value_) T(std::forward<u>(value));
   }
 
-  template <typename... Args,
-            typename = std::enable_if_t<std::is_constructible_v<T, Args...>>>
-  constexpr explicit expected(std::in_place_t /*unused*/, Args&&... args)
-      : has_(true)
+  template <typename... Args, typename = std::enable_if_t<std::is_constructible_v<T, Args...>>>
+  constexpr explicit expected(std::in_place_t /*unused*/, Args&&... args) : has_(true)
   {
     new (&storage_.value_) T(std::forward<Args>(args)...);
   }
@@ -302,8 +287,7 @@ public:
   }
 
   template <typename... Args>
-  constexpr explicit expected(unexpect_t /*unused*/, Args&&... args)
-      : has_(false)
+  constexpr explicit expected(unexpect_t /*unused*/, Args&&... args) : has_(false)
   {
     new (&storage_.error_) E(std::forward<Args>(args)...);
   }
@@ -320,9 +304,8 @@ public:
   }
 
   constexpr auto
-  operator=(expected&& other) noexcept(
-      std::is_nothrow_move_constructible_v<T>
-      && std::is_nothrow_move_constructible_v<E>) -> expected&
+  operator=(expected&& other) noexcept(std::is_nothrow_move_constructible_v<T>
+                                       && std::is_nothrow_move_constructible_v<E>) -> expected&
   {
     if (this == &other)
       return *this;
@@ -332,9 +315,7 @@ public:
   }
 
   template <typename u = T,
-            typename
-            = std::enable_if_t<!std::is_same_v<std::decay_t<u>, expected>
-                               && std::is_constructible_v<T, u>>>
+            typename = std::enable_if_t<!std::is_same_v<std::decay_t<u>, expected> && std::is_constructible_v<T, u>>>
   constexpr auto
   operator=(u&& value) -> expected&
   {
@@ -458,8 +439,7 @@ public:
   value() const&& -> T const&&
   {
     if (!has_)
-      THREADSCHEDULE_EXPECTED_THROW(
-          bad_expected_access<E>(std::move(storage_.error_)));
+      THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(std::move(storage_.error_)));
     return std::move(storage_.value_);
   }
 
@@ -467,8 +447,7 @@ public:
   value() && -> T&&
   {
     if (!has_)
-      THREADSCHEDULE_EXPECTED_THROW(
-          bad_expected_access<E>(std::move(storage_.error_)));
+      THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(std::move(storage_.error_)));
     return std::move(storage_.value_);
   }
 
@@ -498,9 +477,7 @@ public:
 
 #if THREADSCHEDULE_HAS_STD_EXPECTED
   template <typename u = T, typename g = E,
-            std::enable_if_t<std::is_copy_constructible_v<u>
-                                 && std::is_copy_constructible_v<g>,
-                             int> = 0>
+            std::enable_if_t<std::is_copy_constructible_v<u> && std::is_copy_constructible_v<g>, int> = 0>
   constexpr
   operator std::expected<T, E>() const&
   {
@@ -510,9 +487,7 @@ public:
   }
 
   template <typename u = T, typename g = E,
-            std::enable_if_t<std::is_move_constructible_v<u>
-                                 && std::is_move_constructible_v<g>,
-                             int> = 0>
+            std::enable_if_t<std::is_move_constructible_v<u> && std::is_move_constructible_v<g>, int> = 0>
   constexpr
   operator std::expected<T, E>() &&
   {
@@ -526,16 +501,14 @@ public:
   constexpr auto
   value_or(u&& default_value) const& -> T
   {
-    return has_ ? storage_.value_
-                : static_cast<T>(std::forward<u>(default_value));
+    return has_ ? storage_.value_ : static_cast<T>(std::forward<u>(default_value));
   }
 
   template <typename u>
   constexpr auto
   value_or(u&& default_value) && -> T
   {
-    return has_ ? std::move(storage_.value_)
-                : static_cast<T>(std::forward<u>(default_value));
+    return has_ ? std::move(storage_.value_) : static_cast<T>(std::forward<u>(default_value));
   }
 
   // emplace
@@ -550,10 +523,8 @@ public:
 
   // swap
   constexpr void
-  swap(expected& other) noexcept(std::is_nothrow_move_constructible_v<T>
-                                 && std::is_nothrow_move_constructible_v<E>
-                                 && std::is_nothrow_swappable_v<T>
-                                 && std::is_nothrow_swappable_v<E>)
+  swap(expected& other) noexcept(std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_constructible_v<E>
+                                 && std::is_nothrow_swappable_v<T> && std::is_nothrow_swappable_v<E>)
   {
     if (has_ && other.has_)
       {
@@ -663,8 +634,7 @@ public:
   {
     using u = std::remove_cv_t<std::invoke_result_t<F, T&>>;
     if (has_)
-      return expected<u, E>(std::in_place,
-                            std::invoke(std::forward<F>(f), storage_.value_));
+      return expected<u, E>(std::in_place, std::invoke(std::forward<F>(f), storage_.value_));
     return expected<u, E>(unexpect, storage_.error_);
   }
 
@@ -674,8 +644,7 @@ public:
   {
     using u = std::remove_cv_t<std::invoke_result_t<F, T const&>>;
     if (has_)
-      return expected<u, E>(std::in_place,
-                            std::invoke(std::forward<F>(f), storage_.value_));
+      return expected<u, E>(std::in_place, std::invoke(std::forward<F>(f), storage_.value_));
     return expected<u, E>(unexpect, storage_.error_);
   }
 
@@ -685,9 +654,7 @@ public:
   {
     using u = std::remove_cv_t<std::invoke_result_t<F, T&&>>;
     if (has_)
-      return expected<u, E>(
-          std::in_place,
-          std::invoke(std::forward<F>(f), std::move(storage_.value_)));
+      return expected<u, E>(std::in_place, std::invoke(std::forward<F>(f), std::move(storage_.value_)));
     return expected<u, E>(unexpect, std::move(storage_.error_));
   }
 
@@ -697,9 +664,7 @@ public:
   {
     using u = std::remove_cv_t<std::invoke_result_t<F, T const&&>>;
     if (has_)
-      return expected<u, E>(
-          std::in_place,
-          std::invoke(std::forward<F>(f), std::move(storage_.value_)));
+      return expected<u, E>(std::in_place, std::invoke(std::forward<F>(f), std::move(storage_.value_)));
     return expected<u, E>(unexpect, std::move(storage_.error_));
   }
 
@@ -710,8 +675,7 @@ public:
     using g = std::remove_cv_t<std::invoke_result_t<F, E&>>;
     if (has_)
       return expected<T, g>(storage_.value_);
-    return expected<T, g>(unexpect,
-                          std::invoke(std::forward<F>(f), storage_.error_));
+    return expected<T, g>(unexpect, std::invoke(std::forward<F>(f), storage_.error_));
   }
 
   template <typename F>
@@ -721,8 +685,7 @@ public:
     using g = std::remove_cv_t<std::invoke_result_t<F, E const&>>;
     if (has_)
       return expected<T, g>(storage_.value_);
-    return expected<T, g>(unexpect,
-                          std::invoke(std::forward<F>(f), storage_.error_));
+    return expected<T, g>(unexpect, std::invoke(std::forward<F>(f), storage_.error_));
   }
 
   template <typename F>
@@ -732,8 +695,7 @@ public:
     using g = std::remove_cv_t<std::invoke_result_t<F, E&&>>;
     if (has_)
       return expected<T, g>(std::move(storage_.value_));
-    return expected<T, g>(
-        unexpect, std::invoke(std::forward<F>(f), std::move(storage_.error_)));
+    return expected<T, g>(unexpect, std::invoke(std::forward<F>(f), std::move(storage_.error_)));
   }
 
   template <typename F>
@@ -743,8 +705,7 @@ public:
     using g = std::remove_cv_t<std::invoke_result_t<F, E const&&>>;
     if (has_)
       return expected<T, g>(std::move(storage_.value_));
-    return expected<T, g>(
-        unexpect, std::invoke(std::forward<F>(f), std::move(storage_.error_)));
+    return expected<T, g>(unexpect, std::invoke(std::forward<F>(f), std::move(storage_.error_)));
   }
 
   // equality operators
@@ -766,36 +727,28 @@ public:
     return !(lhs == rhs);
   }
 
-  template <typename T2,
-            typename
-            = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
+  template <typename T2, typename = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
   constexpr friend auto
   operator==(expected const& lhs, const T2& rhs) -> bool
   {
     return lhs.has_value() && *lhs == rhs;
   }
 
-  template <typename T2,
-            typename
-            = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
+  template <typename T2, typename = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
   constexpr friend auto
   operator==(const T2& lhs, expected const& rhs) -> bool
   {
     return rhs.has_value() && lhs == *rhs;
   }
 
-  template <typename T2,
-            typename
-            = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
+  template <typename T2, typename = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
   constexpr friend auto
   operator!=(expected const& lhs, const T2& rhs) -> bool
   {
     return !(lhs == rhs);
   }
 
-  template <typename T2,
-            typename
-            = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
+  template <typename T2, typename = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
   constexpr friend auto
   operator!=(const T2& lhs, expected const& rhs) -> bool
   {
@@ -867,19 +820,13 @@ public:
   constexpr expected(expected&& other) = default;
 
   template <typename... Args>
-  constexpr explicit expected(unexpect_t /*unused*/, Args&&... args)
-      : has_(false), error_(std::forward<Args>(args)...)
+  constexpr explicit expected(unexpect_t /*unused*/, Args&&... args) : has_(false), error_(std::forward<Args>(args)...)
   {
   }
 
-  constexpr expected(unexpected<E> const& ue) : has_(false), error_(ue.error())
-  {
-  }
+  constexpr expected(unexpected<E> const& ue) : has_(false), error_(ue.error()) {}
 
-  constexpr expected(unexpected<E>&& ue)
-      : has_(false), error_(std::move(ue.error()))
-  {
-  }
+  constexpr expected(unexpected<E>&& ue) : has_(false), error_(std::move(ue.error())) {}
 
   constexpr auto operator=(expected const& other) -> expected& = default;
   constexpr auto operator=(expected&& other) -> expected& = default;
@@ -944,8 +891,7 @@ public:
   }
 
 #if THREADSCHEDULE_HAS_STD_EXPECTED
-  template <typename g = E,
-            std::enable_if_t<std::is_copy_constructible_v<g>, int> = 0>
+  template <typename g = E, std::enable_if_t<std::is_copy_constructible_v<g>, int> = 0>
   constexpr
   operator std::expected<void, E>() const&
   {
@@ -954,8 +900,7 @@ public:
     return std::expected<void, E>(std::unexpect, error_);
   }
 
-  template <typename g = E,
-            std::enable_if_t<std::is_move_constructible_v<g>, int> = 0>
+  template <typename g = E, std::enable_if_t<std::is_move_constructible_v<g>, int> = 0>
   constexpr
   operator std::expected<void, E>() &&
   {
@@ -972,8 +917,7 @@ public:
   }
 
   constexpr void
-  swap(expected& other) noexcept(std::is_nothrow_move_constructible_v<E>
-                                 && std::is_nothrow_swappable_v<E>)
+  swap(expected& other) noexcept(std::is_nothrow_move_constructible_v<E> && std::is_nothrow_swappable_v<E>)
   {
     if (has_ && other.has_)
       {
@@ -1119,8 +1063,7 @@ public:
     using g = std::remove_cv_t<std::invoke_result_t<F, E&>>;
     if (has_)
       return expected<void, g>();
-    return expected<void, g>(unexpect,
-                             std::invoke(std::forward<F>(f), error_));
+    return expected<void, g>(unexpect, std::invoke(std::forward<F>(f), error_));
   }
 
   template <typename F>
@@ -1130,8 +1073,7 @@ public:
     using g = std::remove_cv_t<std::invoke_result_t<F, E const&>>;
     if (has_)
       return expected<void, g>();
-    return expected<void, g>(unexpect,
-                             std::invoke(std::forward<F>(f), error_));
+    return expected<void, g>(unexpect, std::invoke(std::forward<F>(f), error_));
   }
 
   template <typename F>
@@ -1141,8 +1083,7 @@ public:
     using g = std::remove_cv_t<std::invoke_result_t<F, E&&>>;
     if (has_)
       return expected<void, g>();
-    return expected<void, g>(
-        unexpect, std::invoke(std::forward<F>(f), std::move(error_)));
+    return expected<void, g>(unexpect, std::invoke(std::forward<F>(f), std::move(error_)));
   }
 
   template <typename F>
@@ -1152,8 +1093,7 @@ public:
     using g = std::remove_cv_t<std::invoke_result_t<F, E const&&>>;
     if (has_)
       return expected<void, g>();
-    return expected<void, g>(
-        unexpect, std::invoke(std::forward<F>(f), std::move(error_)));
+    return expected<void, g>(unexpect, std::invoke(std::forward<F>(f), std::move(error_)));
   }
 
   // equality operators
@@ -1211,8 +1151,7 @@ private:
 // swap for expected
 template <typename T, typename E>
 constexpr void
-swap(expected<T, E>& lhs,
-     expected<T, E>& rhs) noexcept(noexcept(lhs.swap(rhs)))
+swap(expected<T, E>& lhs, expected<T, E>& rhs) noexcept(noexcept(lhs.swap(rhs)))
 {
   lhs.swap(rhs);
 }

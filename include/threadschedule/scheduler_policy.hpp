@@ -269,84 +269,70 @@ namespace native_schedule
 [[nodiscard]] constexpr auto
 background() noexcept -> native_scheduling_config
 {
-  return { native_scheduling_intent::background,
-           native_scheduling_policy::idle, native_thread_priority::lowest(),
+  return { native_scheduling_intent::background, native_scheduling_policy::idle, native_thread_priority::lowest(),
            native_priority_model::intent };
 }
 
 [[nodiscard]] constexpr auto
 normal() noexcept -> native_scheduling_config
 {
-  return { native_scheduling_intent::normal, native_scheduling_policy::other,
-           native_thread_priority::normal(),
+  return { native_scheduling_intent::normal, native_scheduling_policy::other, native_thread_priority::normal(),
            native_priority_model::posix_nice };
 }
 
 [[nodiscard]] constexpr auto
 interactive() noexcept -> native_scheduling_config
 {
-  return { native_scheduling_intent::interactive,
-           native_scheduling_policy::other, native_thread_priority{ -5 },
+  return { native_scheduling_intent::interactive, native_scheduling_policy::other, native_thread_priority{ -5 },
            native_priority_model::posix_nice };
 }
 
 [[nodiscard]] constexpr auto
 low_latency() noexcept -> native_scheduling_config
 {
-  return { native_scheduling_intent::low_latency,
-           native_scheduling_policy::other, native_thread_priority::highest(),
+  return { native_scheduling_intent::low_latency, native_scheduling_policy::other, native_thread_priority::highest(),
            native_priority_model::posix_nice };
 }
 
 [[nodiscard]] constexpr auto
 realtime_fifo(int priority = 80) noexcept -> native_scheduling_config
 {
-  return { native_scheduling_intent::realtime, native_scheduling_policy::fifo,
-           native_thread_priority{ priority },
+  return { native_scheduling_intent::realtime, native_scheduling_policy::fifo, native_thread_priority{ priority },
            native_priority_model::posix_realtime };
 }
 
 [[nodiscard]] constexpr auto
 realtime_rr(int priority = 80) noexcept -> native_scheduling_config
 {
-  return { native_scheduling_intent::realtime, native_scheduling_policy::rr,
-           native_thread_priority{ priority },
+  return { native_scheduling_intent::realtime, native_scheduling_policy::rr, native_thread_priority{ priority },
            native_priority_model::posix_realtime };
 }
 
 [[nodiscard]] constexpr auto
 posix_nice(int nice_value) noexcept -> native_scheduling_config
 {
-  return { native_scheduling_intent::normal, native_scheduling_policy::other,
-           native_thread_priority{ nice_value },
-           native_priority_model::posix_nice,
-           nice_value >= -20 && nice_value <= 19 };
+  return { native_scheduling_intent::normal, native_scheduling_policy::other, native_thread_priority{ nice_value },
+           native_priority_model::posix_nice, nice_value >= -20 && nice_value <= 19 };
 }
 
 [[nodiscard]] constexpr auto
-native(native_scheduling_policy policy,
-       native_thread_priority priority) noexcept -> native_scheduling_config
+native(native_scheduling_policy policy, native_thread_priority priority) noexcept -> native_scheduling_config
 {
-  return { native_scheduling_intent::normal, policy, priority,
-           native_priority_model::platform_native };
+  return { native_scheduling_intent::normal, policy, priority, native_priority_model::platform_native };
 }
 
 [[nodiscard]] constexpr auto
 native_windows_priority(int priority) noexcept -> native_scheduling_config
 {
 #ifdef _WIN32
-  bool const valid = priority == THREAD_PRIORITY_IDLE
-                     || priority == THREAD_PRIORITY_LOWEST
-                     || priority == THREAD_PRIORITY_BELOW_NORMAL
-                     || priority == THREAD_PRIORITY_NORMAL
-                     || priority == THREAD_PRIORITY_ABOVE_NORMAL
-                     || priority == THREAD_PRIORITY_HIGHEST
+  bool const valid = priority == THREAD_PRIORITY_IDLE || priority == THREAD_PRIORITY_LOWEST
+                     || priority == THREAD_PRIORITY_BELOW_NORMAL || priority == THREAD_PRIORITY_NORMAL
+                     || priority == THREAD_PRIORITY_ABOVE_NORMAL || priority == THREAD_PRIORITY_HIGHEST
                      || priority == THREAD_PRIORITY_TIME_CRITICAL;
 #else
   bool const valid = false;
 #endif
-  return { native_scheduling_intent::normal, native_scheduling_policy::other,
-           native_thread_priority{ priority },
+  return { native_scheduling_intent::normal, native_scheduling_policy::other, native_thread_priority{ priority },
            native_priority_model::windows_thread, valid };
 }
 } // namespace native_schedule
@@ -357,19 +343,15 @@ namespace detail
 constexpr auto
 is_realtime_policy(native_scheduling_policy policy) noexcept -> bool
 {
-  return policy == native_scheduling_policy::fifo
-         || policy == native_scheduling_policy::rr;
+  return policy == native_scheduling_policy::fifo || policy == native_scheduling_policy::rr;
 }
 
 [[nodiscard]] constexpr auto
-resolve_scheduling_config(native_scheduling_config const& config) noexcept
-    -> resolved_scheduling
+resolve_scheduling_config(native_scheduling_config const& config) noexcept -> resolved_scheduling
 {
   if (config.model == native_priority_model::posix_realtime)
     {
-      auto policy = is_realtime_policy(config.policy)
-                        ? config.policy
-                        : native_scheduling_policy::rr;
+      auto policy = is_realtime_policy(config.policy) ? config.policy : native_scheduling_policy::rr;
       return { policy, config.priority, config.model, config.valid };
     }
 
@@ -379,23 +361,17 @@ resolve_scheduling_config(native_scheduling_config const& config) noexcept
   switch (config.intent)
     {
     case native_scheduling_intent::background:
-      return { native_scheduling_policy::idle,
-               native_thread_priority::lowest(), config.model, config.valid };
+      return { native_scheduling_policy::idle, native_thread_priority::lowest(), config.model, config.valid };
     case native_scheduling_intent::interactive:
-      return { native_scheduling_policy::other, native_thread_priority{ -5 },
-               config.model, config.valid };
+      return { native_scheduling_policy::other, native_thread_priority{ -5 }, config.model, config.valid };
     case native_scheduling_intent::low_latency:
-      return { native_scheduling_policy::other,
-               native_thread_priority::highest(), config.model, config.valid };
+      return { native_scheduling_policy::other, native_thread_priority::highest(), config.model, config.valid };
     case native_scheduling_intent::realtime:
-      return { is_realtime_policy(config.policy)
-                   ? config.policy
-                   : native_scheduling_policy::rr,
-               config.priority, config.model, config.valid };
+      return { is_realtime_policy(config.policy) ? config.policy : native_scheduling_policy::rr, config.priority,
+               config.model, config.valid };
     case native_scheduling_intent::normal:
     default:
-      return { native_scheduling_policy::other,
-               native_thread_priority::normal(), config.model, config.valid };
+      return { native_scheduling_policy::other, native_thread_priority::normal(), config.model, config.valid };
     }
 }
 
@@ -465,8 +441,7 @@ public:
 #endif
   }
 
-  explicit native_thread_affinity(std::vector<int> const& cpus)
-      : native_thread_affinity()
+  explicit native_thread_affinity(std::vector<int> const& cpus) : native_thread_affinity()
   {
     for (int cpu : cpus)
       {
@@ -530,8 +505,7 @@ public:
       return false;
     WORD g = static_cast<WORD>(cpu / 64);
     int bit = cpu % 64;
-    return g == group_
-           && (mask_ & (static_cast<unsigned long long>(1) << bit)) != 0;
+    return g == group_ && (mask_ & (static_cast<unsigned long long>(1) << bit)) != 0;
 #else
     return cpu >= 0 && cpu < CPU_SETSIZE && CPU_ISSET(cpu, &cpuset_);
 #endif
@@ -683,8 +657,7 @@ public:
   };
 
   static expected<sched_param_win, std::error_code>
-  create_for_policy(native_scheduling_policy policy,
-                    native_thread_priority priority)
+  create_for_policy(native_scheduling_policy policy, native_thread_priority priority)
   {
     sched_param_win param{};
     if (detail::is_realtime_policy(policy))
@@ -708,8 +681,7 @@ public:
   }
 #else
   static auto
-  create_for_policy(native_scheduling_policy policy,
-                    native_thread_priority priority)
+  create_for_policy(native_scheduling_policy policy, native_thread_priority priority)
       -> expected<sched_param, std::error_code>
   {
     sched_param param{};
@@ -731,8 +703,7 @@ public:
 
     if (detail::is_realtime_policy(policy) && priority.value() > 0)
       {
-        param.sched_priority
-            = std::clamp(priority.value(), min_prio, max_prio);
+        param.sched_priority = std::clamp(priority.value(), min_prio, max_prio);
         return param;
       }
 
@@ -740,17 +711,13 @@ public:
     constexpr int lowest_nice_value = 19;
     constexpr int user_span = lowest_nice_value - highest_nice_value;
     int const native_span = max_prio - min_prio;
-    int const offset
-        = std::clamp(priority.value(), highest_nice_value, lowest_nice_value)
-          - highest_nice_value;
-    param.sched_priority
-        = max_prio - (((offset * native_span) + (user_span / 2)) / user_span);
+    int const offset = std::clamp(priority.value(), highest_nice_value, lowest_nice_value) - highest_nice_value;
+    param.sched_priority = max_prio - (((offset * native_span) + (user_span / 2)) / user_span);
     return param;
   }
 
   static auto
-  get_priority_range(native_scheduling_policy policy)
-      -> expected<int, std::error_code>
+  get_priority_range(native_scheduling_policy policy) -> expected<int, std::error_code>
   {
     int const policy_int = static_cast<int>(policy);
     int const min_prio = sched_get_priority_min(policy_int);
@@ -809,20 +776,17 @@ namespace detail
 inline auto last_win32_error() -> std::error_code;
 
 inline auto
-apply_priority(HANDLE handle, native_thread_priority priority)
-    -> expected<void, std::error_code>
+apply_priority(HANDLE handle, native_thread_priority priority) -> expected<void, std::error_code>
 {
   if (!handle)
     return unexpected(std::make_error_code(std::errc::no_such_process));
   if (SetThreadPriority(handle, map_priority_to_win32(priority.value())) != 0)
     return {};
-  return unexpected(std::error_code(static_cast<int>(GetLastError()),
-                                    std::system_category()));
+  return unexpected(std::error_code(static_cast<int>(GetLastError()), std::system_category()));
 }
 
 inline auto
-apply_windows_thread_priority(HANDLE handle, int priority)
-    -> expected<void, std::error_code>
+apply_windows_thread_priority(HANDLE handle, int priority) -> expected<void, std::error_code>
 {
   if (!handle)
     return unexpected(std::make_error_code(std::errc::no_such_process));
@@ -832,8 +796,7 @@ apply_windows_thread_priority(HANDLE handle, int priority)
 }
 
 inline auto
-apply_nice_value(HANDLE handle, int nice_value)
-    -> expected<void, std::error_code>
+apply_nice_value(HANDLE handle, int nice_value) -> expected<void, std::error_code>
 {
   if (nice_value < -20 || nice_value > 19)
     return unexpected(std::make_error_code(std::errc::invalid_argument));
@@ -841,38 +804,32 @@ apply_nice_value(HANDLE handle, int nice_value)
 }
 
 inline auto
-apply_scheduling_policy(HANDLE handle, native_scheduling_policy policy,
-                        native_thread_priority priority)
+apply_scheduling_policy(HANDLE handle, native_scheduling_policy policy, native_thread_priority priority)
     -> expected<void, std::error_code>
 {
   if (!handle)
     return unexpected(std::make_error_code(std::errc::no_such_process));
-  auto params_result
-      = scheduler_parameters::create_for_policy(policy, priority);
+  auto params_result = scheduler_parameters::create_for_policy(policy, priority);
   if (!params_result.has_value())
     return unexpected(params_result.error());
   if (SetThreadPriority(handle, params_result.value().sched_priority) != 0)
     return {};
-  return unexpected(std::error_code(static_cast<int>(GetLastError()),
-                                    std::system_category()));
+  return unexpected(std::error_code(static_cast<int>(GetLastError()), std::system_category()));
 }
 
 inline auto
-apply_affinity(HANDLE handle, native_thread_affinity const& affinity)
-    -> expected<void, std::error_code>
+apply_affinity(HANDLE handle, native_thread_affinity const& affinity) -> expected<void, std::error_code>
 {
   if (!handle)
     return unexpected(std::make_error_code(std::errc::no_such_process));
   if (!affinity.has_any())
     return unexpected(std::make_error_code(std::errc::invalid_argument));
-  using set_thread_group_affinity_fn
-      = BOOL(WINAPI*)(HANDLE, const GROUP_AFFINITY*, PGROUP_AFFINITY);
+  using set_thread_group_affinity_fn = BOOL(WINAPI*)(HANDLE, const GROUP_AFFINITY*, PGROUP_AFFINITY);
   HMODULE module = GetModuleHandleW(L"kernel32.dll");
   if (module)
     {
       auto set_group_affinity = reinterpret_cast<set_thread_group_affinity_fn>(
-          reinterpret_cast<void*>(
-              GetProcAddress(module, "SetThreadGroupAffinity")));
+          reinterpret_cast<void*>(GetProcAddress(module, "SetThreadGroupAffinity")));
       if (set_group_affinity)
         {
           GROUP_AFFINITY ga{};
@@ -945,10 +902,8 @@ using module_lookup_fn = HMODULE(WINAPI*)(LPCWSTR);
 using proc_lookup_fn = FARPROC(WINAPI*)(HMODULE, LPCSTR);
 
 inline auto
-resolve_thread_description_api(module_lookup_fn module_lookup
-                               = GetModuleHandleW,
-                               proc_lookup_fn proc_lookup = GetProcAddress)
-    -> thread_description_api
+resolve_thread_description_api(module_lookup_fn module_lookup = GetModuleHandleW,
+                               proc_lookup_fn proc_lookup = GetProcAddress) -> thread_description_api
 {
   thread_description_api result;
   DWORD last_error = ERROR_SUCCESS;
@@ -967,24 +922,19 @@ resolve_thread_description_api(module_lookup_fn module_lookup
       result.found_module = true;
       if (!result.set)
         result.set = reinterpret_cast<set_thread_description_fn>(
-            reinterpret_cast<void*>(
-                proc_lookup(module, "SetThreadDescription")));
+            reinterpret_cast<void*>(proc_lookup(module, "SetThreadDescription")));
       if (!result.get)
         result.get = reinterpret_cast<get_thread_description_fn>(
-            reinterpret_cast<void*>(
-                proc_lookup(module, "GetThreadDescription")));
+            reinterpret_cast<void*>(proc_lookup(module, "GetThreadDescription")));
     }
   if (!result.found_module)
     result.lookup_error
-        = { static_cast<int>(last_error == ERROR_SUCCESS ? ERROR_MOD_NOT_FOUND
-                                                         : last_error),
-            std::system_category() };
+        = { static_cast<int>(last_error == ERROR_SUCCESS ? ERROR_MOD_NOT_FOUND : last_error), std::system_category() };
   return result;
 }
 
 inline auto
-resolved_set_thread_description()
-    -> expected<set_thread_description_fn, std::error_code>
+resolved_set_thread_description() -> expected<set_thread_description_fn, std::error_code>
 {
   static std::atomic<set_thread_description_fn> cached{ nullptr };
   if (auto const function = cached.load(std::memory_order_acquire))
@@ -993,21 +943,16 @@ resolved_set_thread_description()
   if (!resolved.set)
     {
       std::error_code const error
-          = resolved.found_module
-                ? std::make_error_code(std::errc::function_not_supported)
-                : resolved.lookup_error;
+          = resolved.found_module ? std::make_error_code(std::errc::function_not_supported) : resolved.lookup_error;
       return unexpected(error);
     }
   set_thread_description_fn expected_null = nullptr;
-  cached.compare_exchange_strong(expected_null, resolved.set,
-                                 std::memory_order_release,
-                                 std::memory_order_acquire);
+  cached.compare_exchange_strong(expected_null, resolved.set, std::memory_order_release, std::memory_order_acquire);
   return expected_null ? expected_null : resolved.set;
 }
 
 inline auto
-resolved_get_thread_description()
-    -> expected<get_thread_description_fn, std::error_code>
+resolved_get_thread_description() -> expected<get_thread_description_fn, std::error_code>
 {
   static std::atomic<get_thread_description_fn> cached{ nullptr };
   if (auto const function = cached.load(std::memory_order_acquire))
@@ -1016,33 +961,26 @@ resolved_get_thread_description()
   if (!resolved.get)
     {
       std::error_code const error
-          = resolved.found_module
-                ? std::make_error_code(std::errc::function_not_supported)
-                : resolved.lookup_error;
+          = resolved.found_module ? std::make_error_code(std::errc::function_not_supported) : resolved.lookup_error;
       return unexpected(error);
     }
   get_thread_description_fn expected_null = nullptr;
-  cached.compare_exchange_strong(expected_null, resolved.get,
-                                 std::memory_order_release,
-                                 std::memory_order_acquire);
+  cached.compare_exchange_strong(expected_null, resolved.get, std::memory_order_release, std::memory_order_acquire);
   return expected_null ? expected_null : resolved.get;
 }
 
 inline auto
-utf8_to_utf16(std::string const& value)
-    -> expected<std::wstring, std::error_code>
+utf8_to_utf16(std::string const& value) -> expected<std::wstring, std::error_code>
 {
   if (value.empty())
     return std::wstring{};
   int const size
-      = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
-                            static_cast<int>(value.size()), nullptr, 0);
+      = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), nullptr, 0);
   if (size == 0)
     return unexpected(last_win32_error());
   std::wstring result(static_cast<std::size_t>(size), L'\0');
-  int const written = MultiByteToWideChar(
-      CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
-      static_cast<int>(value.size()), result.data(), size);
+  int const written = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
+                                          result.data(), size);
   if (written == 0)
     return unexpected(last_win32_error());
   result.resize(static_cast<std::size_t>(written));
@@ -1062,13 +1000,11 @@ struct local_free_deleter
 inline auto
 utf16_to_utf8(PCWSTR value) -> expected<std::string, std::error_code>
 {
-  int const size = WideCharToMultiByte(CP_UTF8, 0, value, -1, nullptr, 0,
-                                       nullptr, nullptr);
+  int const size = WideCharToMultiByte(CP_UTF8, 0, value, -1, nullptr, 0, nullptr, nullptr);
   if (size == 0)
     return unexpected(last_win32_error());
   std::string result(static_cast<std::size_t>(size), '\0');
-  int const written = WideCharToMultiByte(CP_UTF8, 0, value, -1, result.data(),
-                                          size, nullptr, nullptr);
+  int const written = WideCharToMultiByte(CP_UTF8, 0, value, -1, result.data(), size, nullptr, nullptr);
   if (written == 0)
     return unexpected(last_win32_error());
   result.resize(static_cast<std::size_t>(written - 1));
@@ -1076,8 +1012,7 @@ utf16_to_utf8(PCWSTR value) -> expected<std::string, std::error_code>
 }
 
 inline auto
-apply_name(HANDLE handle, std::string const& name)
-    -> expected<void, std::error_code>
+apply_name(HANDLE handle, std::string const& name) -> expected<void, std::error_code>
 {
   if (!handle)
     return unexpected(std::make_error_code(std::errc::no_such_process));
@@ -1112,8 +1047,7 @@ read_name(HANDLE handle) -> expected<std::string, std::error_code>
 }
 
 inline auto
-read_affinity(HANDLE handle)
-    -> expected<native_thread_affinity, std::error_code>
+read_affinity(HANDLE handle) -> expected<native_thread_affinity, std::error_code>
 {
   if (!handle)
     return unexpected(std::make_error_code(std::errc::no_such_process));
@@ -1121,9 +1055,8 @@ read_affinity(HANDLE handle)
   HMODULE module = GetModuleHandleW(L"kernel32.dll");
   if (!module)
     return unexpected(last_win32_error());
-  auto get_group_affinity
-      = reinterpret_cast<get_thread_group_affinity_fn>(reinterpret_cast<void*>(
-          GetProcAddress(module, "GetThreadGroupAffinity")));
+  auto get_group_affinity = reinterpret_cast<get_thread_group_affinity_fn>(
+      reinterpret_cast<void*>(GetProcAddress(module, "GetThreadGroupAffinity")));
   if (!get_group_affinity)
     return unexpected(std::make_error_code(std::errc::function_not_supported));
   GROUP_AFFINITY ga{};
@@ -1172,8 +1105,7 @@ read_nice_value(HANDLE handle) -> expected<int, std::error_code>
 }
 
 inline auto
-read_scheduling_policy(HANDLE handle)
-    -> std::optional<native_scheduling_policy>
+read_scheduling_policy(HANDLE handle) -> std::optional<native_scheduling_policy>
 {
   if (!handle)
     return std::nullopt;
@@ -1181,8 +1113,7 @@ read_scheduling_policy(HANDLE handle)
 }
 
 inline auto
-apply_priority(native_thread_id tid, native_thread_priority priority)
-    -> expected<void, std::error_code>
+apply_priority(native_thread_id tid, native_thread_priority priority) -> expected<void, std::error_code>
 {
   HANDLE handle = OpenThread(THREAD_SET_INFORMATION, FALSE, tid);
   if (!handle)
@@ -1194,8 +1125,7 @@ apply_priority(native_thread_id tid, native_thread_priority priority)
 }
 
 inline auto
-apply_windows_thread_priority(native_thread_id tid, int priority)
-    -> expected<void, std::error_code>
+apply_windows_thread_priority(native_thread_id tid, int priority) -> expected<void, std::error_code>
 {
   HANDLE handle = OpenThread(THREAD_SET_INFORMATION, FALSE, tid);
   if (!handle)
@@ -1206,8 +1136,7 @@ apply_windows_thread_priority(native_thread_id tid, int priority)
 }
 
 inline auto
-apply_nice_value(native_thread_id tid, int nice_value)
-    -> expected<void, std::error_code>
+apply_nice_value(native_thread_id tid, int nice_value) -> expected<void, std::error_code>
 {
   HANDLE handle = OpenThread(THREAD_SET_INFORMATION, FALSE, tid);
   if (!handle)
@@ -1218,8 +1147,7 @@ apply_nice_value(native_thread_id tid, int nice_value)
 }
 
 inline auto
-apply_scheduling_policy(native_thread_id tid, native_scheduling_policy policy,
-                        native_thread_priority priority)
+apply_scheduling_policy(native_thread_id tid, native_scheduling_policy policy, native_thread_priority priority)
     -> expected<void, std::error_code>
 {
   HANDLE handle = OpenThread(THREAD_SET_INFORMATION, FALSE, tid);
@@ -1232,8 +1160,7 @@ apply_scheduling_policy(native_thread_id tid, native_scheduling_policy policy,
 }
 
 inline auto
-apply_affinity(native_thread_id tid, native_thread_affinity const& affinity)
-    -> expected<void, std::error_code>
+apply_affinity(native_thread_id tid, native_thread_affinity const& affinity) -> expected<void, std::error_code>
 {
   HANDLE handle = OpenThread(THREAD_SET_INFORMATION, FALSE, tid);
   if (!handle)
@@ -1245,8 +1172,7 @@ apply_affinity(native_thread_id tid, native_thread_affinity const& affinity)
 }
 
 inline auto
-apply_name(native_thread_id tid, std::string const& name)
-    -> expected<void, std::error_code>
+apply_name(native_thread_id tid, std::string const& name) -> expected<void, std::error_code>
 {
   HANDLE handle = OpenThread(THREAD_SET_LIMITED_INFORMATION, FALSE, tid);
   if (!handle)
@@ -1270,8 +1196,7 @@ read_name(native_thread_id tid) -> expected<std::string, std::error_code>
 }
 
 inline auto
-read_affinity(native_thread_id tid)
-    -> expected<native_thread_affinity, std::error_code>
+read_affinity(native_thread_id tid) -> expected<native_thread_affinity, std::error_code>
 {
   HANDLE handle = OpenThread(THREAD_QUERY_INFORMATION, FALSE, tid);
   if (!handle)
@@ -1306,8 +1231,7 @@ read_nice_value(native_thread_id tid) -> expected<int, std::error_code>
 }
 
 inline auto
-read_scheduling_policy(native_thread_id tid)
-    -> std::optional<native_scheduling_policy>
+read_scheduling_policy(native_thread_id tid) -> std::optional<native_scheduling_policy>
 {
   HANDLE handle = OpenThread(THREAD_QUERY_INFORMATION, FALSE, tid);
   if (!handle)
@@ -1323,8 +1247,7 @@ read_scheduling_policy(native_thread_id tid)
 // handle in this adapter; it must never participate in the native_thread_id
 // overload set.
 inline auto
-win32_handle_from_pthread(pthread_t thread)
-    -> expected<HANDLE, std::error_code>
+win32_handle_from_pthread(pthread_t thread) -> expected<HANDLE, std::error_code>
 {
   HANDLE const handle = pthread_gethandle(thread);
   if (!handle)
@@ -1333,8 +1256,7 @@ win32_handle_from_pthread(pthread_t thread)
 }
 
 inline auto
-apply_scheduling_policy(pthread_t thread, native_scheduling_policy policy,
-                        native_thread_priority priority)
+apply_scheduling_policy(pthread_t thread, native_scheduling_policy policy, native_thread_priority priority)
     -> expected<void, std::error_code>
 {
   auto const handle = win32_handle_from_pthread(thread);
@@ -1344,8 +1266,7 @@ apply_scheduling_policy(pthread_t thread, native_scheduling_policy policy,
 }
 
 inline auto
-apply_priority(pthread_t thread, native_thread_priority priority)
-    -> expected<void, std::error_code>
+apply_priority(pthread_t thread, native_thread_priority priority) -> expected<void, std::error_code>
 {
   auto const handle = win32_handle_from_pthread(thread);
   if (!handle.has_value())
@@ -1354,8 +1275,7 @@ apply_priority(pthread_t thread, native_thread_priority priority)
 }
 
 inline auto
-apply_windows_thread_priority(pthread_t thread, int priority)
-    -> expected<void, std::error_code>
+apply_windows_thread_priority(pthread_t thread, int priority) -> expected<void, std::error_code>
 {
   auto const handle = win32_handle_from_pthread(thread);
   if (!handle.has_value())
@@ -1364,8 +1284,7 @@ apply_windows_thread_priority(pthread_t thread, int priority)
 }
 
 inline auto
-apply_nice_value(pthread_t thread, int nice_value)
-    -> expected<void, std::error_code>
+apply_nice_value(pthread_t thread, int nice_value) -> expected<void, std::error_code>
 {
   auto const handle = win32_handle_from_pthread(thread);
   if (!handle.has_value())
@@ -1374,8 +1293,7 @@ apply_nice_value(pthread_t thread, int nice_value)
 }
 
 inline auto
-apply_affinity(pthread_t thread, native_thread_affinity const& affinity)
-    -> expected<void, std::error_code>
+apply_affinity(pthread_t thread, native_thread_affinity const& affinity) -> expected<void, std::error_code>
 {
   auto const handle = win32_handle_from_pthread(thread);
   if (!handle.has_value())
@@ -1384,8 +1302,7 @@ apply_affinity(pthread_t thread, native_thread_affinity const& affinity)
 }
 
 inline auto
-apply_name(pthread_t thread, std::string const& name)
-    -> expected<void, std::error_code>
+apply_name(pthread_t thread, std::string const& name) -> expected<void, std::error_code>
 {
   // Validate before handing UTF-8 to winpthreads, whose API accepts char*.
   auto const wide = utf8_to_utf16(name);
@@ -1408,8 +1325,7 @@ read_name(pthread_t thread) -> expected<std::string, std::error_code>
 }
 
 inline auto
-read_affinity(pthread_t thread)
-    -> expected<native_thread_affinity, std::error_code>
+read_affinity(pthread_t thread) -> expected<native_thread_affinity, std::error_code>
 {
   auto const handle = win32_handle_from_pthread(thread);
   if (!handle.has_value())
@@ -1434,12 +1350,10 @@ read_nice_value(pthread_t thread) -> expected<int, std::error_code>
 }
 
 inline auto
-read_scheduling_policy(pthread_t thread)
-    -> std::optional<native_scheduling_policy>
+read_scheduling_policy(pthread_t thread) -> std::optional<native_scheduling_policy>
 {
   auto const handle = win32_handle_from_pthread(thread);
-  return handle.has_value() ? read_scheduling_policy(handle.value())
-                            : std::nullopt;
+  return handle.has_value() ? read_scheduling_policy(handle.value()) : std::nullopt;
 }
 #  endif
 
@@ -1457,13 +1371,11 @@ pthread_call_result(int result) -> expected<void, std::error_code>
 
 template <typename SetSchedFn>
 inline auto
-apply_sched_params(native_scheduling_policy policy,
-                   native_thread_priority priority, SetSchedFn&& set_sched)
+apply_sched_params(native_scheduling_policy policy, native_thread_priority priority, SetSchedFn&& set_sched)
     -> expected<void, std::error_code>
 {
   int const policy_int = static_cast<int>(policy);
-  auto params_result
-      = scheduler_parameters::create_for_policy(policy, priority);
+  auto params_result = scheduler_parameters::create_for_policy(policy, priority);
   if (!params_result.has_value())
     return unexpected(params_result.error());
   if (set_sched(policy_int, &params_result.value()) == 0)
@@ -1474,40 +1386,32 @@ apply_sched_params(native_scheduling_policy policy,
 // --- pthread_t overloads used by std::thread::native_handle() ---
 
 inline auto
-apply_scheduling_policy(pthread_t handle, native_scheduling_policy policy,
-                        native_thread_priority priority)
+apply_scheduling_policy(pthread_t handle, native_scheduling_policy policy, native_thread_priority priority)
     -> expected<void, std::error_code>
 {
   int const policy_int = static_cast<int>(policy);
-  auto params_result
-      = scheduler_parameters::create_for_policy(policy, priority);
+  auto params_result = scheduler_parameters::create_for_policy(policy, priority);
   if (!params_result.has_value())
     return unexpected(params_result.error());
-  int const result
-      = pthread_setschedparam(handle, policy_int, &params_result.value());
+  int const result = pthread_setschedparam(handle, policy_int, &params_result.value());
   return pthread_call_result(result);
 }
 
 inline auto
-apply_priority(pthread_t handle, native_thread_priority priority)
-    -> expected<void, std::error_code>
+apply_priority(pthread_t handle, native_thread_priority priority) -> expected<void, std::error_code>
 {
-  return apply_scheduling_policy(handle, native_scheduling_policy::other,
-                                 priority);
+  return apply_scheduling_policy(handle, native_scheduling_policy::other, priority);
 }
 
 inline auto
-apply_affinity(pthread_t handle, native_thread_affinity const& affinity)
-    -> expected<void, std::error_code>
+apply_affinity(pthread_t handle, native_thread_affinity const& affinity) -> expected<void, std::error_code>
 {
-  int const result = pthread_setaffinity_np(handle, sizeof(cpu_set_t),
-                                            &affinity.native_handle());
+  int const result = pthread_setaffinity_np(handle, sizeof(cpu_set_t), &affinity.native_handle());
   return pthread_call_result(result);
 }
 
 inline auto
-apply_name(pthread_t handle, std::string const& name)
-    -> expected<void, std::error_code>
+apply_name(pthread_t handle, std::string const& name) -> expected<void, std::error_code>
 {
   if (name.length() > 15)
     return unexpected(std::make_error_code(std::errc::invalid_argument));
@@ -1528,13 +1432,11 @@ read_name(pthread_t handle) -> expected<std::string, std::error_code>
 }
 
 inline auto
-read_affinity(pthread_t handle)
-    -> expected<native_thread_affinity, std::error_code>
+read_affinity(pthread_t handle) -> expected<native_thread_affinity, std::error_code>
 {
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
-  int const result
-      = pthread_getaffinity_np(handle, sizeof(cpu_set_t), &cpuset);
+  int const result = pthread_getaffinity_np(handle, sizeof(cpu_set_t), &cpuset);
   if (result != 0)
     return unexpected(std::error_code(result, std::generic_category()));
 
@@ -1558,8 +1460,7 @@ read_priority(pthread_t handle) -> std::optional<int>
 }
 
 inline auto
-read_scheduling_policy(pthread_t handle)
-    -> std::optional<native_scheduling_policy>
+read_scheduling_policy(pthread_t handle) -> std::optional<native_scheduling_policy>
 {
   int policy = 0;
   sched_param param{};
@@ -1571,20 +1472,16 @@ read_scheduling_policy(pthread_t handle)
 // --- pid_t / TID overloads (thread_by_name_view) ---
 
 inline auto
-apply_scheduling_policy(pid_t tid, native_scheduling_policy policy,
-                        native_thread_priority priority)
+apply_scheduling_policy(pid_t tid, native_scheduling_policy policy, native_thread_priority priority)
     -> expected<void, std::error_code>
 {
-  return apply_sched_params(policy, priority, [tid](int p, sched_param* sp)
-                              { return sched_setscheduler(tid, p, sp); });
+  return apply_sched_params(policy, priority, [tid](int p, sched_param* sp) { return sched_setscheduler(tid, p, sp); });
 }
 
 inline auto
-apply_priority(pid_t tid, native_thread_priority priority)
-    -> expected<void, std::error_code>
+apply_priority(pid_t tid, native_thread_priority priority) -> expected<void, std::error_code>
 {
-  return apply_scheduling_policy(tid, native_scheduling_policy::other,
-                                 priority);
+  return apply_scheduling_policy(tid, native_scheduling_policy::other, priority);
 }
 
 inline auto
@@ -1600,24 +1497,20 @@ apply_nice_value(pid_t tid, int nice_value) -> expected<void, std::error_code>
 }
 
 inline auto
-apply_affinity(pid_t tid, native_thread_affinity const& affinity)
-    -> expected<void, std::error_code>
+apply_affinity(pid_t tid, native_thread_affinity const& affinity) -> expected<void, std::error_code>
 {
-  if (sched_setaffinity(tid, sizeof(cpu_set_t), &affinity.native_handle())
-      == 0)
+  if (sched_setaffinity(tid, sizeof(cpu_set_t), &affinity.native_handle()) == 0)
     return {};
   return unexpected(std::error_code(errno, std::generic_category()));
 }
 
 inline auto
-apply_name(pid_t tid, std::string const& name)
-    -> expected<void, std::error_code>
+apply_name(pid_t tid, std::string const& name) -> expected<void, std::error_code>
 {
   if (name.length() > 15)
     return unexpected(std::make_error_code(std::errc::invalid_argument));
 
-  std::string const path
-      = std::string("/proc/self/task/") + std::to_string(tid) + "/comm";
+  std::string const path = std::string("/proc/self/task/") + std::to_string(tid) + "/comm";
   std::ofstream out(path);
   if (!out)
     return unexpected(std::error_code(errno, std::generic_category()));
@@ -1632,8 +1525,7 @@ apply_name(pid_t tid, std::string const& name)
 inline auto
 read_name(pid_t tid) -> expected<std::string, std::error_code>
 {
-  std::string const path
-      = std::string("/proc/self/task/") + std::to_string(tid) + "/comm";
+  std::string const path = std::string("/proc/self/task/") + std::to_string(tid) + "/comm";
   std::ifstream in(path);
   if (!in)
     return unexpected(std::error_code(errno, std::generic_category()));
@@ -1698,9 +1590,7 @@ read_scheduling_policy(pid_t tid) -> std::optional<native_scheduling_policy>
 
 template <typename NativeHandle>
 inline auto
-apply_affinity_checked(NativeHandle handle,
-                       native_thread_affinity const& affinity)
-    -> expected<void, std::error_code>
+apply_affinity_checked(NativeHandle handle, native_thread_affinity const& affinity) -> expected<void, std::error_code>
 {
   auto previous = read_affinity(handle);
   if (!previous)
@@ -1724,8 +1614,7 @@ apply_affinity_checked(NativeHandle handle,
 
 template <typename NativeHandle>
 inline auto
-apply_scheduling_config(NativeHandle handle, native_thread_id tid,
-                        native_scheduling_config const& config)
+apply_scheduling_config(NativeHandle handle, native_thread_id tid, native_scheduling_config const& config)
     -> expected<void, std::error_code>
 {
   auto const scheduling = resolve_scheduling_config(config);
@@ -1744,41 +1633,35 @@ apply_scheduling_config(NativeHandle handle, native_thread_id tid,
       return apply_nice_value(handle, scheduling.priority.value());
 #else
       if (tid <= 0)
-        return unexpected(
-            std::make_error_code(std::errc::operation_not_supported));
+        return unexpected(std::make_error_code(std::errc::operation_not_supported));
       auto policy_result
-          = apply_scheduling_policy(handle, native_scheduling_policy::other,
-                                    native_thread_priority::normal());
+          = apply_scheduling_policy(handle, native_scheduling_policy::other, native_thread_priority::normal());
       if (!policy_result)
         return policy_result;
       return apply_nice_value(tid, scheduling.priority.value());
 #endif
     }
 
-  return apply_scheduling_policy(handle, scheduling.policy,
-                                 scheduling.priority);
+  return apply_scheduling_policy(handle, scheduling.policy, scheduling.priority);
 }
 
 template <typename NativeHandle>
 inline auto
-read_effective_nice(NativeHandle handle, native_thread_id tid)
-    -> expected<int, std::error_code>
+read_effective_nice(NativeHandle handle, native_thread_id tid) -> expected<int, std::error_code>
 {
 #ifdef _WIN32
   (void)tid;
   return read_nice_value(handle);
 #else
   if (tid <= 0)
-    return unexpected(
-        std::make_error_code(std::errc::operation_not_supported));
+    return unexpected(std::make_error_code(std::errc::operation_not_supported));
   auto const policy = read_scheduling_policy(handle);
   if (!policy.has_value())
     return unexpected(std::make_error_code(std::errc::no_such_process));
   if (policy.value() == native_scheduling_policy::idle)
     return 19;
   if (is_realtime_policy(policy.value()))
-    return unexpected(
-        std::make_error_code(std::errc::operation_not_supported));
+    return unexpected(std::make_error_code(std::errc::operation_not_supported));
   return read_nice_value(tid);
 #endif
 }

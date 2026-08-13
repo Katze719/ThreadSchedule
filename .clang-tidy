@@ -1,4 +1,4 @@
-Checks: '-*,bugprone-use-after-move,performance-for-range-copy,performance-move-const-arg,performance-unnecessary-copy-initialization,modernize-use-nullptr,modernize-use-override,readability-identifier-naming'
+Checks: '-*,bugprone-use-after-move,performance-for-range-copy,performance-move-const-arg,performance-unnecessary-copy-initialization,modernize-use-nullptr,modernize-use-override,readability-function-cognitive-complexity,readability-identifier-naming'
 WarningsAsErrors: ''
 HeaderFilterRegex: '(^|/)include/threadschedule/.*\.hpp$'
 FormatStyle: file
@@ -6,6 +6,11 @@ CheckOptions:
   - key: modernize-use-nullptr.NullMacros
     value: 'NULL'
   - key: modernize-use-nullptr.UseNullptr
+    value: true
+
+  - key: readability-function-cognitive-complexity.Threshold
+    value: 55
+  - key: readability-function-cognitive-complexity.IgnoreMacros
     value: true
 
   # Public libstdc++ names are lowercase/snake_case. Its _M_foo, _Tp and

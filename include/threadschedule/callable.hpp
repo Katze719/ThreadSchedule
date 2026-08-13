@@ -48,8 +48,7 @@ class move_callable<R(Args...)>
   struct callable_model final : callable_base
   {
     template <typename Value>
-    explicit callable_model(Value&& value)
-        : callable_(std::forward<Value>(value))
+    explicit callable_model(Value&& value) : callable_(std::forward<Value>(value))
     {
     }
 
@@ -72,18 +71,13 @@ class move_callable<R(Args...)>
 
 public:
   move_callable() noexcept = default;
-  move_callable(std::nullptr_t) noexcept {
-  } // NOLINT(google-explicit-constructor)
+  move_callable(std::nullptr_t) noexcept {} // NOLINT(google-explicit-constructor)
 
-  template <
-      typename Callable,
-      std::enable_if_t<
-          !std::is_same_v<remove_cvref_t<Callable>, move_callable>
-              && std::is_invocable_r_v<R, std::decay_t<Callable>&, Args...>,
-          int> = 0>
+  template <typename Callable, std::enable_if_t<!std::is_same_v<remove_cvref_t<Callable>, move_callable>
+                                                    && std::is_invocable_r_v<R, std::decay_t<Callable>&, Args...>,
+                                                int> = 0>
   move_callable(Callable&& callable) // NOLINT(google-explicit-constructor)
-      : callable_(std::make_unique<callable_model<std::decay_t<Callable>>>(
-            std::forward<Callable>(callable)))
+      : callable_(std::make_unique<callable_model<std::decay_t<Callable>>>(std::forward<Callable>(callable)))
   {
   }
 
@@ -147,13 +141,9 @@ public:
       };
   }
 
-  template <typename F,
-            typename
-            = std::enable_if_t<!std::is_same_v<remove_cvref_t<F>, function_ref>
-                               && std::is_invocable_r_v<R, F&, Args...>>>
-  function_ref(F&& fn) noexcept
-      : object_(
-            const_cast<void*>(static_cast<void const*>(std::addressof(fn))))
+  template <typename F, typename = std::enable_if_t<!std::is_same_v<remove_cvref_t<F>, function_ref>
+                                                    && std::is_invocable_r_v<R, F&, Args...>>>
+  function_ref(F&& fn) noexcept : object_(const_cast<void*>(static_cast<void const*>(std::addressof(fn))))
   {
     callback_ = [](void* object, R (*)(Args...), Args... args) -> R
       {

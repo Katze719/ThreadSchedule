@@ -41,8 +41,7 @@ do_void_ok()
 ts::expected<void, std::error_code>
 do_void_fail()
 {
-  return ts::unexpected(
-      std::make_error_code(std::errc::operation_not_permitted));
+  return ts::unexpected(std::make_error_code(std::errc::operation_not_permitted));
 }
 
 } // namespace
@@ -79,8 +78,7 @@ TEST(ExpectedTest, VoidFail)
 {
   auto r = do_void_fail();
   EXPECT_FALSE(r.has_value());
-  EXPECT_EQ(r.error(),
-            std::make_error_code(std::errc::operation_not_permitted));
+  EXPECT_EQ(r.error(), std::make_error_code(std::errc::operation_not_permitted));
 }
 
 TEST(ExpectedTest, IfConditionWorks)
@@ -125,8 +123,7 @@ TEST(ExpectedTest, IfConditionWorksVoid)
     }
   else
     {
-      EXPECT_EQ(bad.error(),
-                std::make_error_code(std::errc::operation_not_permitted));
+      EXPECT_EQ(bad.error(), std::make_error_code(std::errc::operation_not_permitted));
     }
 }
 
@@ -135,8 +132,7 @@ TEST(ExpectedTest, TypeAliases)
   using exp_t = ts::expected<int, std::error_code>;
   static_assert(std::is_same_v<exp_t::value_type, int>);
   static_assert(std::is_same_v<exp_t::error_type, std::error_code>);
-  static_assert(
-      std::is_same_v<exp_t::unexpected_type, ts::unexpected<std::error_code>>);
+  static_assert(std::is_same_v<exp_t::unexpected_type, ts::unexpected<std::error_code>>);
 
   using exp_void_t = ts::expected<void, std::error_code>;
   static_assert(std::is_same_v<exp_void_t::value_type, void>);
@@ -236,28 +232,24 @@ TEST(ExpectedTest, VoidSwap)
 TEST(ExpectedTest, AndThen)
 {
   auto ok = parse_int_ok();
-  auto result = ok.and_then(
-      [](int v) { return ts::expected<int, std::error_code>(v * 2); });
+  auto result = ok.and_then([](int v) { return ts::expected<int, std::error_code>(v * 2); });
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(*result, 84);
 
   auto bad = parse_int_fail();
-  auto result2 = bad.and_then(
-      [](int v) { return ts::expected<int, std::error_code>(v * 2); });
+  auto result2 = bad.and_then([](int v) { return ts::expected<int, std::error_code>(v * 2); });
   EXPECT_FALSE(result2.has_value());
 }
 
 TEST(ExpectedTest, OrElse)
 {
   auto ok = parse_int_ok();
-  auto result = ok.or_else(
-      [](std::error_code) { return ts::expected<int, std::error_code>(0); });
+  auto result = ok.or_else([](std::error_code) { return ts::expected<int, std::error_code>(0); });
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(*result, 42);
 
   auto bad = parse_int_fail();
-  auto result2 = bad.or_else(
-      [](std::error_code) { return ts::expected<int, std::error_code>(99); });
+  auto result2 = bad.or_else([](std::error_code) { return ts::expected<int, std::error_code>(99); });
   ASSERT_TRUE(result2.has_value());
   EXPECT_EQ(*result2, 99);
 }
@@ -277,8 +269,7 @@ TEST(ExpectedTest, Transform)
 TEST(ExpectedTest, TransformError)
 {
   auto bad = parse_int_fail();
-  auto result
-      = bad.transform_error([](std::error_code ec) { return ec.value(); });
+  auto result = bad.transform_error([](std::error_code ec) { return ec.value(); });
   EXPECT_FALSE(result.has_value());
   EXPECT_EQ(result.error(), static_cast<int>(std::errc::invalid_argument));
 }
@@ -286,13 +277,11 @@ TEST(ExpectedTest, TransformError)
 TEST(ExpectedTest, VoidAndThen)
 {
   auto ok = do_void_ok();
-  auto result
-      = ok.and_then([]() { return ts::expected<void, std::error_code>(); });
+  auto result = ok.and_then([]() { return ts::expected<void, std::error_code>(); });
   EXPECT_TRUE(result.has_value());
 
   auto bad = do_void_fail();
-  auto result2
-      = bad.and_then([]() { return ts::expected<void, std::error_code>(); });
+  auto result2 = bad.and_then([]() { return ts::expected<void, std::error_code>(); });
   EXPECT_FALSE(result2.has_value());
 }
 
@@ -337,8 +326,7 @@ TEST(ExpectedTest, EqualityWithValue)
 TEST(ExpectedTest, EqualityWithUnexpected)
 {
   auto bad = parse_int_fail();
-  auto unexp
-      = ts::unexpected(std::make_error_code(std::errc::invalid_argument));
+  auto unexp = ts::unexpected(std::make_error_code(std::errc::invalid_argument));
 
   EXPECT_TRUE(bad == unexp);
   EXPECT_TRUE(unexp == bad);
@@ -367,8 +355,7 @@ TEST(ExpectedTest, InPlaceConstruction)
 
 TEST(ExpectedTest, UnexpectConstruction)
 {
-  ts::expected<int, std::error_code> e(
-      ts::unexpect, std::make_error_code(std::errc::invalid_argument));
+  ts::expected<int, std::error_code> e(ts::unexpect, std::make_error_code(std::errc::invalid_argument));
   EXPECT_FALSE(e.has_value());
   EXPECT_EQ(e.error(), std::make_error_code(std::errc::invalid_argument));
 }
@@ -378,8 +365,7 @@ TEST(ExpectedTest, ValueOrRvalue)
   ts::expected<int, std::error_code> ok(42);
   EXPECT_EQ(std::move(ok).value_or(7), 42);
 
-  ts::expected<int, std::error_code> bad(
-      ts::unexpect, std::make_error_code(std::errc::invalid_argument));
+  ts::expected<int, std::error_code> bad(ts::unexpect, std::make_error_code(std::errc::invalid_argument));
   EXPECT_EQ(std::move(bad).value_or(7), 7);
 }
 
@@ -397,23 +383,16 @@ TEST(ExpectedStdTypes, VectorValueBasicAndThen)
 {
   ts::expected<std::vector<int>, std::string> ok(std::vector<int>{ 1, 2, 3 });
   ASSERT_TRUE(ok.has_value());
-  auto sizes = ok.and_then(
-      [](std::vector<int>& v)
-        { return ts::expected<std::size_t, std::string>(v.size()); });
+  auto sizes = ok.and_then([](std::vector<int>& v) { return ts::expected<std::size_t, std::string>(v.size()); });
   ASSERT_TRUE(sizes.has_value());
   EXPECT_EQ(*sizes, 3U);
 }
 
 TEST(ExpectedStdTypes, VectorOrElseFallback)
 {
-  ts::expected<std::vector<int>, std::string> bad(ts::unexpect,
-                                                  std::string("err"));
-  auto res = bad.or_else(
-      [](std::string)
-        {
-          return ts::expected<std::vector<int>, std::string>(
-              std::vector<int>{ 7 });
-        });
+  ts::expected<std::vector<int>, std::string> bad(ts::unexpect, std::string("err"));
+  auto res
+      = bad.or_else([](std::string) { return ts::expected<std::vector<int>, std::string>(std::vector<int>{ 7 }); });
   ASSERT_TRUE(res.has_value());
   ASSERT_EQ(res->size(), 1U);
   EXPECT_EQ((*res)[0], 7);
@@ -422,16 +401,14 @@ TEST(ExpectedStdTypes, VectorOrElseFallback)
 TEST(ExpectedStdTypes, OptionalValueTransform)
 {
   ts::expected<std::optional<int>, std::error_code> ok(std::optional<int>(5));
-  auto doubled = ok.transform([](std::optional<int> const& o)
-                                { return o ? (*o) * 2 : 0; });
+  auto doubled = ok.transform([](std::optional<int> const& o) { return o ? (*o) * 2 : 0; });
   ASSERT_TRUE(doubled.has_value());
   EXPECT_EQ(*doubled, 10);
 }
 
 TEST(ExpectedStdTypes, UniquePtrRvalueMoveOut)
 {
-  ts::expected<std::unique_ptr<int>, std::string> ok(
-      std::make_unique<int>(11));
+  ts::expected<std::unique_ptr<int>, std::string> ok(std::make_unique<int>(11));
   auto ptr = std::move(ok).value_or(std::unique_ptr<int>());
   ASSERT_TRUE(static_cast<bool>(ptr));
   EXPECT_EQ(*ptr, 11);
@@ -445,12 +422,10 @@ TEST(ExpectedStdTypes, PairAndArrayConstUsage)
   auto const& p = ok.value();
   EXPECT_EQ(p.first + p.second, 5);
   // const&& value()
-  auto sum
-      = std::move(ok).value().first + 3; // ok.value() const&& returns by value
+  auto sum = std::move(ok).value().first + 3; // ok.value() const&& returns by value
   EXPECT_EQ(sum, 5);
 
-  ts::expected<std::array<int, 3>, std::string> arr(
-      std::array<int, 3>{ 1, 2, 3 });
+  ts::expected<std::array<int, 3>, std::string> arr(std::array<int, 3>{ 1, 2, 3 });
   ASSERT_TRUE(arr.has_value());
   EXPECT_EQ(arr->at(1), 2);
 }
@@ -462,8 +437,7 @@ TEST(ExpectedStdTypes, TransformAndThenConstOverloads)
   ASSERT_TRUE(doubled.has_value());
   EXPECT_EQ(*doubled, 42);
 
-  auto chained = ok.and_then(
-      [](int const v) { return ts::expected<int, std::string>(v + 1); });
+  auto chained = ok.and_then([](int const v) { return ts::expected<int, std::string>(v + 1); });
   ASSERT_TRUE(chained.has_value());
   EXPECT_EQ(*chained, 22);
 }
@@ -471,8 +445,7 @@ TEST(ExpectedStdTypes, TransformAndThenConstOverloads)
 TEST(ExpectedStdTypes, ErrorStringTransformErrorConstRvalue)
 {
   ts::expected<int, std::string> const bad(ts::unexpect, std::string("error"));
-  auto mapped = std::move(bad).transform_error([](std::string const& s)
-                                                 { return s.size(); });
+  auto mapped = std::move(bad).transform_error([](std::string const& s) { return s.size(); });
   ASSERT_FALSE(mapped.has_value());
   EXPECT_EQ(mapped.error(), 5U);
 }
@@ -480,8 +453,7 @@ TEST(ExpectedStdTypes, ErrorStringTransformErrorConstRvalue)
 TEST(ExpectedStringTest, StringValueOr)
 {
   ts::expected<std::string, std::error_code> ok(std::string("hi"));
-  ts::expected<std::string, std::error_code> bad(
-      ts::unexpected(std::make_error_code(std::errc::invalid_argument)));
+  ts::expected<std::string, std::error_code> bad(ts::unexpected(std::make_error_code(std::errc::invalid_argument)));
   EXPECT_EQ(ok.value_or("x"), std::string("hi"));
   EXPECT_EQ(bad.value_or("x"), std::string("x"));
 }
@@ -489,23 +461,16 @@ TEST(ExpectedStringTest, StringValueOr)
 TEST(ExpectedStringTest, AndThenProducesSize)
 {
   ts::expected<std::string, std::error_code> ok(std::string("hello"));
-  auto result = ok.and_then(
-      [](std::string& s)
-        { return ts::expected<std::size_t, std::error_code>(s.size()); });
+  auto result = ok.and_then([](std::string& s) { return ts::expected<std::size_t, std::error_code>(s.size()); });
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(*result, 5u);
 }
 
 TEST(ExpectedStringTest, OrElseProvidesFallback)
 {
-  ts::expected<std::string, std::error_code> bad(
-      ts::unexpected(std::make_error_code(std::errc::invalid_argument)));
-  auto result = bad.or_else(
-      [](std::error_code)
-        {
-          return ts::expected<std::string, std::error_code>(
-              std::string("fallback"));
-        });
+  ts::expected<std::string, std::error_code> bad(ts::unexpected(std::make_error_code(std::errc::invalid_argument)));
+  auto result = bad.or_else([](std::error_code)
+                              { return ts::expected<std::string, std::error_code>(std::string("fallback")); });
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(*result, std::string("fallback"));
 }
@@ -520,8 +485,7 @@ TEST(ExpectedStringErrorTest, ErrorIsStringBasic)
 TEST(ExpectedStringErrorTest, TransformErrorMapsStringToSize)
 {
   ts::expected<int, std::string> e(ts::unexpect, std::string("oops"));
-  auto mapped
-      = e.transform_error([](std::string const& s) { return s.size(); });
+  auto mapped = e.transform_error([](std::string const& s) { return s.size(); });
   ASSERT_FALSE(mapped.has_value());
   EXPECT_EQ(mapped.error(), 4u);
 }
@@ -530,8 +494,7 @@ TEST(ExpectedStringErrorTest, VoidWithStringErrorOrElse)
 {
   ts::expected<void, std::string> bad(ts::unexpect, std::string("oops"));
   ASSERT_FALSE(bad.has_value());
-  auto fixed = bad.or_else([](std::string&)
-                             { return ts::expected<void, std::string>(); });
+  auto fixed = bad.or_else([](std::string&) { return ts::expected<void, std::string>(); });
   EXPECT_TRUE(fixed.has_value());
 }
 
@@ -540,8 +503,8 @@ TEST(ExpectedStringTest, EqualityWithStringValues)
   ts::expected<std::string, std::error_code> ok1(std::string("a"));
   ts::expected<std::string, std::error_code> ok2(std::string("a"));
   ts::expected<std::string, std::error_code> ok3(std::string("b"));
-  auto bad = ts::expected<std::string, std::error_code>(
-      ts::unexpected(std::make_error_code(std::errc::invalid_argument)));
+  auto bad
+      = ts::expected<std::string, std::error_code>(ts::unexpected(std::make_error_code(std::errc::invalid_argument)));
 
   EXPECT_TRUE(ok1 == ok2);
   EXPECT_FALSE(ok1 != ok2);
@@ -556,19 +519,16 @@ TEST(ExpectedStringTest, ValueOrRvalue)
   ts::expected<std::string, std::error_code> ok(std::string("foo"));
   EXPECT_EQ(std::move(ok).value_or("x"), std::string("foo"));
 
-  ts::expected<std::string, std::error_code> bad(
-      ts::unexpect, std::make_error_code(std::errc::invalid_argument));
+  ts::expected<std::string, std::error_code> bad(ts::unexpect, std::make_error_code(std::errc::invalid_argument));
   EXPECT_EQ(std::move(bad).value_or("x"), std::string("x"));
 }
 
 #if THREADSCHEDULE_HAS_STD_EXPECTED
 TEST(ExpectedInteropTest, ImplicitlyConvertsCopyableStatesToStdExpected)
 {
-  static_assert(std::is_convertible_v<ts::expected<int, std::string> const&,
-                                      std::expected<int, std::string>>);
+  static_assert(std::is_convertible_v<ts::expected<int, std::string> const&, std::expected<int, std::string>>);
 
-  auto accept_standard
-      = [](std::expected<int, std::string> value) { return value; };
+  auto accept_standard = [](std::expected<int, std::string> value) { return value; };
 
   ts::expected<int, std::string> value(42);
   auto standard_value = accept_standard(value);
@@ -588,22 +548,16 @@ TEST(ExpectedInteropTest, ImplicitlyConvertsCopyableStatesToStdExpected)
 TEST(ExpectedInteropTest, MovesMoveOnlyStatesToStdExpected)
 {
   using move_value = ts::expected<std::unique_ptr<int>, std::string>;
-  static_assert(
-      std::is_convertible_v<move_value&&,
-                            std::expected<std::unique_ptr<int>, std::string>>);
-  static_assert(!std::is_convertible_v<
-                move_value const&,
-                std::expected<std::unique_ptr<int>, std::string>>);
+  static_assert(std::is_convertible_v<move_value&&, std::expected<std::unique_ptr<int>, std::string>>);
+  static_assert(!std::is_convertible_v<move_value const&, std::expected<std::unique_ptr<int>, std::string>>);
 
   move_value value(std::make_unique<int>(42));
-  std::expected<std::unique_ptr<int>, std::string> standard_value
-      = std::move(value);
+  std::expected<std::unique_ptr<int>, std::string> standard_value = std::move(value);
   ASSERT_TRUE(standard_value.has_value());
   ASSERT_TRUE(static_cast<bool>(standard_value.value()));
   EXPECT_EQ(*standard_value.value(), 42);
 
-  ts::expected<void, std::unique_ptr<int>> error(ts::unexpect,
-                                                 std::make_unique<int>(7));
+  ts::expected<void, std::unique_ptr<int>> error(ts::unexpect, std::make_unique<int>(7));
   std::expected<void, std::unique_ptr<int>> standard_error = std::move(error);
   ASSERT_FALSE(standard_error.has_value());
   ASSERT_TRUE(static_cast<bool>(standard_error.error()));

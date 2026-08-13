@@ -11,12 +11,9 @@
 
 TEST(AdvancedApi, UmbrellaExposesOptionalFacilities)
 {
-  static_assert(std::is_same_v<threadschedule::advanced::cpu_topology,
-                               threadschedule::cpu_topology>);
-  static_assert(std::is_same_v<threadschedule::advanced::error_handler,
-                               threadschedule::error_handler_backend>);
-  static_assert(std::is_same_v<threadschedule::advanced::chaos_config,
-                               threadschedule::chaos_config>);
+  static_assert(std::is_same_v<threadschedule::advanced::cpu_topology, threadschedule::cpu_topology>);
+  static_assert(std::is_same_v<threadschedule::advanced::error_handler, threadschedule::error_handler_backend>);
+  static_assert(std::is_same_v<threadschedule::advanced::chaos_config, threadschedule::chaos_config>);
 
   auto topology = threadschedule::advanced::read_topology();
   EXPECT_GE(topology.cpu_count, 1);
@@ -45,8 +42,7 @@ TEST(AdvancedApi, ErrorHandledTaskAcceptsLvalueCallable)
   bool ran = false;
   auto callable = [&ran] { ran = true; };
 
-  auto task = threadschedule::advanced::make_error_handled_task(
-      callable, std::move(handler));
+  auto task = threadschedule::advanced::make_error_handled_task(callable, std::move(handler));
   task();
 
   EXPECT_TRUE(ran);
@@ -56,16 +52,13 @@ TEST(AdvancedApi, ErrorHandledTaskAcceptsLvalueCallable)
 TEST(AdvancedApi, WindowsProfilesUseSafeDocumentedPriorities)
 {
   auto const realtime = threadschedule::profiles::realtime();
-  auto realtime_params
-      = threadschedule::scheduler_parameters::create_for_policy(
-          realtime.policy, realtime.priority);
+  auto realtime_params = threadschedule::scheduler_parameters::create_for_policy(realtime.policy, realtime.priority);
   ASSERT_TRUE(realtime_params.has_value());
   EXPECT_EQ(realtime_params->sched_priority, THREAD_PRIORITY_HIGHEST);
 
   auto const throughput = threadschedule::profiles::throughput();
   auto throughput_params
-      = threadschedule::scheduler_parameters::create_for_policy(
-          throughput.policy, throughput.priority);
+      = threadschedule::scheduler_parameters::create_for_policy(throughput.policy, throughput.priority);
   ASSERT_TRUE(throughput_params.has_value());
   EXPECT_EQ(throughput_params->sched_priority, THREAD_PRIORITY_BELOW_NORMAL);
 }
@@ -78,8 +71,7 @@ TEST(AdvancedApi, ProfilesPreservePosixNicePriorityModel)
 
   auto make_profile = [](int nice_value)
     {
-      return thread_profile{ "nice", native_scheduling_policy::other,
-                             native_thread_priority{ nice_value },
+      return thread_profile{ "nice", native_scheduling_policy::other, native_thread_priority{ nice_value },
                              std::nullopt, native_priority_model::posix_nice };
     };
 
@@ -101,8 +93,7 @@ TEST(AdvancedApi, ProfilesPreservePosixNicePriorityModel)
     }
 
   int const backend_target = *backend_initial + 1;
-  auto backend_results
-      = apply_profile_detailed(backend, make_profile(backend_target));
+  auto backend_results = apply_profile_detailed(backend, make_profile(backend_target));
   auto backend_effective = backend.get_nice_value();
   backend_release.set_value();
   backend.join();
@@ -142,8 +133,7 @@ TEST(AdvancedApi, ProfilesPreservePosixNicePriorityModel)
     }
 
   int const registry_target = *registry_initial + 1;
-  auto registry_result
-      = apply_profile(registry, tid, make_profile(registry_target));
+  auto registry_result = apply_profile(registry, tid, make_profile(registry_target));
   auto registry_effective = registry.get_nice_value(tid);
 
   auto entry = registry.get(tid);
@@ -154,15 +144,13 @@ TEST(AdvancedApi, ProfilesPreservePosixNicePriorityModel)
       FAIL() << "Registered thread has no control block";
     }
   int const control_target = registry_target + 1;
-  auto control_results
-      = apply_profile_detailed(*entry->control, make_profile(control_target));
+  auto control_results = apply_profile_detailed(*entry->control, make_profile(control_target));
   auto control_effective = entry->control->get_nice_value();
 
   registry_release.set_value();
   registry_thread.join();
 
-  ASSERT_TRUE(registry_result.has_value())
-      << registry_result.error().message();
+  ASSERT_TRUE(registry_result.has_value()) << registry_result.error().message();
   ASSERT_TRUE(registry_effective.has_value());
   EXPECT_EQ(*registry_effective, registry_target);
   ASSERT_EQ(control_results.size(), 1u);
