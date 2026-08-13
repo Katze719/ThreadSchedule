@@ -125,8 +125,7 @@ struct task_error_backend
  * Callbacks receive a const reference to the task_error_backend describing the
  * failure.
  */
-using error_callback_backend
-    = detail::copyable_callable<void(task_error_backend const&)>;
+using error_callback_backend = detail::copyable_callable<void(task_error_backend const&)>;
 
 using error_callback_storage = error_callback_backend;
 using future_error_callback = detail::move_callable<void(std::exception_ptr)>;
@@ -171,18 +170,14 @@ public:
   }
 
   template <typename Callback,
-            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>,
-                                             error_callback_backend>,
-                             int> = 0>
+            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, error_callback_backend>, int> = 0>
   auto
   add_callback(Callback&& callback) -> size_t
   {
-    static_assert(
-        std::is_invocable_r_v<void, Callback&, task_error_backend const&>,
-        "Error callback must be invocable with task_error_backend const&");
+    static_assert(std::is_invocable_r_v<void, Callback&, task_error_backend const&>,
+                  "Error callback must be invocable with task_error_backend const&");
     return emplace_callback(
-        detail::make_copyable_callable<void(task_error_backend const&)>(
-            std::forward<Callback>(callback)));
+        detail::make_copyable_callable<void(task_error_backend const&)>(std::forward<Callback>(callback)));
   }
 
   /**
@@ -321,10 +316,8 @@ template <typename Func>
 class error_handled_task
 {
 public:
-  error_handled_task(Func func, std::shared_ptr<error_handler_backend> handler,
-                     std::string description = "")
-      : func_(std::move(func)), handler_(std::move(handler)),
-        description_(std::move(description))
+  error_handled_task(Func func, std::shared_ptr<error_handler_backend> handler, std::string description = "")
+      : func_(std::move(func)), handler_(std::move(handler)), description_(std::move(description))
   {
   }
 
@@ -362,14 +355,11 @@ private:
  */
 template <typename Func>
 auto
-make_error_handled_task(Func&& func,
-                        std::shared_ptr<error_handler_backend> handler,
-                        std::string description = "")
+make_error_handled_task(Func&& func, std::shared_ptr<error_handler_backend> handler, std::string description = "")
 {
   using function_type = std::decay_t<Func>;
-  return error_handled_task<function_type>(
-      function_type(std::forward<Func>(func)), std::move(handler),
-      std::move(description));
+  return error_handled_task<function_type>(function_type(std::forward<Func>(func)), std::move(handler),
+                                           std::move(description));
 }
 
 /**
@@ -397,17 +387,14 @@ class future_with_error_handler
 {
 public:
   explicit future_with_error_handler(std::future<T> future)
-      : future_(std::move(future)), error_callback_(nullptr),
-        has_callback_(false)
+      : future_(std::move(future)), error_callback_(nullptr), has_callback_(false)
   {
   }
 
   future_with_error_handler(future_with_error_handler const&) = delete;
-  auto operator=(future_with_error_handler const&)
-      -> future_with_error_handler& = delete;
+  auto operator=(future_with_error_handler const&) -> future_with_error_handler& = delete;
   future_with_error_handler(future_with_error_handler&&) = default;
-  auto operator=(future_with_error_handler&&)
-      -> future_with_error_handler& = default;
+  auto operator=(future_with_error_handler&&) -> future_with_error_handler& = default;
 
   /**
    * @brief Attach an error callback.
@@ -420,8 +407,7 @@ public:
    * @return Reference to @c *this, allowing fluent chaining.
    */
   auto
-  on_error(std::function<void(std::exception_ptr)> callback)
-      -> future_with_error_handler&
+  on_error(std::function<void(std::exception_ptr)> callback) -> future_with_error_handler&
   {
     error_callback_ = future_error_callback(std::move(callback));
     has_callback_ = true;
@@ -429,17 +415,14 @@ public:
   }
 
   template <typename Callback,
-            std::enable_if_t<
-                !std::is_same_v<detail::remove_cvref_t<Callback>,
-                                std::function<void(std::exception_ptr)>>,
-                int> = 0>
+            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, std::function<void(std::exception_ptr)>>,
+                             int> = 0>
   auto
   on_error(Callback&& callback) -> future_with_error_handler&
   {
     static_assert(std::is_invocable_r_v<void, Callback&, std::exception_ptr>,
                   "Error callback must be invocable with std::exception_ptr");
-    error_callback_ = detail::make_move_callable<void(std::exception_ptr)>(
-        std::forward<Callback>(callback));
+    error_callback_ = detail::make_move_callable<void(std::exception_ptr)>(std::forward<Callback>(callback));
     has_callback_ = true;
     return *this;
   }
@@ -507,8 +490,7 @@ public:
    */
   template <typename Clock, typename duration>
   auto
-  wait_until(
-      std::chrono::time_point<Clock, duration> const& timeout_time) const
+  wait_until(std::chrono::time_point<Clock, duration> const& timeout_time) const
   {
     return future_.wait_until(timeout_time);
   }

@@ -24,8 +24,7 @@ protected:
 
 TEST_F(ThreadViewBackendTest, WrapExistingStdThreadAndSetName)
 {
-  std::thread t(
-      [] { std::this_thread::sleep_for(std::chrono::milliseconds(50)); });
+  std::thread t([] { std::this_thread::sleep_for(std::chrono::milliseconds(50)); });
 
   detail::thread_view_backend view(t);
   auto r = view.set_name("view_thread");
@@ -59,8 +58,7 @@ TEST_F(ThreadViewBackendTest, ViewDoesNotOwnLifetime)
 TEST_F(ThreadViewBackendTest, ThreadByNameViewSetName)
 {
   // Start a thread and set an initial name through the owning backend.
-  std::thread t(
-      [] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
+  std::thread t([] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
   detail::thread_view_backend view(t);
   ASSERT_TRUE(view.set_name("th_1").has_value());
 
@@ -85,8 +83,7 @@ TEST_F(ThreadViewBackendTest, ThreadByNameViewSetName)
 TEST_F(ThreadViewBackendTest, ThreadByNameBindToCpu0)
 {
   // Start a thread and name it
-  std::thread t(
-      [] { std::this_thread::sleep_for(std::chrono::milliseconds(200)); });
+  std::thread t([] { std::this_thread::sleep_for(std::chrono::milliseconds(200)); });
   detail::thread_view_backend view(t);
   ASSERT_TRUE(view.set_name("th_bind").has_value());
 

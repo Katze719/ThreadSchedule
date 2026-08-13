@@ -42,6 +42,14 @@
   `thread_view`, and `thread_registry` can change normal priority after startup
   and read back an effective portable level. Library-owned threads retain the
   Linux TID needed for race-free configured startup and later control.
+- **Calling-thread configuration** -- the standard-style `this_thread`
+  namespace configures priority, affinity, and names for the calling thread,
+  including threads created outside ThreadSchedule, without requiring a
+  wrapper or registry entry.
+- **Simpler thread controls** -- shared internal helpers now implement the
+  portable configuration, priority, affinity, lifecycle, and C++20 callable
+  paths used by the core thread types. The project format limit is now 120
+  columns, with clang-tidy guarding against higher cognitive complexity.
 - **Configured startup is transactional** -- a configured `thread` or
   `jthread` does not invoke its callable when initial name, scheduling, or
   affinity configuration fails.

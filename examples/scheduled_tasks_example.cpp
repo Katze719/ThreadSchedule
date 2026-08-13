@@ -13,8 +13,7 @@ main()
 
   std::promise<void> finished;
   auto done = finished.get_future();
-  auto task
-      = scheduler.schedule_after(25ms, [&finished] { finished.set_value(); });
+  auto task = scheduler.schedule_after(25ms, [&finished] { finished.set_value(); });
   if (!task)
     {
       std::cerr << task.error().message() << '\n';

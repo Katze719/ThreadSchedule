@@ -38,8 +38,7 @@ struct is_duration_impl : std::false_type
 
 /** @copydoc is_duration_impl */
 template <typename T>
-struct is_duration_impl<T, std::void_t<typename T::rep, typename T::period>>
-    : std::true_type
+struct is_duration_impl<T, std::void_t<typename T::rep, typename T::period>> : std::true_type
 {
 };
 
@@ -49,8 +48,7 @@ constexpr bool thread_callable = std::is_invocable_v<F, Args...>;
 
 /** @brief Pre-C++20 fallback for thread_identifiable (constexpr bool). */
 template <typename T>
-constexpr bool thread_identifiable
-    = std::is_same_v<decltype(std::declval<T>().get_id()), std::thread::id>;
+constexpr bool thread_identifiable = std::is_same_v<decltype(std::declval<T>().get_id()), std::thread::id>;
 
 /** @brief Pre-C++20 fallback for duration (constexpr bool). */
 template <typename T>
@@ -62,8 +60,7 @@ constexpr bool priority_type = std::is_integral_v<T>;
 
 /** @brief Pre-C++20 fallback for cpu_set_type (constexpr bool). */
 template <typename T>
-constexpr bool cpu_set_type
-    = std::is_same_v<T, std::vector<int>> || std::is_same_v<T, std::set<int>>;
+constexpr bool cpu_set_type = std::is_same_v<T, std::vector<int>> || std::is_same_v<T, std::set<int>>;
 
 /**
  * @brief Type trait that identifies thread-like types.
@@ -99,8 +96,7 @@ inline constexpr bool is_thread_like_v = is_thread_like<T>::value;
  * @brief Helper type traits for thread operations
  */
 template <typename T>
-using enable_if_thread_callable_t
-    = std::enable_if_t<std::is_invocable_v<T>, int>;
+using enable_if_thread_callable_t = std::enable_if_t<std::is_invocable_v<T>, int>;
 
 template <typename T>
 using enable_if_duration_t = std::enable_if_t<is_duration_impl<T>::value, int>;

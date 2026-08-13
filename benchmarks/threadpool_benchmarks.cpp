@@ -89,14 +89,12 @@ BM_ThreadPool_MinimalTasks(benchmark::State& state)
         }
 
       auto end = std::chrono::high_resolution_clock::now();
-      auto elapsed
-          = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+      auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
       state.SetIterationTime(elapsed.count() / 1e9);
     }
 
   state.SetItemsProcessed(state.iterations() * num_tasks);
-  state.SetLabel("threads=" + std::to_string(num_threads)
-                 + " tasks=" + std::to_string(num_tasks));
+  state.SetLabel("threads=" + std::to_string(num_threads) + " tasks=" + std::to_string(num_tasks));
 }
 
 static void
@@ -159,14 +157,12 @@ BM_FastThreadPool_MinimalTasks(benchmark::State& state)
         }
 
       auto end = std::chrono::high_resolution_clock::now();
-      auto elapsed
-          = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+      auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
       state.SetIterationTime(elapsed.count() / 1e9);
     }
 
   state.SetItemsProcessed(state.iterations() * num_tasks);
-  state.SetLabel("threads=" + std::to_string(num_threads)
-                 + " tasks=" + std::to_string(num_tasks));
+  state.SetLabel("threads=" + std::to_string(num_threads) + " tasks=" + std::to_string(num_tasks));
 }
 
 static void
@@ -195,8 +191,7 @@ BM_FastThreadPool_BatchProcessing(benchmark::State& state)
     }
 
   state.SetItemsProcessed(state.iterations() * batch_size);
-  state.SetLabel("threads=" + std::to_string(num_threads)
-                 + " batch=" + std::to_string(batch_size));
+  state.SetLabel("threads=" + std::to_string(num_threads) + " batch=" + std::to_string(batch_size));
 }
 
 // =============================================================================
@@ -210,8 +205,7 @@ BM_HighPerformancePool_MinimalTasks(benchmark::State& state)
   size_t const num_tasks = state.range(1);
 
   work_stealing_pool_backend pool(num_threads);
-  pool.configure_threads("bench", native_scheduling_policy::other,
-                         native_thread_priority::normal());
+  pool.configure_threads("bench", native_scheduling_policy::other, native_thread_priority::normal());
   pool.distribute_across_cpus();
 
   for (auto _ : state)
@@ -232,18 +226,14 @@ BM_HighPerformancePool_MinimalTasks(benchmark::State& state)
         }
 
       auto end = std::chrono::high_resolution_clock::now();
-      auto elapsed
-          = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+      auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
       state.SetIterationTime(elapsed.count() / 1e9);
     }
 
   auto stats = pool.get_statistics();
-  state.counters["work_steal_ratio"]
-      = 100.0 * stats.stolen_tasks
-        / std::max(stats.completed_tasks, size_t(1));
+  state.counters["work_steal_ratio"] = 100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1));
   state.SetItemsProcessed(state.iterations() * num_tasks);
-  state.SetLabel("threads=" + std::to_string(num_threads)
-                 + " tasks=" + std::to_string(num_tasks));
+  state.SetLabel("threads=" + std::to_string(num_threads) + " tasks=" + std::to_string(num_tasks));
 }
 
 static void
@@ -253,8 +243,7 @@ BM_HighPerformancePool_BatchProcessing(benchmark::State& state)
   size_t const batch_size = state.range(1);
 
   work_stealing_pool_backend pool(num_threads);
-  pool.configure_threads("bench", native_scheduling_policy::other,
-                         native_thread_priority::normal());
+  pool.configure_threads("bench", native_scheduling_policy::other, native_thread_priority::normal());
   pool.distribute_across_cpus();
 
   std::vector<std::function<void()>> tasks;
@@ -274,13 +263,10 @@ BM_HighPerformancePool_BatchProcessing(benchmark::State& state)
     }
 
   auto stats = pool.get_statistics();
-  state.counters["work_steal_ratio"]
-      = 100.0 * stats.stolen_tasks
-        / std::max(stats.completed_tasks, size_t(1));
+  state.counters["work_steal_ratio"] = 100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1));
   state.counters["tasks_per_second"] = stats.tasks_per_second;
   state.SetItemsProcessed(state.iterations() * batch_size);
-  state.SetLabel("threads=" + std::to_string(num_threads)
-                 + " batch=" + std::to_string(batch_size));
+  state.SetLabel("threads=" + std::to_string(num_threads) + " batch=" + std::to_string(batch_size));
 }
 
 static void
@@ -290,8 +276,7 @@ BM_HighPerformancePool_ParallelForEach(benchmark::State& state)
   size_t const data_size = state.range(1);
 
   work_stealing_pool_backend pool(num_threads);
-  pool.configure_threads("bench", native_scheduling_policy::other,
-                         native_thread_priority::normal());
+  pool.configure_threads("bench", native_scheduling_policy::other, native_thread_priority::normal());
   pool.distribute_across_cpus();
 
   std::vector<int> data(data_size);
@@ -301,16 +286,14 @@ BM_HighPerformancePool_ParallelForEach(benchmark::State& state)
     {
       std::atomic<long long> sum{ 0 };
 
-      pool.parallel_for_each(
-          data.begin(), data.end(), [&sum](int value)
-            { sum.fetch_add(value * value, std::memory_order_relaxed); });
+      pool.parallel_for_each(data.begin(), data.end(),
+                             [&sum](int value) { sum.fetch_add(value * value, std::memory_order_relaxed); });
 
       benchmark::DoNotOptimize(sum.load());
     }
 
   state.SetItemsProcessed(state.iterations() * data_size);
-  state.SetLabel("threads=" + std::to_string(num_threads)
-                 + " items=" + std::to_string(data_size));
+  state.SetLabel("threads=" + std::to_string(num_threads) + " items=" + std::to_string(data_size));
 }
 
 // =============================================================================
@@ -334,22 +317,19 @@ BM_LightweightPool_MinimalTasks(benchmark::State& state)
 
       for (size_t i = 0; i < num_tasks; ++i)
         {
-          pool.post([&counter]()
-                      { counter.fetch_add(1, std::memory_order_relaxed); });
+          pool.post([&counter]() { counter.fetch_add(1, std::memory_order_relaxed); });
         }
 
       while (counter.load(std::memory_order_acquire) < num_tasks)
         std::this_thread::yield();
 
       auto end = std::chrono::high_resolution_clock::now();
-      auto elapsed
-          = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+      auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
       state.SetIterationTime(elapsed.count() / 1e9);
     }
 
   state.SetItemsProcessed(state.iterations() * num_tasks);
-  state.SetLabel("threads=" + std::to_string(num_threads)
-                 + " tasks=" + std::to_string(num_tasks));
+  state.SetLabel("threads=" + std::to_string(num_threads) + " tasks=" + std::to_string(num_tasks));
 }
 
 static void
@@ -415,8 +395,7 @@ BM_LightweightPool_BatchPost(benchmark::State& state)
     }
 
   state.SetItemsProcessed(state.iterations() * batch_size);
-  state.SetLabel("threads=" + std::to_string(num_threads)
-                 + " batch=" + std::to_string(batch_size));
+  state.SetLabel("threads=" + std::to_string(num_threads) + " batch=" + std::to_string(batch_size));
 }
 
 // =============================================================================
@@ -496,11 +475,9 @@ BM_ComparePoolTypes_LightWorkload(benchmark::State& state)
     }
 
   std::vector<std::string> pool_names
-      = { "thread_pool_backend", "polling_pool_backend",
-          "work_stealing_pool_backend", "lightweight_pool_backend" };
+      = { "thread_pool_backend", "polling_pool_backend", "work_stealing_pool_backend", "lightweight_pool_backend" };
   state.SetItemsProcessed(state.iterations() * num_tasks);
-  state.SetLabel(pool_names[pool_type]
-                 + " tasks=" + std::to_string(num_tasks));
+  state.SetLabel(pool_names[pool_type] + " tasks=" + std::to_string(num_tasks));
 }
 
 // =============================================================================
@@ -550,11 +527,9 @@ BM_ComparePoolWorkload(benchmark::State& state)
   int const pool_type = static_cast<int>(state.range(0));
   int const workload = static_cast<int>(state.range(1));
 
-  char const* const workload_names[]
-      = { "tiny", "medium", "heavy", "imbalanced" };
+  char const* const workload_names[] = { "tiny", "medium", "heavy", "imbalanced" };
   char const* const pool_names[]
-      = { "thread_pool_backend", "polling_pool_backend",
-          "work_stealing_pool_backend", "lightweight_pool_backend" };
+      = { "thread_pool_backend", "polling_pool_backend", "work_stealing_pool_backend", "lightweight_pool_backend" };
 
   auto submit_loop = [&](auto& pool)
     {
@@ -563,9 +538,7 @@ BM_ComparePoolWorkload(benchmark::State& state)
           std::vector<std::future<void>> futures;
           futures.reserve(num_tasks);
           for (size_t i = 0; i < num_tasks; ++i)
-            futures.push_back(pool.submit(
-                [workload, i]()
-                  { bench_busy_work(bench_work_iters(workload, i)); }));
+            futures.push_back(pool.submit([workload, i]() { bench_busy_work(bench_work_iters(workload, i)); }));
           for (auto& f : futures)
             f.wait();
         }
@@ -612,8 +585,7 @@ BM_ComparePoolWorkload(benchmark::State& state)
     }
 
   state.SetItemsProcessed(state.iterations() * num_tasks);
-  state.SetLabel(std::string(pool_names[pool_type]) + " "
-                 + workload_names[workload]);
+  state.SetLabel(std::string(pool_names[pool_type]) + " " + workload_names[workload]);
 }
 
 // =============================================================================

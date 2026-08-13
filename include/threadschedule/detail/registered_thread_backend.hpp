@@ -34,19 +34,15 @@ public:
   registered_thread_backend() = default;
 
   registered_thread_backend(registered_thread_backend&&) noexcept = default;
-  auto operator=(registered_thread_backend&&) noexcept
-      -> registered_thread_backend& = default;
+  auto operator=(registered_thread_backend&&) noexcept -> registered_thread_backend& = default;
 
   registered_thread_backend(registered_thread_backend const&) = delete;
-  auto operator=(registered_thread_backend const&)
-      -> registered_thread_backend& = delete;
+  auto operator=(registered_thread_backend const&) -> registered_thread_backend& = delete;
 
   template <typename F, typename... Args>
-  explicit registered_thread_backend(std::string name, std::string component,
-                                     F&& f, Args&&... args)
+  explicit registered_thread_backend(std::string name, std::string component, F&& f, Args&&... args)
       : thread_backend(
-            [n = std::move(name), c = std::move(component),
-             func = std::forward<F>(f)](auto&&... inner) mutable
+            [n = std::move(name), c = std::move(component), func = std::forward<F>(f)](auto&&... inner) mutable
               {
                 auto_register_current_thread guard(n, c);
                 std::invoke(func, std::forward<decltype(inner)>(inner)...);

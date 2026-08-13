@@ -60,8 +60,7 @@ bench_storage(benchmark::State& state)
         {
           std::array<std::uint64_t, NWords> payload{};
           payload[0] = i;
-          store.emplace_back([payload, &sink]() mutable
-                               { sink += payload[0] + 1; });
+          store.emplace_back([payload, &sink]() mutable { sink += payload[0] + 1; });
         }
       for (auto& callable : store)
         callable();
@@ -77,20 +76,17 @@ bench_storage(benchmark::State& state)
 static void
 BM_MoveCallable_Small(benchmark::State& state)
 {
-  bench_storage<detail::move_callable<void()>, 1>(
-      state); // 8 B capture (fits all)
+  bench_storage<detail::move_callable<void()>, 1>(state); // 8 B capture (fits all)
 }
 static void
 BM_MoveCallable_Medium(benchmark::State& state)
 {
-  bench_storage<detail::move_callable<void()>, 6>(
-      state); // 48 B capture (heap in std lib callables)
+  bench_storage<detail::move_callable<void()>, 6>(state); // 48 B capture (heap in std lib callables)
 }
 static void
 BM_MoveCallable_Large(benchmark::State& state)
 {
-  bench_storage<detail::move_callable<void()>, 16>(
-      state); // 128 B capture (heap everywhere)
+  bench_storage<detail::move_callable<void()>, 16>(state); // 128 B capture (heap everywhere)
 }
 
 // copyable_callable == std::function (pre-C++26) or std::copyable_function
@@ -98,8 +94,7 @@ BM_MoveCallable_Large(benchmark::State& state)
 static void
 BM_CopyableCallable_Small(benchmark::State& state)
 {
-  bench_storage<detail::copyable_callable<void()>, 1>(
-      state); // 8 B capture (fits all)
+  bench_storage<detail::copyable_callable<void()>, 1>(state); // 8 B capture (fits all)
 }
 static void
 BM_CopyableCallable_Medium(benchmark::State& state)

@@ -47,8 +47,7 @@ public:
 
   template <typename F, typename... Args>
   auto
-  submit(F&& f, Args&&... args)
-      -> std::future<std::invoke_result_t<F, Args...>>
+  submit(F&& f, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>
   {
     auto result = try_submit(std::forward<F>(f), std::forward<Args>(args)...);
     if (!result.has_value())
@@ -58,9 +57,7 @@ public:
 
   template <typename F, typename... Args>
   auto
-  try_submit(F&& f, Args&&... args)
-      -> expected<std::future<std::invoke_result_t<F, Args...>>,
-                  std::error_code>
+  try_submit(F&& f, Args&&... args) -> expected<std::future<std::invoke_result_t<F, Args...>>, std::error_code>
   {
     using return_type = std::invoke_result_t<F, Args...>;
     if (stop_)
@@ -77,8 +74,7 @@ public:
           }
         else
           {
-            p.set_value(
-                std::invoke(std::forward<F>(f), std::forward<Args>(args)...));
+            p.set_value(std::invoke(std::forward<F>(f), std::forward<Args>(args)...));
           }
       }
     catch (...)
@@ -115,8 +111,7 @@ public:
 
   template <typename Iterator>
   auto
-  try_submit_batch(Iterator begin, Iterator end)
-      -> expected<std::vector<std::future<void>>, std::error_code>
+  try_submit_batch(Iterator begin, Iterator end) -> expected<std::vector<std::future<void>>, std::error_code>
   {
     if (stop_)
       return unexpected(std::make_error_code(std::errc::operation_canceled));

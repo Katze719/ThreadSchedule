@@ -30,9 +30,7 @@ BM_HPPool_Throughput(benchmark::State& state)
       futures.reserve(num_tasks);
 
       for (size_t i = 0; i < num_tasks; ++i)
-        futures.push_back(pool.submit(
-            [&completed]()
-              { completed.fetch_add(1, std::memory_order_relaxed); }));
+        futures.push_back(pool.submit([&completed]() { completed.fetch_add(1, std::memory_order_relaxed); }));
 
       for (auto& f : futures)
         f.wait();
@@ -41,17 +39,11 @@ BM_HPPool_Throughput(benchmark::State& state)
     }
 
   auto stats = pool.get_statistics();
-  state.counters["steal_%"] = 100.0 * stats.stolen_tasks
-                              / std::max(stats.completed_tasks, size_t(1));
-  state.SetItemsProcessed(state.iterations()
-                          * static_cast<int64_t>(num_tasks));
+  state.counters["steal_%"] = 100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1));
+  state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(num_tasks));
 }
 
-BENCHMARK(BM_HPPool_Throughput)
-    ->Arg(1000)
-    ->Arg(10000)
-    ->Arg(100000)
-    ->Unit(benchmark::kMicrosecond);
+BENCHMARK(BM_HPPool_Throughput)->Arg(1000)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
 
 // =============================================================================
 // advanced::work_stealing_pool batch processing
@@ -71,8 +63,7 @@ BM_HPPool_Batch(benchmark::State& state)
   std::vector<std::function<void()>> tasks;
   tasks.reserve(batch_size);
   for (size_t i = 0; i < batch_size; ++i)
-    tasks.emplace_back([&counter]()
-                         { counter.fetch_add(1, std::memory_order_relaxed); });
+    tasks.emplace_back([&counter]() { counter.fetch_add(1, std::memory_order_relaxed); });
 
   for (auto _ : state)
     {
@@ -81,14 +72,10 @@ BM_HPPool_Batch(benchmark::State& state)
         f.wait();
     }
 
-  state.SetItemsProcessed(state.iterations()
-                          * static_cast<int64_t>(batch_size));
+  state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(batch_size));
 }
 
-BENCHMARK(BM_HPPool_Batch)
-    ->Arg(5000)
-    ->Arg(50000)
-    ->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_HPPool_Batch)->Arg(5000)->Arg(50000)->Unit(benchmark::kMillisecond);
 
 // =============================================================================
 // advanced::work_stealing_pool variable workload (simulating real tasks)
@@ -131,14 +118,10 @@ BM_HPPool_VariableWorkload(benchmark::State& state)
         f.wait();
     }
 
-  state.SetItemsProcessed(state.iterations()
-                          * static_cast<int64_t>(num_tasks));
+  state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(num_tasks));
 }
 
-BENCHMARK(BM_HPPool_VariableWorkload)
-    ->Arg(1000)
-    ->Arg(25000)
-    ->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_HPPool_VariableWorkload)->Arg(1000)->Arg(25000)->Unit(benchmark::kMillisecond);
 
 // =============================================================================
 // advanced::work_stealing_pool parallel_for_each
@@ -160,20 +143,14 @@ BM_HPPool_ParallelForEach(benchmark::State& state)
   for (auto _ : state)
     {
       std::atomic<long long> sum{ 0 };
-      pool.parallel_for_each(
-          data.begin(), data.end(),
-          [&sum](int v) { sum.fetch_add(v * v, std::memory_order_relaxed); });
+      pool.parallel_for_each(data.begin(), data.end(),
+                             [&sum](int v) { sum.fetch_add(v * v, std::memory_order_relaxed); });
       benchmark::DoNotOptimize(sum.load());
     }
 
-  state.SetItemsProcessed(state.iterations()
-                          * static_cast<int64_t>(data_size));
+  state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(data_size));
 }
 
-BENCHMARK(BM_HPPool_ParallelForEach)
-    ->Arg(100000)
-    ->Arg(1000000)
-    ->Arg(10000000)
-    ->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_HPPool_ParallelForEach)->Arg(100000)->Arg(1000000)->Arg(10000000)->Unit(benchmark::kMillisecond);
 
 BENCHMARK_MAIN();

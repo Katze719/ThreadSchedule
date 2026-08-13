@@ -29,8 +29,7 @@ struct CacheLineBenchmark
 
   // Test cache-unfriendly access patterns (strided access)
   static void
-  cache_unfriendly_task(std::vector<int>& data, size_t start_idx,
-                        size_t stride, size_t count)
+  cache_unfriendly_task(std::vector<int>& data, size_t start_idx, size_t stride, size_t count)
   {
     for (size_t i = 0; i < count; ++i)
       {
@@ -50,8 +49,7 @@ BM_CacheFriendly_HighPerformancePool(benchmark::State& state)
   pool.distribute_across_cpus();
 
   std::vector<int> data(data_size, 1);
-  size_t const chunk_size
-      = data_size / (num_threads * 4); // Optimize for cache
+  size_t const chunk_size = data_size / (num_threads * 4); // Optimize for cache
 
   for (auto _ : state)
     {
@@ -60,12 +58,8 @@ BM_CacheFriendly_HighPerformancePool(benchmark::State& state)
       for (size_t i = 0; i < data_size; i += chunk_size)
         {
           size_t const end_idx = std::min(i + chunk_size, data_size);
-          futures.push_back(pool.submit(
-              [&data, i, end_idx]()
-                {
-                  CacheLineBenchmark::cache_friendly_task(data, i,
-                                                          end_idx - i);
-                }));
+          futures.push_back(
+              pool.submit([&data, i, end_idx]() { CacheLineBenchmark::cache_friendly_task(data, i, end_idx - i); }));
         }
 
       for (auto& future : futures)
@@ -77,8 +71,7 @@ BM_CacheFriendly_HighPerformancePool(benchmark::State& state)
     }
 
   state.SetItemsProcessed(state.iterations() * data_size);
-  state.counters["cache_efficiency"]
-      = benchmark::Counter(1.0); // Cache-friendly = 1.0
+  state.counters["cache_efficiency"] = benchmark::Counter(1.0); // Cache-friendly = 1.0
 }
 
 static void
@@ -100,12 +93,9 @@ BM_CacheUnfriendly_HighPerformancePool(benchmark::State& state)
 
       for (size_t t = 0; t < num_threads; ++t)
         {
-          futures.push_back(pool.submit(
-              [&data, t, elements_per_thread]()
-                {
-                  CacheLineBenchmark::cache_unfriendly_task(
-                      data, t, stride, elements_per_thread);
-                }));
+          futures.push_back(
+              pool.submit([&data, t, elements_per_thread]()
+                            { CacheLineBenchmark::cache_unfriendly_task(data, t, stride, elements_per_thread); }));
         }
 
       for (auto& future : futures)
@@ -117,8 +107,7 @@ BM_CacheUnfriendly_HighPerformancePool(benchmark::State& state)
     }
 
   state.SetItemsProcessed(state.iterations() * data_size);
-  state.counters["cache_efficiency"]
-      = benchmark::Counter(0.1); // Cache-unfriendly = 0.1
+  state.counters["cache_efficiency"] = benchmark::Counter(0.1); // Cache-unfriendly = 0.1
 }
 
 // =============================================================================
@@ -190,8 +179,7 @@ BM_NUMA_LocalMemory(benchmark::State& state)
                              [&sum](int value)
                                {
                                  // Memory-intensive operation
-                                 sum.fetch_add(value * value,
-                                               std::memory_order_relaxed);
+                                 sum.fetch_add(value * value, std::memory_order_relaxed);
                                });
 
       benchmark::DoNotOptimize(sum.load());
@@ -263,8 +251,7 @@ BM_FalseSharing_Avoided(benchmark::State& state)
         }
     }
 
-  state.SetItemsProcessed(state.iterations() * num_threads
-                          * increments_per_thread);
+  state.SetItemsProcessed(state.iterations() * num_threads * increments_per_thread);
 }
 
 // =============================================================================
@@ -303,11 +290,6 @@ BENCHMARK(BM_NUMA_LocalMemory)
     ->Args({ 16 })
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(BM_FalseSharing_Avoided)
-    ->Args({ 2 })
-    ->Args({ 4 })
-    ->Args({ 8 })
-    ->Args({ 16 })
-    ->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_FalseSharing_Avoided)->Args({ 2 })->Args({ 4 })->Args({ 8 })->Args({ 16 })->Unit(benchmark::kMillisecond);
 
 BENCHMARK_MAIN();

@@ -99,6 +99,7 @@ own `CMakeLists.txt` and is tested against a freshly installed package.
 | --- | --- |
 | Own one thread | `thread` |
 | Own one cooperatively cancellable C++20 thread | `jthread` |
+| Configure the calling thread | `this_thread` |
 | Submit general-purpose work | `thread_pool` |
 | Run delayed or periodic work | `scheduled_pool` |
 | Discover and control registered threads | `thread_registry` |
@@ -160,6 +161,31 @@ if (!worker) {
 Affinity uses logical CPU indices and is intentionally absent from this first
 configured example: containers and restricted CPU sets may not make CPU 0
 available. Query the deployment environment before pinning a thread.
+
+Code running inside any thread can configure itself without wrapping or
+registering the thread first:
+
+```cpp
+auto allowed = threadschedule::this_thread::get_affinity();
+if (!allowed) {
+    report(allowed.error());
+} else {
+    threadschedule::thread_affinity pinned({ allowed->cpus().front() });
+    if (auto result = threadschedule::this_thread::set_affinity(pinned);
+        !result)
+        report(result.error());
+}
+
+if (auto result = threadschedule::this_thread::set_priority(
+        threadschedule::priority_level::low);
+    !result)
+    report(result.error());
+```
+
+`this_thread` also provides `configure`, `set_nice`, `get_priority`,
+`set_name`, and `get_name`. Affinity readback reports the logical CPU indices
+the process is actually allowed to use, which is safer than assuming CPU 0 is
+available.
 
 Under C++20, `jthread` mirrors standard callable forwarding and stop-token
 injection:

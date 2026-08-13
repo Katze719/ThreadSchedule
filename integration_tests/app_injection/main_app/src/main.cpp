@@ -28,20 +28,14 @@ main()
   auto const count_component = [&snapshot](char const* component)
     {
       return std::count_if(snapshot->begin(), snapshot->end(),
-                           [component](auto const& entry)
-                             { return entry.component == component; });
+                           [component](auto const& entry) { return entry.component == component; });
     };
-  auto const all_alive
-      = std::all_of(snapshot->begin(), snapshot->end(),
-                    [](auto const& entry) { return entry.alive; });
+  auto const all_alive = std::all_of(snapshot->begin(), snapshot->end(), [](auto const& entry) { return entry.alive; });
   auto const found
-      = std::find_if(snapshot->begin(), snapshot->end(),
-                     [](auto const& entry) { return entry.name == "inj-a1"; });
+      = std::find_if(snapshot->begin(), snapshot->end(), [](auto const& entry) { return entry.name == "inj-a1"; });
 
-  bool const valid = snapshot->size() == 4
-                     && count_component("AppInjLibA") == 2
-                     && count_component("AppInjLibB") == 2 && all_alive
-                     && found != snapshot->end();
+  bool const valid = snapshot->size() == 4 && count_component("AppInjLibA") == 2 && count_component("AppInjLibB") == 2
+                     && all_alive && found != snapshot->end();
 
   appinj_libA::wait_for_threads();
   appinj_libB::wait_for_threads();
@@ -51,7 +45,6 @@ main()
   appinj_libB::set_registry(nullptr);
   threadschedule::use_global_registry(nullptr);
 
-  std::cout << "registered=" << snapshot->size() << ", empty=" << empty
-            << '\n';
+  std::cout << "registered=" << snapshot->size() << ", empty=" << empty << '\n';
   return valid && empty ? 0 : 2;
 }

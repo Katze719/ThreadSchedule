@@ -43,8 +43,7 @@ fake_module_lookup(LPCWSTR name)
 {
   if (resolver_mode == ResolverMode::no_modules)
     return nullptr;
-  if (resolver_mode == ResolverMode::kernelbase_only
-      && std::wcscmp(name, L"kernel32.dll") == 0)
+  if (resolver_mode == ResolverMode::kernelbase_only && std::wcscmp(name, L"kernel32.dll") == 0)
     return nullptr;
   return reinterpret_cast<HMODULE>(&resolver_mode);
 }
@@ -62,18 +61,15 @@ fake_proc_lookup(HMODULE, LPCSTR name)
     return nullptr;
   if (std::strcmp(name, "SetThreadDescription") == 0)
     return fake_export;
-  return resolver_mode == ResolverMode::all_exports
-                 || resolver_mode == ResolverMode::kernelbase_only
-             ? fake_export
-             : nullptr;
+  return resolver_mode == ResolverMode::all_exports || resolver_mode == ResolverMode::kernelbase_only ? fake_export
+                                                                                                      : nullptr;
 }
 } // namespace
 
 TEST_F(ThreadBackendTest, ThreadDescriptionResolverFindsKernelExports)
 {
   resolver_mode = ResolverMode::all_exports;
-  auto const resolved = detail::resolve_thread_description_api(
-      fake_module_lookup, fake_proc_lookup);
+  auto const resolved = detail::resolve_thread_description_api(fake_module_lookup, fake_proc_lookup);
   EXPECT_TRUE(resolved.found_module);
   EXPECT_NE(resolved.set, nullptr);
   EXPECT_NE(resolved.get, nullptr);
@@ -82,31 +78,26 @@ TEST_F(ThreadBackendTest, ThreadDescriptionResolverFindsKernelExports)
 TEST_F(ThreadBackendTest, ThreadDescriptionResolverReportsMissingExports)
 {
   resolver_mode = ResolverMode::no_exports;
-  auto const resolved = detail::resolve_thread_description_api(
-      fake_module_lookup, fake_proc_lookup);
+  auto const resolved = detail::resolve_thread_description_api(fake_module_lookup, fake_proc_lookup);
   EXPECT_TRUE(resolved.found_module);
   EXPECT_EQ(resolved.set, nullptr);
   EXPECT_EQ(resolved.get, nullptr);
 }
 
-TEST_F(ThreadBackendTest,
-       ThreadDescriptionResolverDistinguishesModuleLookupFailure)
+TEST_F(ThreadBackendTest, ThreadDescriptionResolverDistinguishesModuleLookupFailure)
 {
   resolver_mode = ResolverMode::no_modules;
-  auto const resolved = detail::resolve_thread_description_api(
-      fake_module_lookup, fake_proc_lookup);
+  auto const resolved = detail::resolve_thread_description_api(fake_module_lookup, fake_proc_lookup);
   EXPECT_FALSE(resolved.found_module);
   EXPECT_EQ(resolved.set, nullptr);
   EXPECT_EQ(resolved.get, nullptr);
   EXPECT_EQ(resolved.lookup_error.category(), std::system_category());
 }
 
-TEST_F(ThreadBackendTest,
-       ThreadDescriptionResolverAllowsPartiallyAvailableApis)
+TEST_F(ThreadBackendTest, ThreadDescriptionResolverAllowsPartiallyAvailableApis)
 {
   resolver_mode = ResolverMode::set_only;
-  auto const resolved = detail::resolve_thread_description_api(
-      fake_module_lookup, fake_proc_lookup);
+  auto const resolved = detail::resolve_thread_description_api(fake_module_lookup, fake_proc_lookup);
   EXPECT_TRUE(resolved.found_module);
   EXPECT_NE(resolved.set, nullptr);
   EXPECT_EQ(resolved.get, nullptr);
@@ -115,8 +106,7 @@ TEST_F(ThreadBackendTest,
 TEST_F(ThreadBackendTest, ThreadDescriptionResolverFallsBackToKernelBase)
 {
   resolver_mode = ResolverMode::kernelbase_only;
-  auto const resolved = detail::resolve_thread_description_api(
-      fake_module_lookup, fake_proc_lookup);
+  auto const resolved = detail::resolve_thread_description_api(fake_module_lookup, fake_proc_lookup);
   EXPECT_TRUE(resolved.found_module);
   EXPECT_NE(resolved.set, nullptr);
   EXPECT_NE(resolved.get, nullptr);
@@ -124,8 +114,7 @@ TEST_F(ThreadBackendTest, ThreadDescriptionResolverFallsBackToKernelBase)
 
 TEST_F(ThreadBackendTest, HResultErrorsRetainTheirOriginalCategory)
 {
-  auto const win32_error = detail::error_from_hresult(
-      HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER));
+  auto const win32_error = detail::error_from_hresult(HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER));
   auto const hresult_error = detail::error_from_hresult(E_FAIL);
   EXPECT_EQ(win32_error.value(), ERROR_INVALID_PARAMETER);
   EXPECT_EQ(win32_error.category(), std::system_category());
@@ -133,8 +122,7 @@ TEST_F(ThreadBackendTest, HResultErrorsRetainTheirOriginalCategory)
   EXPECT_NE(hresult_error.message().find("0x80004005"), std::string::npos);
 }
 
-TEST_F(ThreadBackendTest,
-       Utf8ConversionRejectsInvalidInputAndRoundTripsUnicode)
+TEST_F(ThreadBackendTest, Utf8ConversionRejectsInvalidInputAndRoundTripsUnicode)
 {
   std::string const name = "worker-\xC3\xA4";
   auto const wide = detail::utf8_to_utf16(name);
@@ -205,8 +193,7 @@ TEST_F(ThreadBackendTest, ThreadWithParameters)
 {
   std::atomic<int> result{ 0 };
 
-  detail::thread_backend thread([&result](int a, int b) { result = a + b; },
-                                10, 20);
+  detail::thread_backend thread([&result](int a, int b) { result = a + b; }, 10, 20);
 
   thread.join();
   EXPECT_EQ(result, 30);
@@ -227,18 +214,14 @@ TEST_F(ThreadBackendTest, ThreadWithReturnValue)
 // Test thread naming (Windows 10+)
 TEST_F(ThreadBackendTest, ThreadNaming)
 {
-  detail::thread_backend thread(
-      []() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
+  detail::thread_backend thread([]() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
 
   auto set_name_result = thread.set_name("test_thread");
 #ifdef _WIN32
   if (!set_name_result.has_value()
-      && set_name_result.error()
-             == std::make_error_code(std::errc::function_not_supported))
-    GTEST_SKIP()
-        << "SetThreadDescription is unavailable on this Windows version";
-  ASSERT_TRUE(set_name_result.has_value())
-      << set_name_result.error().message();
+      && set_name_result.error() == std::make_error_code(std::errc::function_not_supported))
+    GTEST_SKIP() << "SetThreadDescription is unavailable on this Windows version";
+  ASSERT_TRUE(set_name_result.has_value()) << set_name_result.error().message();
   auto name = thread.get_name();
   ASSERT_TRUE(name.has_value()) << name.error().message();
   EXPECT_EQ(name.value(), "test_thread");
@@ -256,16 +239,12 @@ TEST_F(ThreadBackendTest, ThreadNaming)
 #ifdef _WIN32
 TEST_F(ThreadBackendTest, ThreadNamingRoundTripsUtf8)
 {
-  detail::thread_backend thread(
-      []() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
+  detail::thread_backend thread([]() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
   std::string const name = "worker-\xC3\xA4";
 
   auto const set_result = thread.set_name(name);
-  if (!set_result.has_value()
-      && set_result.error()
-             == std::make_error_code(std::errc::function_not_supported))
-    GTEST_SKIP()
-        << "SetThreadDescription is unavailable on this Windows version";
+  if (!set_result.has_value() && set_result.error() == std::make_error_code(std::errc::function_not_supported))
+    GTEST_SKIP() << "SetThreadDescription is unavailable on this Windows version";
   ASSERT_TRUE(set_result.has_value()) << set_result.error().message();
 
   auto const read_result = thread.get_name();
@@ -276,27 +255,21 @@ TEST_F(ThreadBackendTest, ThreadNamingRoundTripsUtf8)
 
 TEST_F(ThreadBackendTest, ThreadNamingRejectsInvalidUtf8)
 {
-  detail::thread_backend thread(
-      []() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
+  detail::thread_backend thread([]() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
   std::string const invalid_utf8{ "worker-\xC3" };
   auto const result = thread.set_name(invalid_utf8);
   EXPECT_FALSE(result.has_value());
   if (!result.has_value())
-    EXPECT_NE(result.error(),
-              std::make_error_code(std::errc::function_not_supported));
+    EXPECT_NE(result.error(), std::make_error_code(std::errc::function_not_supported));
   thread.join();
 }
 
 TEST_F(ThreadBackendTest, ThreadNamingAllowsEmptyName)
 {
-  detail::thread_backend thread(
-      []() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
+  detail::thread_backend thread([]() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
   auto const result = thread.set_name("");
-  if (!result.has_value()
-      && result.error()
-             == std::make_error_code(std::errc::function_not_supported))
-    GTEST_SKIP()
-        << "SetThreadDescription is unavailable on this Windows version";
+  if (!result.has_value() && result.error() == std::make_error_code(std::errc::function_not_supported))
+    GTEST_SKIP() << "SetThreadDescription is unavailable on this Windows version";
   ASSERT_TRUE(result.has_value()) << result.error().message();
   auto const read_result = thread.get_name();
   ASSERT_TRUE(read_result.has_value()) << read_result.error().message();
@@ -309,15 +282,13 @@ TEST_F(ThreadBackendTest, ThreadNamingAllowsEmptyName)
 // POSIX: long names (>15) should fail with invalid_argument
 TEST_F(ThreadBackendTest, ThreadNamingTooLongFails)
 {
-  detail::thread_backend thread(
-      []() { std::this_thread::sleep_for(std::chrono::milliseconds(10)); });
+  detail::thread_backend thread([]() { std::this_thread::sleep_for(std::chrono::milliseconds(10)); });
   std::string long_name(16, 'x');
   auto res = thread.set_name(long_name);
   EXPECT_FALSE(res.has_value());
   if (!res.has_value())
     {
-      EXPECT_EQ(res.error(),
-                std::make_error_code(std::errc::invalid_argument));
+      EXPECT_EQ(res.error(), std::make_error_code(std::errc::invalid_argument));
     }
   thread.join();
 }
@@ -326,12 +297,10 @@ TEST_F(ThreadBackendTest, ThreadNamingTooLongFails)
 // Test thread priority
 TEST_F(ThreadBackendTest, native_thread_priority)
 {
-  detail::thread_backend thread(
-      []() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
+  detail::thread_backend thread([]() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
 
   // Set priority should not crash
-  [[maybe_unused]] bool priority_set
-      = thread.set_priority(native_thread_priority::normal()).has_value();
+  [[maybe_unused]] bool priority_set = thread.set_priority(native_thread_priority::normal()).has_value();
   // Priority setting may fail depending on permissions
   // Just ensure it doesn't crash
 
@@ -368,8 +337,7 @@ TEST_F(ThreadBackendTest, MultipleThreads)
 
   for (int i = 0; i < num_threads; ++i)
     {
-      threads.push_back(std::make_unique<detail::thread_backend>(
-          [&counter]() { counter++; }));
+      threads.push_back(std::make_unique<detail::thread_backend>([&counter]() { counter++; }));
     }
 
   for (auto& thread : threads)
@@ -428,8 +396,7 @@ TEST_F(ThreadBackendTest, MoveSemantics)
 // Test thread affinity (if supported)
 TEST_F(ThreadBackendTest, native_thread_affinity)
 {
-  detail::thread_backend thread(
-      []() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
+  detail::thread_backend thread([]() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
 
   // Try to set affinity to CPU 0
   native_thread_affinity affinity;
@@ -447,8 +414,7 @@ TEST_F(ThreadBackendTest, GetThreadId)
 {
   std::thread::id thread_id;
 
-  detail::thread_backend thread([&thread_id]()
-                                  { thread_id = std::this_thread::get_id(); });
+  detail::thread_backend thread([&thread_id]() { thread_id = std::this_thread::get_id(); });
 
   auto managed_id = thread.get_id();
   thread.join();
@@ -469,12 +435,8 @@ TEST_F(ThreadBackendTest, NativeOperationsAfterJoinReturnNoSuchProcess)
   auto const expected_error = std::make_error_code(std::errc::no_such_process);
   EXPECT_EQ(thread.set_name("finished").error(), expected_error);
   EXPECT_EQ(thread.get_name().error(), expected_error);
-  EXPECT_EQ(thread.set_priority(native_thread_priority::normal()).error(),
-            expected_error);
-  EXPECT_EQ(thread
-                .set_scheduling_policy(native_scheduling_policy::other,
-                                       native_thread_priority::normal())
-                .error(),
+  EXPECT_EQ(thread.set_priority(native_thread_priority::normal()).error(), expected_error);
+  EXPECT_EQ(thread.set_scheduling_policy(native_scheduling_policy::other, native_thread_priority::normal()).error(),
             expected_error);
   EXPECT_EQ(thread.configure(scheduling).error(), expected_error);
   EXPECT_EQ(thread.set_nice_value(0).error(), expected_error);
@@ -496,12 +458,10 @@ TEST_F(ThreadBackendTest, ThreadCreationPerformance)
     }
 
   auto end = std::chrono::high_resolution_clock::now();
-  auto duration
-      = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 
   // Just ensure it completes in reasonable time (< 1 second for 100 threads)
   EXPECT_LT(duration.count(), 1000000);
 
-  std::cout << "Thread creation avg: " << (duration.count() / num_iterations)
-            << " μs/thread" << std::endl;
+  std::cout << "Thread creation avg: " << (duration.count() / num_iterations) << " μs/thread" << std::endl;
 }

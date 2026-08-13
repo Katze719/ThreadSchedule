@@ -123,13 +123,11 @@ public:
   }
 
   bool
-  pop(HttpRequest& request,
-      std::chrono::milliseconds timeout = std::chrono::milliseconds(100))
+  pop(HttpRequest& request, std::chrono::milliseconds timeout = std::chrono::milliseconds(100))
   {
     std::unique_lock<std::mutex> lock(mutex_);
 
-    if (condition_.wait_for(lock, timeout,
-                            [this] { return !queue_.empty() || stopped_; }))
+    if (condition_.wait_for(lock, timeout, [this] { return !queue_.empty() || stopped_; }))
       {
         if (!queue_.empty())
           {
@@ -188,14 +186,12 @@ public:
     else if (request.path == "/api/analytics")
       {
         // Simulate analytics computation
-        result
-            = simulate_analytics_computation(session->user_id, request.body);
+        result = simulate_analytics_computation(session->user_id, request.body);
       }
     else if (request.path == "/api/recommendations")
       {
         // Simulate recommendation engine
-        result = simulate_recommendation_engine(session->preferences,
-                                                request.body);
+        result = simulate_recommendation_engine(session->preferences, request.body);
       }
 
     response.body = result;
@@ -220,18 +216,14 @@ public:
       }
 
     // Simulate image processing if it's an image upload
-    if (request.headers.count("content-type")
-        && request.headers.at("content-type").find("image/")
-               != std::string::npos)
+    if (request.headers.count("content-type") && request.headers.at("content-type").find("image/") != std::string::npos)
       {
         // Simulate image resizing/thumbnail generation
         simulate_image_processing(hash % 1000);
       }
 
     response.status_code = 200;
-    response.body = { { "status", "success" },
-                      { "hash", std::to_string(hash) },
-                      { "processed_size", content.size() } };
+    response.body = { { "status", "success" }, { "hash", std::to_string(hash) }, { "processed_size", content.size() } };
 
     return response;
   }
@@ -268,8 +260,7 @@ public:
       }
 
     double mean = values.empty() ? 0.0 : sum / values.size();
-    double variance
-        = values.empty() ? 0.0 : (sum_sq / values.size()) - (mean * mean);
+    double variance = values.empty() ? 0.0 : (sum_sq / values.size()) - (mean * mean);
 
     response.status_code = 200;
     response.body
@@ -278,8 +269,7 @@ public:
             { "mean", mean },
             { "variance", variance },
             { "timestamp",
-              std::chrono::duration_cast<std::chrono::milliseconds>(
-                  std::chrono::steady_clock::now().time_since_epoch())
+              std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
                   .count() } };
 
     return response;
@@ -296,24 +286,21 @@ private:
     size_t user_count = 100;
     if (params.contains("limit") && params["limit"].is_number())
       {
-        user_count
-            = std::min(user_count, static_cast<size_t>(params["limit"]));
+        user_count = std::min(user_count, static_cast<size_t>(params["limit"]));
       }
 
     for (size_t i = 0; i < user_count; ++i)
       {
-        json user
-            = { { "id", i + 1 },
-                { "name", "User_" + std::to_string(i + 1) },
-                { "email", "user" + std::to_string(i + 1) + "@example.com" },
-                { "preferences",
-                  { { "theme", (i % 2 == 0) ? "dark" : "light" },
-                    { "notifications", i % 3 == 0 },
-                    { "language", (i % 4 == 0)   ? "en"
-                                  : (i % 4 == 1) ? "de"
-                                                 : "fr" } } },
-                { "created_at", "2024-01-" + std::string(i < 9 ? "0" : "")
-                                    + std::to_string((i % 28) + 1) } };
+        json user = { { "id", i + 1 },
+                      { "name", "User_" + std::to_string(i + 1) },
+                      { "email", "user" + std::to_string(i + 1) + "@example.com" },
+                      { "preferences",
+                        { { "theme", (i % 2 == 0) ? "dark" : "light" },
+                          { "notifications", i % 3 == 0 },
+                          { "language", (i % 4 == 0)   ? "en"
+                                        : (i % 4 == 1) ? "de"
+                                                       : "fr" } } },
+                      { "created_at", "2024-01-" + std::string(i < 9 ? "0" : "") + std::to_string((i % 28) + 1) } };
         result.push_back(user);
       }
 
@@ -322,26 +309,22 @@ private:
 
   // Simulate analytics computation
   static json
-  simulate_analytics_computation(std::string const& user_id,
-                                 json const& params)
+  simulate_analytics_computation(std::string const& user_id, json const& params)
   {
     // Simulate expensive computation with random data
     std::random_device rd;
     std::mt19937 gen(rd());
     std::normal_distribution<double> dist(100.0, 15.0);
 
-    json analytics = { { "user_id", user_id },
-                       { "period", params.value("period", "30d") },
-                       { "metrics", json::array() } };
+    json analytics
+        = { { "user_id", user_id }, { "period", params.value("period", "30d") }, { "metrics", json::array() } };
 
     for (int i = 0; i < 50; ++i)
       {
-        json metric
-            = { { "date", "2024-01-" + std::string(i < 9 ? "0" : "")
-                              + std::to_string((i % 28) + 1) },
-                { "page_views", static_cast<int>(dist(gen)) },
-                { "session_duration", static_cast<int>(dist(gen) * 0.5) },
-                { "bounce_rate", dist(gen) / 1000.0 } };
+        json metric = { { "date", "2024-01-" + std::string(i < 9 ? "0" : "") + std::to_string((i % 28) + 1) },
+                        { "page_views", static_cast<int>(dist(gen)) },
+                        { "session_duration", static_cast<int>(dist(gen) * 0.5) },
+                        { "bounce_rate", dist(gen) / 1000.0 } };
         analytics["metrics"].push_back(metric);
       }
 
@@ -350,18 +333,15 @@ private:
 
   // Simulate recommendation engine
   static json
-  simulate_recommendation_engine(
-      std::unordered_map<std::string, std::string> const& preferences,
-      [[maybe_unused]] json const& context)
+  simulate_recommendation_engine(std::unordered_map<std::string, std::string> const& preferences,
+                                 [[maybe_unused]] json const& context)
   {
-    json recommendations = { { "products", json::array() },
-                             { "confidence_scores", json::array() } };
+    json recommendations = { { "products", json::array() }, { "confidence_scores", json::array() } };
 
     // Simulate ML-like recommendation computation
     std::vector<std::pair<std::string, double>> candidates
-        = { { "product_A", 0.85 }, { "product_B", 0.72 },
-            { "product_C", 0.91 }, { "product_D", 0.68 },
-            { "product_E", 0.79 }, { "product_F", 0.88 } };
+        = { { "product_A", 0.85 }, { "product_B", 0.72 }, { "product_C", 0.91 },
+            { "product_D", 0.68 }, { "product_E", 0.79 }, { "product_F", 0.88 } };
 
     // Apply preference-based filtering
     for (auto const& [product, score] : candidates)
@@ -369,8 +349,7 @@ private:
         double adjusted_score = score;
 
         // Simulate preference matching (expensive computation)
-        if (preferences.count("category")
-            && preferences.at("category") == "electronics")
+        if (preferences.count("category") && preferences.at("category") == "electronics")
           {
             adjusted_score *= 1.2;
           }
@@ -381,9 +360,7 @@ private:
                 { { "id", product },
                   { "name", "Product " + product },
                   { "score", adjusted_score },
-                  { "category", preferences.count("category")
-                                    ? preferences.at("category")
-                                    : "general" } });
+                  { "category", preferences.count("category") ? preferences.at("category") : "general" } });
             recommendations["confidence_scores"].push_back(adjusted_score);
           }
       }
@@ -428,8 +405,7 @@ BM_WebServer_JSON_API_Processing(benchmark::State& state)
       auto session = std::make_shared<UserSession>();
       session->user_id = "user_" + std::to_string(i);
       session->session_token = "token_" + std::to_string(i);
-      session->preferences["category"]
-          = (i % 2 == 0) ? "electronics" : "books";
+      session->preferences["category"] = (i % 2 == 0) ? "electronics" : "books";
       session->last_activity = std::chrono::steady_clock::now();
       sessions.store_session("session_" + std::to_string(i), session);
     }
@@ -444,13 +420,9 @@ BM_WebServer_JSON_API_Processing(benchmark::State& state)
         {
           HttpRequest request;
           request.method = "POST";
-          request.path = (i % 3 == 0)   ? "/api/users"
-                         : (i % 3 == 1) ? "/api/analytics"
-                                        : "/api/recommendations";
-          request.session_id
-              = "session_" + std::to_string(i % concurrent_users);
-          request.body
-              = { { "limit", 50 }, { "offset", i * 10 }, { "period", "30d" } };
+          request.path = (i % 3 == 0) ? "/api/users" : (i % 3 == 1) ? "/api/analytics" : "/api/recommendations";
+          request.session_id = "session_" + std::to_string(i % concurrent_users);
+          request.body = { { "limit", 50 }, { "offset", i * 10 }, { "period", "30d" } };
           request.timestamp = std::chrono::steady_clock::now();
 
           pool.submit(
@@ -458,13 +430,10 @@ BM_WebServer_JSON_API_Processing(benchmark::State& state)
                 {
                   try
                     {
-                      auto response
-                          = WebServerWorkloads::process_json_api_request(
-                              request, sessions);
+                      auto response = WebServerWorkloads::process_json_api_request(request, sessions);
                       if (response.status_code == 200)
                         {
-                          processed_requests.fetch_add(
-                              1, std::memory_order_relaxed);
+                          processed_requests.fetch_add(1, std::memory_order_relaxed);
                         }
                       else
                         {
@@ -481,23 +450,20 @@ BM_WebServer_JSON_API_Processing(benchmark::State& state)
       // Wait for completion
       auto stats = pool.get_statistics();
 
-      state.counters["processed_requests"]
-          = benchmark::Counter(processed_requests.load());
+      state.counters["processed_requests"] = benchmark::Counter(processed_requests.load());
       state.counters["errors"] = benchmark::Counter(errors.load());
-      state.counters["error_rate_percent"] = benchmark::Counter(
-          100.0 * errors.load() / std::max(requests_per_batch, size_t(1)));
+      state.counters["error_rate_percent"]
+          = benchmark::Counter(100.0 * errors.load() / std::max(requests_per_batch, size_t(1)));
       state.counters["work_steal_ratio"]
-          = benchmark::Counter(100.0 * stats.stolen_tasks
-                               / std::max(stats.completed_tasks, size_t(1)));
-      state.counters["avg_task_time_ms"] = benchmark::Counter(
-          static_cast<double>(stats.avg_task_time.count()) / 1000.0);
+          = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
+      state.counters["avg_task_time_ms"]
+          = benchmark::Counter(static_cast<double>(stats.avg_task_time.count()) / 1000.0);
 
       benchmark::DoNotOptimize(processed_requests.load());
     }
 
   state.SetItemsProcessed(state.iterations() * requests_per_batch);
-  state.SetLabel("threads=" + std::to_string(num_threads)
-                 + " requests=" + std::to_string(requests_per_batch)
+  state.SetLabel("threads=" + std::to_string(num_threads) + " requests=" + std::to_string(requests_per_batch)
                  + " users=" + std::to_string(concurrent_users));
 }
 
@@ -532,26 +498,20 @@ BM_WebServer_FileUpload_Processing(benchmark::State& state)
               content += static_cast<char>('A' + (j % 26));
             }
 
-          request.body
-              = { { "filename", "file_" + std::to_string(i) + ".txt" },
-                  { "content", content },
-                  { "size", content.size() } };
+          request.body = { { "filename", "file_" + std::to_string(i) + ".txt" },
+                           { "content", content },
+                           { "size", content.size() } };
 
-          request.headers["content-type"]
-              = (i % 3 == 0) ? "text/plain" : "image/jpeg";
+          request.headers["content-type"] = (i % 3 == 0) ? "text/plain" : "image/jpeg";
 
           pool.submit(
               [&processed_uploads, &total_bytes, request]()
                 {
-                  auto response
-                      = WebServerWorkloads::process_file_upload(request);
+                  auto response = WebServerWorkloads::process_file_upload(request);
                   if (response.status_code == 200)
                     {
-                      processed_uploads.fetch_add(1,
-                                                  std::memory_order_relaxed);
-                      total_bytes.fetch_add(
-                          request.body.value("size", size_t(0)),
-                          std::memory_order_relaxed);
+                      processed_uploads.fetch_add(1, std::memory_order_relaxed);
+                      total_bytes.fetch_add(request.body.value("size", size_t(0)), std::memory_order_relaxed);
                     }
                 });
         }
@@ -559,23 +519,18 @@ BM_WebServer_FileUpload_Processing(benchmark::State& state)
       // Wait for completion
       auto stats = pool.get_statistics();
 
-      state.counters["processed_uploads"]
-          = benchmark::Counter(processed_uploads.load());
-      state.counters["total_bytes_mb"]
-          = benchmark::Counter(total_bytes.load() / (1024.0 * 1024.0));
+      state.counters["processed_uploads"] = benchmark::Counter(processed_uploads.load());
+      state.counters["total_bytes_mb"] = benchmark::Counter(total_bytes.load() / (1024.0 * 1024.0));
       state.counters["throughput_mbps"]
-          = benchmark::Counter((total_bytes.load() / (1024.0 * 1024.0))
-                               / (stats.avg_task_time.count() / 1e9));
+          = benchmark::Counter((total_bytes.load() / (1024.0 * 1024.0)) / (stats.avg_task_time.count() / 1e9));
       state.counters["work_steal_ratio"]
-          = benchmark::Counter(100.0 * stats.stolen_tasks
-                               / std::max(stats.completed_tasks, size_t(1)));
+          = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
 
       benchmark::DoNotOptimize(processed_uploads.load());
     }
 
   state.SetItemsProcessed(state.iterations() * uploads_per_batch);
-  state.SetLabel("threads=" + std::to_string(num_threads)
-                 + " uploads=" + std::to_string(uploads_per_batch)
+  state.SetLabel("threads=" + std::to_string(num_threads) + " uploads=" + std::to_string(uploads_per_batch)
                  + " size=" + std::to_string(file_size_kb) + "KB");
 }
 
@@ -614,42 +569,30 @@ BM_WebServer_RealTimeStreaming(benchmark::State& state)
               metrics.push_back(
                   { { "sensor_id", j },
                     { "value", 100.0 + std::sin(i * 0.1 + j) * 10.0 },
-                    { "timestamp",
-                      std::chrono::duration_cast<std::chrono::milliseconds>(
-                          submit_time.time_since_epoch())
-                          .count() } });
+                    { "timestamp", std::chrono::duration_cast<std::chrono::milliseconds>(submit_time.time_since_epoch())
+                                       .count() } });
             }
 
-          request.body = { { "stream_id", "stream_001" },
-                           { "metrics", metrics },
-                           { "batch_size", 10 } };
+          request.body = { { "stream_id", "stream_001" }, { "metrics", metrics }, { "batch_size", 10 } };
 
           pool.submit(
-              [&processed_messages, &avg_latency_ms, &message_count, &request,
-               submit_time]()
+              [&processed_messages, &avg_latency_ms, &message_count, &request, submit_time]()
                 {
                   auto process_start = std::chrono::steady_clock::now();
 
-                  auto response
-                      = WebServerWorkloads::process_websocket_message(request);
+                  auto response = WebServerWorkloads::process_websocket_message(request);
 
                   auto process_end = std::chrono::steady_clock::now();
                   auto latency
-                      = std::chrono::duration_cast<std::chrono::microseconds>(
-                            process_end - submit_time)
-                            .count()
+                      = std::chrono::duration_cast<std::chrono::microseconds>(process_end - submit_time).count()
                         / 1000.0;
 
                   processed_messages.fetch_add(1, std::memory_order_relaxed);
-                  double current_avg
-                      = avg_latency_ms.load(std::memory_order_relaxed);
-                  size_t count
-                      = message_count.fetch_add(1, std::memory_order_relaxed)
-                        + 1;
+                  double current_avg = avg_latency_ms.load(std::memory_order_relaxed);
+                  size_t count = message_count.fetch_add(1, std::memory_order_relaxed) + 1;
 
                   // Update running average
-                  double new_avg
-                      = current_avg + (latency - current_avg) / count;
+                  double new_avg = current_avg + (latency - current_avg) / count;
                   avg_latency_ms.store(new_avg, std::memory_order_relaxed);
                 });
         }
@@ -657,27 +600,21 @@ BM_WebServer_RealTimeStreaming(benchmark::State& state)
       // Wait for completion
       auto stats = pool.get_statistics();
 
-      state.counters["processed_messages"]
-          = benchmark::Counter(processed_messages.load());
+      state.counters["processed_messages"] = benchmark::Counter(processed_messages.load());
       state.counters["target_mps"] = benchmark::Counter(messages_per_second);
-      state.counters["actual_mps"] = benchmark::Counter(
-          static_cast<double>(processed_messages.load()) / duration_seconds);
-      state.counters["avg_latency_ms"]
-          = benchmark::Counter(avg_latency_ms.load());
+      state.counters["actual_mps"]
+          = benchmark::Counter(static_cast<double>(processed_messages.load()) / duration_seconds);
+      state.counters["avg_latency_ms"] = benchmark::Counter(avg_latency_ms.load());
       state.counters["work_steal_ratio"]
-          = benchmark::Counter(100.0 * stats.stolen_tasks
-                               / std::max(stats.completed_tasks, size_t(1)));
+          = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
       state.counters["efficiency_percent"]
-          = benchmark::Counter(100.0 * processed_messages.load()
-                               / (messages_per_second * duration_seconds));
+          = benchmark::Counter(100.0 * processed_messages.load() / (messages_per_second * duration_seconds));
 
       benchmark::DoNotOptimize(processed_messages.load());
     }
 
-  state.SetItemsProcessed(state.iterations() * messages_per_second
-                          * duration_seconds);
-  state.SetLabel("threads=" + std::to_string(num_threads)
-                 + " target_mps=" + std::to_string(messages_per_second));
+  state.SetItemsProcessed(state.iterations() * messages_per_second * duration_seconds);
+  state.SetLabel("threads=" + std::to_string(num_threads) + " target_mps=" + std::to_string(messages_per_second));
 }
 
 // =============================================================================

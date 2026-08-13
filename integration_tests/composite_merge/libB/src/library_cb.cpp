@@ -22,8 +22,7 @@ start_worker(char const* name)
   threads.emplace_back(
       [thread_name = std::string(name)]
         {
-          (void)local_registry.register_current_thread(thread_name,
-                                                       "CompositeLibB");
+          (void)local_registry.register_current_thread(thread_name, "CompositeLibB");
           std::this_thread::sleep_for(std::chrono::milliseconds(500));
           (void)local_registry.unregister_current_thread();
         });

@@ -102,8 +102,7 @@ TEST_F(ThreadPoolTest, ThreadPoolExceptionHandling)
 {
   thread_pool_backend pool(2);
 
-  auto future = pool.submit([]() -> int
-                              { throw std::runtime_error("Test exception"); });
+  auto future = pool.submit([]() -> int { throw std::runtime_error("Test exception"); });
 
   EXPECT_THROW(future.get(), std::runtime_error);
 }
@@ -190,9 +189,7 @@ TEST_F(ThreadPoolTest, HighPerformancePoolStatistics)
 
   for (int i = 0; i < 10; ++i)
     {
-      pool.submit(
-          []()
-            { std::this_thread::sleep_for(std::chrono::milliseconds(10)); });
+      pool.submit([]() { std::this_thread::sleep_for(std::chrono::milliseconds(10)); });
     }
 
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -211,9 +208,7 @@ TEST_F(ThreadPoolTest, HighPerformancePoolPendingTasks)
   // Submit many tasks
   for (int i = 0; i < 100; ++i)
     {
-      pool.submit(
-          []()
-            { std::this_thread::sleep_for(std::chrono::milliseconds(10)); });
+      pool.submit([]() { std::this_thread::sleep_for(std::chrono::milliseconds(10)); });
     }
 
   // Check statistics for pending tasks
@@ -283,16 +278,14 @@ TEST_F(ThreadPoolTest, PerformanceComparisonSimpleTasks)
         }
 
       // Wait for completion with timeout
-      auto timeout
-          = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+      auto timeout = std::chrono::steady_clock::now() + std::chrono::seconds(5);
       while (counter < num_tasks && std::chrono::steady_clock::now() < timeout)
         {
           std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
 
       auto end = std::chrono::high_resolution_clock::now();
-      return std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
-          .count();
+      return std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     };
 
   thread_pool_backend pool1(num_threads);
@@ -341,13 +334,10 @@ TEST_F(ThreadPoolTest, StressTestHighPerformancePool)
     }
 
   auto end = std::chrono::high_resolution_clock::now();
-  auto duration
-      = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
-  std::cout << "Stress test completed " << num_tasks << " tasks in "
-            << duration.count() << " ms" << std::endl;
-  std::cout << "Throughput: " << (num_tasks * 1000.0 / duration.count())
-            << " tasks/sec" << std::endl;
+  std::cout << "Stress test completed " << num_tasks << " tasks in " << duration.count() << " ms" << std::endl;
+  std::cout << "Throughput: " << (num_tasks * 1000.0 / duration.count()) << " tasks/sec" << std::endl;
 
   EXPECT_EQ(completed, num_tasks);
 }

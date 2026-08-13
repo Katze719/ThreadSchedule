@@ -13,8 +13,7 @@ main()
       []
         {
           auto& global = threadschedule::global_registry();
-          (void)global.register_current_thread("external-worker",
-                                               "application");
+          (void)global.register_current_thread("external-worker", "application");
           std::this_thread::sleep_for(std::chrono::milliseconds(60));
           (void)global.unregister_current_thread();
         });

@@ -44,8 +44,7 @@ template <typename Func>
 using error_handled_task = ::threadschedule::error_handled_task<Func>;
 
 template <typename T>
-using future_with_error_handler
-    = ::threadschedule::future_with_error_handler<T>;
+using future_with_error_handler = ::threadschedule::future_with_error_handler<T>;
 
 using ::threadschedule::make_error_handled_task;
 

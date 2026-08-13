@@ -32,8 +32,7 @@ main()
 
   auto const io_count
       = std::count_if(entries->begin(), entries->end(),
-                      [](threadschedule::registered_thread const& entry)
-                        { return entry.component == "io"; });
+                      [](threadschedule::registered_thread const& entry) { return entry.component == "io"; });
   std::cout << "registered=" << entries->size() << ", io=" << io_count << '\n';
 
   auto io_joined = io_worker.join();

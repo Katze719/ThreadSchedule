@@ -94,7 +94,7 @@ reserved identifiers.
 
 - Run `clang-format` on every changed C++ source/header and verify with
   `clang-format --dry-run --Werror`.
-- Keep lines within the configured 79-column limit.
+- Keep lines within the configured 120-column limit.
 - Use lowercase identifiers and a trailing underscore for private/protected
   data members.
 - Run clang-tidy with warnings as errors against a compile database:

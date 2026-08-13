@@ -26,13 +26,9 @@ TEST(ThreadRegistryStress, ManyThreadsRegisterAndControl)
   std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
   // Try bulk operations concurrently with active threads
-  registry().apply([](registered_thread_info_backend const& e)
-                     { return e.component == "even"; },
+  registry().apply([](registered_thread_info_backend const& e) { return e.component == "even"; },
                    [&](registered_thread_info_backend const& e)
-                     {
-                       (void)registry().set_priority(
-                           e.tid, native_thread_priority{ 0 });
-                     });
+                     { (void)registry().set_priority(e.tid, native_thread_priority{ 0 }); });
 
   for (auto& t : threads)
     {

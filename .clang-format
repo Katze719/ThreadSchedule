@@ -5,7 +5,7 @@ BasedOnStyle: GNU
 # Match the locally installed GCC/libstdc++ house style while keeping names
 # outside std's reserved implementation namespace.
 Standard: c++17
-ColumnLimit: 79
+ColumnLimit: 120
 IndentWidth: 2
 ContinuationIndentWidth: 4
 ConstructorInitializerIndentWidth: 4

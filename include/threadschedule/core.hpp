@@ -174,9 +174,7 @@ private:
   void
   normalize()
   {
-    cpus_.erase(std::remove_if(cpus_.begin(), cpus_.end(),
-                               [](int cpu) { return cpu < 0; }),
-                cpus_.end());
+    cpus_.erase(std::remove_if(cpus_.begin(), cpus_.end(), [](int cpu) { return cpu < 0; }), cpus_.end());
     std::sort(cpus_.begin(), cpus_.end());
     cpus_.erase(std::unique(cpus_.begin(), cpus_.end()), cpus_.end());
   }
@@ -207,8 +205,8 @@ struct task_error
   [[nodiscard]] static auto
   capture(std::string description = {}) -> task_error
   {
-    return { std::current_exception(), std::move(description),
-             std::this_thread::get_id(), std::chrono::steady_clock::now() };
+    return { std::current_exception(), std::move(description), std::this_thread::get_id(),
+             std::chrono::steady_clock::now() };
   }
 
   [[nodiscard]] auto
@@ -342,8 +340,7 @@ to_native(thread_affinity const& affinity) -> native_thread_affinity
 {
   native_thread_affinity native(affinity.cpus());
   if (native.get_cpus() != affinity.cpus())
-    throw std::system_error(std::make_error_code(std::errc::invalid_argument),
-                            "thread affinity is not representable");
+    throw std::system_error(std::make_error_code(std::errc::invalid_argument), "thread affinity is not representable");
   return native;
 }
 
@@ -361,17 +358,15 @@ to_native(thread_config const& config) -> native_thread_config
 [[nodiscard]] inline auto
 has_thread_configuration(thread_config const& config) noexcept -> bool
 {
-  return !config.name.empty() || config.affinity.has_value()
-         || config.scheduling.intent != scheduling_intent::normal
+  return !config.name.empty() || config.affinity.has_value() || config.scheduling.intent != scheduling_intent::normal
          || config.scheduling.priority != 0;
 }
 
 [[nodiscard]] constexpr auto
 to_native(shutdown_policy policy) noexcept -> shutdown_policy_backend
 {
-  return policy == shutdown_policy::drop_pending
-             ? shutdown_policy_backend::drop_pending
-             : shutdown_policy_backend::drain;
+  return policy == shutdown_policy::drop_pending ? shutdown_policy_backend::drop_pending
+                                                 : shutdown_policy_backend::drain;
 }
 
 [[nodiscard]] inline auto
@@ -379,6 +374,134 @@ from_native(native_thread_affinity const& affinity) -> thread_affinity
 {
   return thread_affinity(affinity.get_cpus());
 }
+
+template <typename Function>
+[[nodiscard]] auto
+try_result(Function&& function) -> decltype(std::forward<Function>(function)())
+{
+  try
+    {
+      return std::forward<Function>(function)();
+    }
+  catch (...)
+    {
+      return unexpected(current_exception_error_code());
+    }
+}
+
+namespace thread_lifecycle
+{
+template <typename ThreadLike>
+auto
+join(ThreadLike& value) -> result<void>
+{
+  if (!value.joinable())
+    return unexpected(std::make_error_code(std::errc::invalid_argument));
+  return try_result(
+      [&value]() -> result<void>
+        {
+          value.join();
+          return {};
+        });
+}
+
+template <typename ThreadLike>
+void
+join_or_throw(ThreadLike& value, char const* operation)
+{
+  if (!value.joinable())
+    throw std::system_error(std::make_error_code(std::errc::invalid_argument), operation);
+  value.join();
+}
+
+template <typename ThreadLike>
+auto
+detach(ThreadLike& value) -> result<void>
+{
+  if (!value.joinable())
+    return unexpected(std::make_error_code(std::errc::invalid_argument));
+  return try_result(
+      [&value]() -> result<void>
+        {
+          value.detach();
+          return {};
+        });
+}
+
+template <typename ThreadLike>
+void
+detach_or_throw(ThreadLike& value, char const* operation)
+{
+  if (!value.joinable())
+    throw std::system_error(std::make_error_code(std::errc::invalid_argument), operation);
+  value.detach();
+}
+} // namespace thread_lifecycle
+
+namespace portable_thread_control
+{
+template <typename Control>
+auto
+configure(Control& control, thread_config const& config) -> result<void>
+{
+  return try_result([&control, &config]() -> result<void> { return control.configure(to_native(config)); });
+}
+
+template <typename Control>
+auto
+set_priority(Control& control, priority_level level) -> result<void>
+{
+  return control.configure(native_schedule::posix_nice(static_cast<int>(level)));
+}
+
+template <typename Control>
+auto
+set_nice(Control& control, int nice_value) -> result<void>
+{
+  return control.configure(native_schedule::posix_nice(nice_value));
+}
+
+[[nodiscard]] inline auto
+get_priority(result<int> value) -> result<priority_level>
+{
+  if (!value)
+    return unexpected(value.error());
+  return to_priority_level(value.value());
+}
+
+template <typename Control>
+auto
+set_affinity(Control& control, thread_affinity const& affinity) -> result<void>
+{
+  return try_result([&control, &affinity]() -> result<void> { return control.set_affinity(to_native(affinity)); });
+}
+
+[[nodiscard]] inline auto
+get_affinity(result<native_thread_affinity> affinity) -> result<thread_affinity>
+{
+  if (!affinity)
+    return unexpected(affinity.error());
+  return from_native(affinity.value());
+}
+} // namespace portable_thread_control
+
+#if defined(__cpp_lib_jthread) && __cpp_lib_jthread >= 201911L
+template <typename Function, typename Tuple>
+void
+invoke_jthread_callable(Function& callable, Tuple&& arguments, std::stop_token token)
+{
+  using function_type = std::remove_reference_t<Function>;
+  std::apply(
+      [&callable, &token](auto&&... stored)
+        {
+          if constexpr (std::is_invocable_v<function_type, std::stop_token, decltype(stored)...>)
+            std::invoke(std::move(callable), std::move(token), std::forward<decltype(stored)>(stored)...);
+          else
+            std::invoke(std::move(callable), std::forward<decltype(stored)>(stored)...);
+        },
+      std::forward<Tuple>(arguments));
+}
+#endif
 } // namespace detail
 
 class thread
@@ -391,20 +514,16 @@ public:
   {
   }
 
-  template <
-      typename F, typename... Args,
-      std::enable_if_t<!std::is_same_v<std::decay_t<F>, thread>
-                           && !std::is_same_v<std::decay_t<F>, thread_config>,
-                       int> = 0>
-  explicit thread(F&& function, Args&&... args)
-      : impl_(std::forward<F>(function), std::forward<Args>(args)...)
+  template <typename F, typename... Args,
+            std::enable_if_t<
+                !std::is_same_v<std::decay_t<F>, thread> && !std::is_same_v<std::decay_t<F>, thread_config>, int> = 0>
+  explicit thread(F&& function, Args&&... args) : impl_(std::forward<F>(function), std::forward<Args>(args)...)
   {
   }
 
   template <typename F, typename... Args>
   thread(thread_config const& config, F&& function, Args&&... args)
-      : impl_(make_configured_impl(config, std::forward<F>(function),
-                                   std::forward<Args>(args)...))
+      : impl_(make_configured_impl(config, std::forward<F>(function), std::forward<Args>(args)...))
   {
   }
 
@@ -416,83 +535,42 @@ public:
   template <typename F, typename... Args>
   static auto
   create(F&& function, Args&&... args)
-      -> std::enable_if_t<!std::is_same_v<std::decay_t<F>, thread_config>,
-                          result<thread>>
+      -> std::enable_if_t<!std::is_same_v<std::decay_t<F>, thread_config>, result<thread>>
   {
-    try
-      {
-        return thread(std::forward<F>(function), std::forward<Args>(args)...);
-      }
-    catch (...)
-      {
-        return unexpected(detail::current_exception_error_code());
-      }
+    return detail::try_result([&]() -> result<thread>
+                                { return thread(std::forward<F>(function), std::forward<Args>(args)...); });
   }
 
   template <typename F, typename... Args>
   static auto
-  create(thread_config const& config, F&& function, Args&&... args)
-      -> result<thread>
+  create(thread_config const& config, F&& function, Args&&... args) -> result<thread>
   {
-    try
-      {
-        return thread(config, std::forward<F>(function),
-                      std::forward<Args>(args)...);
-      }
-    catch (...)
-      {
-        return unexpected(detail::current_exception_error_code());
-      }
+    return detail::try_result([&]() -> result<thread>
+                                { return thread(config, std::forward<F>(function), std::forward<Args>(args)...); });
   }
 
   auto
   join() -> result<void>
   {
-    if (!impl_.joinable())
-      return unexpected(std::make_error_code(std::errc::invalid_argument));
-    try
-      {
-        impl_.join();
-        return {};
-      }
-    catch (...)
-      {
-        return unexpected(detail::current_exception_error_code());
-      }
+    return detail::thread_lifecycle::join(impl_);
   }
 
   void
   join_or_throw()
   {
-    if (!impl_.joinable())
-      throw std::system_error(
-          std::make_error_code(std::errc::invalid_argument), "thread::join");
-    impl_.join();
+    detail::thread_lifecycle::join_or_throw(impl_, "thread::join");
   }
 
   auto
   detach() -> result<void>
   {
-    if (!impl_.joinable())
-      return unexpected(std::make_error_code(std::errc::invalid_argument));
-    try
-      {
-        impl_.detach();
-        return {};
-      }
-    catch (...)
-      {
-        return unexpected(detail::current_exception_error_code());
-      }
+    return detail::thread_lifecycle::detach(impl_);
   }
 
   void
   detach_or_throw()
   {
-    if (!impl_.joinable())
-      throw std::system_error(
-          std::make_error_code(std::errc::invalid_argument), "thread::detach");
-    impl_.detach();
+    detail::thread_lifecycle::detach_or_throw(impl_, "thread::detach");
   }
 
   [[nodiscard]] auto
@@ -516,36 +594,25 @@ public:
   auto
   configure(thread_config const& config) -> result<void>
   {
-    try
-      {
-        return impl_.configure(detail::to_native(config));
-      }
-    catch (...)
-      {
-        return unexpected(detail::current_exception_error_code());
-      }
+    return detail::portable_thread_control::configure(impl_, config);
   }
 
   auto
   set_priority(priority_level level) -> result<void>
   {
-    return impl_.configure(
-        detail::native_schedule::posix_nice(static_cast<int>(level)));
+    return detail::portable_thread_control::set_priority(impl_, level);
   }
 
   auto
   set_nice(int nice_value) -> result<void>
   {
-    return impl_.configure(detail::native_schedule::posix_nice(nice_value));
+    return detail::portable_thread_control::set_nice(impl_, nice_value);
   }
 
   [[nodiscard]] auto
   get_priority() const -> result<priority_level>
   {
-    auto value = impl_.get_nice_value();
-    if (!value)
-      return unexpected(value.error());
-    return detail::to_priority_level(value.value());
+    return detail::portable_thread_control::get_priority(impl_.get_nice_value());
   }
 
   auto
@@ -563,23 +630,13 @@ public:
   auto
   set_affinity(thread_affinity const& affinity) -> result<void>
   {
-    try
-      {
-        return impl_.set_affinity(detail::to_native(affinity));
-      }
-    catch (...)
-      {
-        return unexpected(detail::current_exception_error_code());
-      }
+    return detail::portable_thread_control::set_affinity(impl_, affinity);
   }
 
   [[nodiscard]] auto
   get_affinity() const -> result<thread_affinity>
   {
-    auto affinity = impl_.get_affinity();
-    if (!affinity)
-      return unexpected(affinity.error());
-    return detail::from_native(affinity.value());
+    return detail::portable_thread_control::get_affinity(impl_.get_affinity());
   }
 
   [[nodiscard]] auto
@@ -593,14 +650,11 @@ private:
 
   template <typename F, typename... Args>
   static auto
-  make_configured_impl(thread_config const& config, F&& function,
-                       Args&&... args) -> detail::thread_backend
+  make_configured_impl(thread_config const& config, F&& function, Args&&... args) -> detail::thread_backend
   {
     auto gate = std::make_shared<detail::thread_start_gate>();
     detail::thread_backend value(
-        [gate,
-         callable = detail::bind_args(std::forward<F>(function),
-                                      std::forward<Args>(args)...)]() mutable
+        [gate, callable = detail::bind_args(std::forward<F>(function), std::forward<Args>(args)...)]() mutable
           {
             if (gate->wait())
               callable();
@@ -612,8 +666,7 @@ private:
         if (!configured)
           {
             gate->release(false);
-            throw std::system_error(configured.error(),
-                                    "thread configuration");
+            throw std::system_error(configured.error(), "thread configuration");
           }
         gate->release(true);
       }
@@ -637,28 +690,23 @@ public:
   jthread() noexcept = default;
   explicit jthread(std::jthread&& value) noexcept : impl_(std::move(value)) {}
   jthread(std::jthread&& value, std::uint64_t native_id) noexcept
-      : native_id_(static_cast<native_thread_id>(native_id)),
-        impl_(std::move(value))
+      : native_id_(static_cast<native_thread_id>(native_id)), impl_(std::move(value))
   {
   }
 
-  template <typename F, typename... Args,
-            std::enable_if_t<
-                !std::is_same_v<std::decay_t<F>, jthread>
-                    && !std::is_same_v<std::decay_t<F>, thread_config>
-                    && std::is_constructible_v<std::jthread, F, Args...>,
-                int> = 0>
+  template <
+      typename F, typename... Args,
+      std::enable_if_t<!std::is_same_v<std::decay_t<F>, jthread> && !std::is_same_v<std::decay_t<F>, thread_config>
+                           && std::is_constructible_v<std::jthread, F, Args...>,
+                       int> = 0>
   explicit jthread(F&& function, Args&&... args)
-      : impl_(make_impl(native_id_, std::forward<F>(function),
-                        std::forward<Args>(args)...))
+      : impl_(make_impl(native_id_, std::forward<F>(function), std::forward<Args>(args)...))
   {
   }
 
   template <typename F, typename... Args>
   jthread(thread_config const& config, F&& function, Args&&... args)
-      : impl_(make_configured_impl(config, native_id_,
-                                   std::forward<F>(function),
-                                   std::forward<Args>(args)...))
+      : impl_(make_configured_impl(config, native_id_, std::forward<F>(function), std::forward<Args>(args)...))
   {
   }
 
@@ -670,84 +718,42 @@ public:
   template <typename F, typename... Args>
   static auto
   create(F&& function, Args&&... args)
-      -> std::enable_if_t<!std::is_same_v<std::decay_t<F>, thread_config>,
-                          result<jthread>>
+      -> std::enable_if_t<!std::is_same_v<std::decay_t<F>, thread_config>, result<jthread>>
   {
-    try
-      {
-        return jthread(std::forward<F>(function), std::forward<Args>(args)...);
-      }
-    catch (...)
-      {
-        return unexpected(detail::current_exception_error_code());
-      }
+    return detail::try_result([&]() -> result<jthread>
+                                { return jthread(std::forward<F>(function), std::forward<Args>(args)...); });
   }
 
   template <typename F, typename... Args>
   static auto
-  create(thread_config const& config, F&& function, Args&&... args)
-      -> result<jthread>
+  create(thread_config const& config, F&& function, Args&&... args) -> result<jthread>
   {
-    try
-      {
-        return jthread(config, std::forward<F>(function),
-                       std::forward<Args>(args)...);
-      }
-    catch (...)
-      {
-        return unexpected(detail::current_exception_error_code());
-      }
+    return detail::try_result([&]() -> result<jthread>
+                                { return jthread(config, std::forward<F>(function), std::forward<Args>(args)...); });
   }
 
   auto
   join() -> result<void>
   {
-    if (!impl_.joinable())
-      return unexpected(std::make_error_code(std::errc::invalid_argument));
-    try
-      {
-        impl_.join();
-        return {};
-      }
-    catch (...)
-      {
-        return unexpected(detail::current_exception_error_code());
-      }
+    return detail::thread_lifecycle::join(impl_);
   }
 
   void
   join_or_throw()
   {
-    if (!impl_.joinable())
-      throw std::system_error(
-          std::make_error_code(std::errc::invalid_argument), "jthread::join");
-    impl_.join();
+    detail::thread_lifecycle::join_or_throw(impl_, "jthread::join");
   }
 
   auto
   detach() -> result<void>
   {
-    if (!impl_.joinable())
-      return unexpected(std::make_error_code(std::errc::invalid_argument));
-    try
-      {
-        impl_.detach();
-        return {};
-      }
-    catch (...)
-      {
-        return unexpected(detail::current_exception_error_code());
-      }
+    return detail::thread_lifecycle::detach(impl_);
   }
 
   void
   detach_or_throw()
   {
-    if (!impl_.joinable())
-      throw std::system_error(
-          std::make_error_code(std::errc::invalid_argument),
-          "jthread::detach");
-    impl_.detach();
+    detail::thread_lifecycle::detach_or_throw(impl_, "jthread::detach");
   }
 
   [[nodiscard]] auto
@@ -789,40 +795,29 @@ public:
   auto
   configure(thread_config const& config) -> result<void>
   {
-    try
-      {
-        auto view = native_view();
-        return view.configure(detail::to_native(config));
-      }
-    catch (...)
-      {
-        return unexpected(detail::current_exception_error_code());
-      }
+    auto view = native_view();
+    return detail::portable_thread_control::configure(view, config);
   }
 
   auto
   set_priority(priority_level level) -> result<void>
   {
     auto view = native_view();
-    return view.configure(
-        detail::native_schedule::posix_nice(static_cast<int>(level)));
+    return detail::portable_thread_control::set_priority(view, level);
   }
 
   auto
   set_nice(int nice_value) -> result<void>
   {
     auto view = native_view();
-    return view.configure(detail::native_schedule::posix_nice(nice_value));
+    return detail::portable_thread_control::set_nice(view, nice_value);
   }
 
   [[nodiscard]] auto
   get_priority() const -> result<priority_level>
   {
     auto view = native_view();
-    auto value = view.get_nice_value();
-    if (!value)
-      return unexpected(value.error());
-    return detail::to_priority_level(value.value());
+    return detail::portable_thread_control::get_priority(view.get_nice_value());
   }
 
   auto
@@ -842,25 +837,15 @@ public:
   auto
   set_affinity(thread_affinity const& affinity) -> result<void>
   {
-    try
-      {
-        auto view = native_view();
-        return view.set_affinity(detail::to_native(affinity));
-      }
-    catch (...)
-      {
-        return unexpected(detail::current_exception_error_code());
-      }
+    auto view = native_view();
+    return detail::portable_thread_control::set_affinity(view, affinity);
   }
 
   [[nodiscard]] auto
   get_affinity() const -> result<thread_affinity>
   {
     auto view = native_view();
-    auto affinity = view.get_affinity();
-    if (!affinity)
-      return unexpected(affinity.error());
-    return detail::from_native(affinity.value());
+    return detail::portable_thread_control::get_affinity(view.get_affinity());
   }
 
   [[nodiscard]] auto
@@ -874,8 +859,7 @@ public:
 private:
   friend struct detail::native_thread_access;
 
-  using native_view_type
-      = detail::basic_thread_backend<std::jthread, detail::non_owning_tag>;
+  using native_view_type = detail::basic_thread_backend<std::jthread, detail::non_owning_tag>;
 
   [[nodiscard]] auto
   native_view() const -> native_view_type
@@ -885,30 +869,16 @@ private:
 
   template <typename F, typename... Args>
   static auto
-  make_impl(native_thread_id& native_id, F&& function, Args&&... args)
-      -> std::jthread
+  make_impl(native_thread_id& native_id, F&& function, Args&&... args) -> std::jthread
   {
     using function_type = std::decay_t<F>;
     auto identity = std::make_shared<detail::thread_identity_state>();
     std::jthread value(
         [identity, callable = function_type(std::forward<F>(function)),
-         arguments = std::make_tuple(std::forward<Args>(args)...)](
-            std::stop_token token) mutable
+         arguments = std::make_tuple(std::forward<Args>(args)...)](std::stop_token token) mutable
           {
             identity->publish(detail::current_native_thread_id());
-            std::apply(
-                [&callable, &token](auto&&... stored)
-                  {
-                    if constexpr (std::is_invocable_v<function_type,
-                                                      std::stop_token,
-                                                      decltype(stored)...>)
-                      std::invoke(std::move(callable), std::move(token),
-                                  std::forward<decltype(stored)>(stored)...);
-                    else
-                      std::invoke(std::move(callable),
-                                  std::forward<decltype(stored)>(stored)...);
-                  },
-                std::move(arguments));
+            detail::invoke_jthread_callable(callable, std::move(arguments), std::move(token));
           });
     native_id = identity->wait();
     return value;
@@ -916,34 +886,20 @@ private:
 
   template <typename F, typename... Args>
   static auto
-  make_configured_impl(thread_config const& config,
-                       native_thread_id& native_id, F&& function,
-                       Args&&... args) -> std::jthread
+  make_configured_impl(thread_config const& config, native_thread_id& native_id, F&& function, Args&&... args)
+      -> std::jthread
   {
     using function_type = std::decay_t<F>;
     auto gate = std::make_shared<detail::thread_start_gate>();
     auto identity = std::make_shared<detail::thread_identity_state>();
     std::jthread value(
         [gate, identity, callable = function_type(std::forward<F>(function)),
-         arguments = std::make_tuple(std::forward<Args>(args)...)](
-            std::stop_token token) mutable
+         arguments = std::make_tuple(std::forward<Args>(args)...)](std::stop_token token) mutable
           {
             identity->publish(detail::current_native_thread_id());
             if (!gate->wait())
               return;
-            std::apply(
-                [&callable, &token](auto&&... stored)
-                  {
-                    if constexpr (std::is_invocable_v<function_type,
-                                                      std::stop_token,
-                                                      decltype(stored)...>)
-                      std::invoke(std::move(callable), std::move(token),
-                                  std::forward<decltype(stored)>(stored)...);
-                    else
-                      std::invoke(std::move(callable),
-                                  std::forward<decltype(stored)>(stored)...);
-                  },
-                std::move(arguments));
+            detail::invoke_jthread_callable(callable, std::move(arguments), std::move(token));
           });
 
     native_id = identity->wait();
@@ -954,8 +910,7 @@ private:
         if (!configured)
           {
             gate->release(false);
-            throw std::system_error(configured.error(),
-                                    "jthread configuration");
+            throw std::system_error(configured.error(), "jthread configuration");
           }
         gate->release(true);
       }
@@ -996,36 +951,25 @@ public:
   auto
   configure(thread_config const& config) -> result<void>
   {
-    try
-      {
-        return impl_.configure(detail::to_native(config));
-      }
-    catch (...)
-      {
-        return unexpected(detail::current_exception_error_code());
-      }
+    return detail::portable_thread_control::configure(impl_, config);
   }
 
   auto
   set_priority(priority_level level) -> result<void>
   {
-    return impl_.configure(
-        detail::native_schedule::posix_nice(static_cast<int>(level)));
+    return detail::portable_thread_control::set_priority(impl_, level);
   }
 
   auto
   set_nice(int nice_value) -> result<void>
   {
-    return impl_.configure(detail::native_schedule::posix_nice(nice_value));
+    return detail::portable_thread_control::set_nice(impl_, nice_value);
   }
 
   [[nodiscard]] auto
   get_priority() const -> result<priority_level>
   {
-    auto value = impl_.get_nice_value();
-    if (!value)
-      return unexpected(value.error());
-    return detail::to_priority_level(value.value());
+    return detail::portable_thread_control::get_priority(impl_.get_nice_value());
   }
 
   auto
@@ -1043,28 +987,74 @@ public:
   auto
   set_affinity(thread_affinity const& affinity) -> result<void>
   {
-    try
-      {
-        return impl_.set_affinity(detail::to_native(affinity));
-      }
-    catch (...)
-      {
-        return unexpected(detail::current_exception_error_code());
-      }
+    return detail::portable_thread_control::set_affinity(impl_, affinity);
   }
 
   [[nodiscard]] auto
   get_affinity() const -> result<thread_affinity>
   {
-    auto affinity = impl_.get_affinity();
-    if (!affinity)
-      return unexpected(affinity.error());
-    return detail::from_native(affinity.value());
+    return detail::portable_thread_control::get_affinity(impl_.get_affinity());
   }
 
 private:
   detail::thread_view_backend impl_;
 };
+
+/** @brief Portable configuration operations for the calling thread. */
+namespace this_thread
+{
+inline auto
+configure(thread_config const& config) -> result<void>
+{
+  auto current = thread_info();
+  return detail::portable_thread_control::configure(current, config);
+}
+
+inline auto
+set_priority(priority_level level) -> result<void>
+{
+  auto current = thread_info();
+  return detail::portable_thread_control::set_priority(current, level);
+}
+
+inline auto
+set_nice(int nice_value) -> result<void>
+{
+  auto current = thread_info();
+  return detail::portable_thread_control::set_nice(current, nice_value);
+}
+
+[[nodiscard]] inline auto
+get_priority() -> result<priority_level>
+{
+  return detail::portable_thread_control::get_priority(detail::read_nice_value(detail::current_native_thread_id()));
+}
+
+inline auto
+set_name(std::string const& name) -> result<void>
+{
+  return thread_info().set_name(name);
+}
+
+[[nodiscard]] inline auto
+get_name() -> result<std::string>
+{
+  return thread_info().get_name();
+}
+
+inline auto
+set_affinity(thread_affinity const& affinity) -> result<void>
+{
+  auto current = thread_info();
+  return detail::portable_thread_control::set_affinity(current, affinity);
+}
+
+[[nodiscard]] inline auto
+get_affinity() -> result<thread_affinity>
+{
+  return detail::portable_thread_control::get_affinity(thread_info().get_affinity());
+}
+} // namespace this_thread
 
 struct registered_thread
 {
@@ -1095,8 +1085,7 @@ public:
         bool const keep_global_proxy = global_;
         auto* const current = owned_.get();
         bool const is_external = current != nullptr && &registry() == current;
-        retired_.reserve(retired_.size() + (owned_ != nullptr ? 1u : 0u)
-                         + other.retired_.size());
+        retired_.reserve(retired_.size() + (owned_ != nullptr ? 1u : 0u) + other.retired_.size());
         // A registration guard can outlive its entry (for example after an
         // explicit unregister) and still retain the backend address for its
         // destructor. Keep every replaced backend alive, even when it is
@@ -1141,16 +1130,14 @@ public:
   }
 
   auto
-  register_current_thread(std::string name = {}, std::string component = {})
-      -> result<void>
+  register_current_thread(std::string name = {}, std::string component = {}) -> result<void>
   {
     if (!has_native())
       return unexpected(std::make_error_code(std::errc::operation_canceled));
     try
       {
         auto control = thread_control_block::create_for_current_thread();
-        native().register_current_thread(control, std::move(name),
-                                         std::move(component));
+        native().register_current_thread(control, std::move(name), std::move(component));
         return {};
       }
     catch (...)
@@ -1199,9 +1186,8 @@ public:
         result_entries.reserve(entries.size());
         for (auto const& entry : entries)
           {
-            result_entries.push_back({ static_cast<std::uint64_t>(entry.tid),
-                                       entry.std_id, entry.name,
-                                       entry.component, entry.alive });
+            result_entries.push_back(
+                { static_cast<std::uint64_t>(entry.tid), entry.std_id, entry.name, entry.component, entry.alive });
           }
         return result_entries;
       }
@@ -1212,15 +1198,13 @@ public:
   }
 
   auto
-  configure(std::uint64_t native_id, thread_config const& config)
-      -> result<void>
+  configure(std::uint64_t native_id, thread_config const& config) -> result<void>
   {
     if (!has_native())
       return unexpected(std::make_error_code(std::errc::operation_canceled));
     try
       {
-        return native().configure(static_cast<native_thread_id>(native_id),
-                                  detail::to_native(config));
+        return native().configure(static_cast<native_thread_id>(native_id), detail::to_native(config));
       }
     catch (...)
       {
@@ -1241,9 +1225,8 @@ public:
       return unexpected(std::make_error_code(std::errc::operation_canceled));
     try
       {
-        return native().configure(
-            static_cast<native_thread_id>(native_id),
-            detail::native_schedule::posix_nice(nice_value));
+        return native().configure(static_cast<native_thread_id>(native_id),
+                                  detail::native_schedule::posix_nice(nice_value));
       }
     catch (...)
       {
@@ -1258,8 +1241,7 @@ public:
       return unexpected(std::make_error_code(std::errc::operation_canceled));
     try
       {
-        auto value = native().get_nice_value(
-            static_cast<native_thread_id>(native_id));
+        auto value = native().get_nice_value(static_cast<native_thread_id>(native_id));
         if (!value)
           return unexpected(value.error());
         return detail::to_priority_level(value.value());
@@ -1313,8 +1295,7 @@ global_registry() -> thread_registry&
 inline void
 use_global_registry(thread_registry* value)
 {
-  set_external_registry(
-      value != nullptr && value->has_native() ? &value->native() : nullptr);
+  set_external_registry(value != nullptr && value->has_native() ? &value->native() : nullptr);
 }
 
 struct thread_pool_config
@@ -1331,23 +1312,17 @@ class thread_pool
 public:
   thread_pool() : thread_pool(thread_pool_config{}) {}
 
-  explicit thread_pool(std::size_t worker_count)
-      : thread_pool(thread_pool_config{ worker_count })
-  {
-  }
+  explicit thread_pool(std::size_t worker_count) : thread_pool(thread_pool_config{ worker_count }) {}
 
   explicit thread_pool(thread_pool_config config)
       : config_(std::move(config)),
-        impl_(std::make_unique<thread_pool_backend>(config_.worker_count,
-                                                    config_.register_workers))
+        impl_(std::make_unique<thread_pool_backend>(config_.worker_count, config_.register_workers))
   {
     if (detail::has_thread_configuration(config_.workers))
       {
-        auto configured
-            = impl_->configure_threads(detail::to_native(config_.workers));
+        auto configured = impl_->configure_threads(detail::to_native(config_.workers));
         if (!configured)
-          throw std::system_error(configured.error(),
-                                  "thread_pool worker configuration");
+          throw std::system_error(configured.error(), "thread_pool worker configuration");
       }
   }
 
@@ -1403,8 +1378,7 @@ public:
 
   template <typename F, typename... Args>
   auto
-  submit(F&& function, Args&&... args)
-      -> result<std::future<std::invoke_result_t<F, Args...>>>
+  submit(F&& function, Args&&... args) -> result<std::future<std::invoke_result_t<F, Args...>>>
   {
     if (!impl_)
       return unexpected(std::make_error_code(std::errc::operation_canceled));
@@ -1412,14 +1386,11 @@ public:
       {
         using return_type = std::invoke_result_t<F, Args...>;
         if (!config_.on_task_error)
-          return impl_->try_submit(std::forward<F>(function),
-                                   std::forward<Args>(args)...);
+          return impl_->try_submit(std::forward<F>(function), std::forward<Args>(args)...);
 
         auto callback = config_.on_task_error;
-        auto wrapped
-            = [bound = detail::bind_args(std::forward<F>(function),
-                                         std::forward<Args>(args)...),
-               callback = std::move(callback)]() mutable -> return_type
+        auto wrapped = [bound = detail::bind_args(std::forward<F>(function), std::forward<Args>(args)...),
+                        callback = std::move(callback)]() mutable -> return_type
           {
             try
               {
@@ -1456,11 +1427,9 @@ public:
 
   template <typename F, typename... Args>
   auto
-  submit_or_throw(F&& function, Args&&... args)
-      -> std::future<std::invoke_result_t<F, Args...>>
+  submit_or_throw(F&& function, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>
   {
-    auto submitted
-        = submit(std::forward<F>(function), std::forward<Args>(args)...);
+    auto submitted = submit(std::forward<F>(function), std::forward<Args>(args)...);
     if (!submitted)
       throw std::system_error(submitted.error(), "thread_pool::submit");
     return std::move(*submitted);
@@ -1475,12 +1444,10 @@ public:
     try
       {
         if (!config_.on_task_error)
-          return impl_->try_post(std::forward<F>(function),
-                                 std::forward<Args>(args)...);
+          return impl_->try_post(std::forward<F>(function), std::forward<Args>(args)...);
 
         auto callback = config_.on_task_error;
-        auto wrapped = [bound = detail::bind_args(std::forward<F>(function),
-                                                  std::forward<Args>(args)...),
+        auto wrapped = [bound = detail::bind_args(std::forward<F>(function), std::forward<Args>(args)...),
                         callback = std::move(callback)]() mutable
           {
             try
@@ -1535,9 +1502,7 @@ public:
   wait_or_throw()
   {
     if (!impl_)
-      throw std::system_error(
-          std::make_error_code(std::errc::operation_canceled),
-          "thread_pool::wait");
+      throw std::system_error(std::make_error_code(std::errc::operation_canceled), "thread_pool::wait");
     impl_->wait_for_tasks();
   }
 
@@ -1610,10 +1575,7 @@ public:
   }
 
 private:
-  explicit scheduled_task(scheduled_task_backend value)
-      : impl_(std::move(value))
-  {
-  }
+  explicit scheduled_task(scheduled_task_backend value) : impl_(std::move(value)) {}
 
   scheduled_task_backend impl_;
   friend class scheduled_pool;
@@ -1634,32 +1596,24 @@ class scheduled_pool
 public:
   scheduled_pool() : scheduled_pool(scheduled_pool_config{}) {}
 
-  explicit scheduled_pool(std::size_t worker_count)
-      : scheduled_pool(scheduled_pool_config{ worker_count })
-  {
-  }
+  explicit scheduled_pool(std::size_t worker_count) : scheduled_pool(scheduled_pool_config{ worker_count }) {}
 
   explicit scheduled_pool(scheduled_pool_config config)
       : config_(std::move(config)),
-        impl_(std::make_unique<scheduled_pool_backend>(
-            config_.worker_count, config_.register_workers))
+        impl_(std::make_unique<scheduled_pool_backend>(config_.worker_count, config_.register_workers))
   {
     if (detail::has_thread_configuration(config_.workers))
       {
-        auto configured
-            = impl_->configure_threads(detail::to_native(config_.workers));
+        auto configured = impl_->configure_threads(detail::to_native(config_.workers));
         if (!configured)
-          throw std::system_error(configured.error(),
-                                  "scheduled_pool worker configuration");
+          throw std::system_error(configured.error(), "scheduled_pool worker configuration");
       }
 
     if (detail::has_thread_configuration(config_.scheduler))
       {
-        auto configured = impl_->configure_scheduler_thread(
-            detail::to_native(config_.scheduler));
+        auto configured = impl_->configure_scheduler_thread(detail::to_native(config_.scheduler));
         if (!configured)
-          throw std::system_error(configured.error(),
-                                  "scheduled_pool scheduler configuration");
+          throw std::system_error(configured.error(), "scheduled_pool scheduler configuration");
       }
   }
 
@@ -1687,8 +1641,7 @@ public:
           }
         config_ = std::move(other.config_);
         impl_ = std::move(other.impl_);
-        stopped_.store(other.stopped_.load(std::memory_order_acquire),
-                       std::memory_order_release);
+        stopped_.store(other.stopped_.load(std::memory_order_acquire), std::memory_order_release);
         other.stopped_.store(true, std::memory_order_release);
       }
     return *this;
@@ -1724,20 +1677,16 @@ public:
 
   template <typename Rep, typename Period, typename F>
   auto
-  schedule_after(std::chrono::duration<Rep, Period> delay, F&& function)
-      -> result<scheduled_task>
+  schedule_after(std::chrono::duration<Rep, Period> delay, F&& function) -> result<scheduled_task>
   {
     if (stopped_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
     try
       {
-        auto handle = impl_->schedule_after(
-            std::chrono::duration_cast<scheduled_pool_backend::duration>(
-                delay),
-            wrap_task(std::forward<F>(function)));
+        auto handle = impl_->schedule_after(std::chrono::duration_cast<scheduled_pool_backend::duration>(delay),
+                                            wrap_task(std::forward<F>(function)));
         if (handle.is_cancelled())
-          return unexpected(
-              std::make_error_code(std::errc::operation_canceled));
+          return unexpected(std::make_error_code(std::errc::operation_canceled));
         return scheduled_task(std::move(handle));
       }
     catch (...)
@@ -1748,18 +1697,15 @@ public:
 
   template <typename F>
   auto
-  schedule_at(std::chrono::steady_clock::time_point time, F&& function)
-      -> result<scheduled_task>
+  schedule_at(std::chrono::steady_clock::time_point time, F&& function) -> result<scheduled_task>
   {
     if (stopped_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
     try
       {
-        auto handle
-            = impl_->schedule_at(time, wrap_task(std::forward<F>(function)));
+        auto handle = impl_->schedule_at(time, wrap_task(std::forward<F>(function)));
         if (handle.is_cancelled())
-          return unexpected(
-              std::make_error_code(std::errc::operation_canceled));
+          return unexpected(std::make_error_code(std::errc::operation_canceled));
         return scheduled_task(std::move(handle));
       }
     catch (...)
@@ -1770,23 +1716,18 @@ public:
 
   template <typename Rep, typename Period, typename F>
   auto
-  schedule_periodic(std::chrono::duration<Rep, Period> interval, F&& function)
-      -> result<scheduled_task>
+  schedule_periodic(std::chrono::duration<Rep, Period> interval, F&& function) -> result<scheduled_task>
   {
     if (stopped_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
-    auto const native_interval
-        = std::chrono::duration_cast<scheduled_pool_backend::duration>(
-            interval);
+    auto const native_interval = std::chrono::duration_cast<scheduled_pool_backend::duration>(interval);
     if (native_interval <= scheduled_pool_backend::duration::zero())
       return unexpected(std::make_error_code(std::errc::invalid_argument));
     try
       {
-        auto handle = impl_->schedule_periodic(
-            native_interval, wrap_task(std::forward<F>(function)));
+        auto handle = impl_->schedule_periodic(native_interval, wrap_task(std::forward<F>(function)));
         if (handle.is_cancelled())
-          return unexpected(
-              std::make_error_code(std::errc::operation_canceled));
+          return unexpected(std::make_error_code(std::errc::operation_canceled));
         return scheduled_task(std::move(handle));
       }
     catch (...)
@@ -1795,30 +1736,24 @@ public:
       }
   }
 
-  template <typename InitialRep, typename InitialPeriod, typename IntervalRep,
-            typename IntervalPeriod, typename F>
+  template <typename InitialRep, typename InitialPeriod, typename IntervalRep, typename IntervalPeriod, typename F>
   auto
-  schedule_periodic_after(
-      std::chrono::duration<InitialRep, InitialPeriod> initial_delay,
-      std::chrono::duration<IntervalRep, IntervalPeriod> interval,
-      F&& function) -> result<scheduled_task>
+  schedule_periodic_after(std::chrono::duration<InitialRep, InitialPeriod> initial_delay,
+                          std::chrono::duration<IntervalRep, IntervalPeriod> interval, F&& function)
+      -> result<scheduled_task>
   {
     if (stopped_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
-    auto const native_interval
-        = std::chrono::duration_cast<scheduled_pool_backend::duration>(
-            interval);
+    auto const native_interval = std::chrono::duration_cast<scheduled_pool_backend::duration>(interval);
     if (native_interval <= scheduled_pool_backend::duration::zero())
       return unexpected(std::make_error_code(std::errc::invalid_argument));
     try
       {
         auto handle = impl_->schedule_periodic_after(
-            std::chrono::duration_cast<scheduled_pool_backend::duration>(
-                initial_delay),
-            native_interval, wrap_task(std::forward<F>(function)));
+            std::chrono::duration_cast<scheduled_pool_backend::duration>(initial_delay), native_interval,
+            wrap_task(std::forward<F>(function)));
         if (handle.is_cancelled())
-          return unexpected(
-              std::make_error_code(std::errc::operation_canceled));
+          return unexpected(std::make_error_code(std::errc::operation_canceled));
         return scheduled_task(std::move(handle));
       }
     catch (...)
@@ -1857,8 +1792,7 @@ private:
   {
     using function_type = std::decay_t<F>;
     auto callback = config_.on_task_error;
-    return [function = function_type(std::forward<F>(function)),
-            callback = std::move(callback)]() mutable
+    return [function = function_type(std::forward<F>(function)), callback = std::move(callback)]() mutable
       {
         try
           {

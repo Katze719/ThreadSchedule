@@ -89,8 +89,7 @@ class chaos_controller
 {
 public:
   template <typename Predicate>
-  chaos_controller(chaos_config cfg, Predicate pred)
-      : config_(cfg), stop_(false)
+  chaos_controller(chaos_config cfg, Predicate pred) : config_(cfg), stop_(false)
   {
     std::promise<native_thread_id> worker_started;
     auto worker_ready = worker_started.get_future();
@@ -125,11 +124,8 @@ public:
   }
 
   auto
-  configure_thread(std::string const& name,
-                   native_scheduling_policy policy
-                   = native_scheduling_policy::other,
-                   native_thread_priority priority
-                   = native_thread_priority::normal())
+  configure_thread(std::string const& name, native_scheduling_policy policy = native_scheduling_policy::other,
+                   native_thread_priority priority = native_thread_priority::normal())
       -> expected<void, std::error_code>
   {
     auto info = thread_info();
@@ -146,13 +142,12 @@ private:
     std::mt19937 rng(std::random_device{}());
     while (!stop_)
       {
-        detail::runtime_registry().apply(
-            pred,
-            [&](registered_thread_info_backend const& info)
-              {
-                auto blk = detail::runtime_registry().get(info.tid);
-                (void)blk;
-              });
+        detail::runtime_registry().apply(pred,
+                                         [&](registered_thread_info_backend const& info)
+                                           {
+                                             auto blk = detail::runtime_registry().get(info.tid);
+                                             (void)blk;
+                                           });
 
         // Affinity shuffle using topology
         if (config_.shuffle_affinity)
@@ -164,11 +159,8 @@ private:
                 [&](registered_thread_info_backend const& info)
                   {
                     native_thread_affinity aff = affinity_for_node(
-                        static_cast<int>(
-                            idx % (topo.numa_nodes > 0 ? topo.numa_nodes : 1)),
-                        static_cast<int>(idx));
-                    (void)detail::runtime_registry().set_affinity(info.tid,
-                                                                  aff);
+                        static_cast<int>(idx % (topo.numa_nodes > 0 ? topo.numa_nodes : 1)), static_cast<int>(idx));
+                    (void)detail::runtime_registry().set_affinity(info.tid, aff);
                     ++idx;
                   });
           }
@@ -176,22 +168,20 @@ private:
         // Priority jitter around the thread's actual priority
         if (config_.priority_jitter != 0)
           {
-            std::uniform_int_distribution<int> dist(-config_.priority_jitter,
-                                                    config_.priority_jitter);
-            detail::runtime_registry().apply(
-                pred,
-                [&](registered_thread_info_backend const& info)
-                  {
-                    int delta = dist(rng);
-                    int baseline = native_thread_priority::normal().value();
+            std::uniform_int_distribution<int> dist(-config_.priority_jitter, config_.priority_jitter);
+            detail::runtime_registry().apply(pred,
+                                             [&](registered_thread_info_backend const& info)
+                                               {
+                                                 int delta = dist(rng);
+                                                 int baseline = native_thread_priority::normal().value();
 #ifndef _WIN32
-                    sched_param sp{};
-                    if (sched_getparam(info.tid, &sp) == 0)
-                      baseline = sp.sched_priority;
+                                                 sched_param sp{};
+                                                 if (sched_getparam(info.tid, &sp) == 0)
+                                                   baseline = sp.sched_priority;
 #endif
-                    (void)detail::runtime_registry().set_priority(
-                        info.tid, native_thread_priority{ baseline + delta });
-                  });
+                                                 (void)detail::runtime_registry().set_priority(
+                                                     info.tid, native_thread_priority{ baseline + delta });
+                                               });
           }
 
         std::this_thread::sleep_for(config_.interval);

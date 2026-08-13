@@ -30,8 +30,7 @@ concurrent_shutdown_for_reports_timeout() -> bool
         });
   started.get_future().wait();
 
-  std::thread first_shutdown(
-      [&] { pool.shutdown(shutdown_policy_backend::drain); });
+  std::thread first_shutdown([&] { pool.shutdown(shutdown_policy_backend::drain); });
   while (pool.try_post([] {}).has_value())
     std::this_thread::yield();
 
@@ -64,12 +63,9 @@ shutdown_for_stops_new_submissions() -> bool
         });
   started.get_future().wait();
 
-  auto shutdown
-      = std::async(std::launch::async, [&pool]
-                     { return pool.shutdown_for(std::chrono::seconds(2)); });
+  auto shutdown = std::async(std::launch::async, [&pool] { return pool.shutdown_for(std::chrono::seconds(2)); });
   bool rejected = false;
-  auto const rejection_deadline
-      = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  auto const rejection_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
   while (std::chrono::steady_clock::now() < rejection_deadline)
     {
       if (!pool.try_post([] {}))
@@ -101,8 +97,7 @@ TEST(PoolBackendTest, TrySubmitAfterShutdownReturnsError)
   pool.shutdown();
   auto result = pool.try_submit([] { return 1; });
   ASSERT_FALSE(result.has_value());
-  EXPECT_EQ(result.error(),
-            std::make_error_code(std::errc::operation_canceled));
+  EXPECT_EQ(result.error(), std::make_error_code(std::errc::operation_canceled));
 }
 
 TEST(PoolBackendTest, TryPostReturnsExpected)
@@ -112,8 +107,7 @@ TEST(PoolBackendTest, TryPostReturnsExpected)
   auto finished = done.get_future();
   auto result = pool.try_post([&done] { done.set_value(); });
   ASSERT_TRUE(result.has_value());
-  ASSERT_EQ(finished.wait_for(std::chrono::seconds(2)),
-            std::future_status::ready);
+  ASSERT_EQ(finished.wait_for(std::chrono::seconds(2)), std::future_status::ready);
   pool.shutdown(shutdown_policy_backend::drain);
 }
 
@@ -123,8 +117,7 @@ TEST(PoolBackendTest, TryPostAfterShutdownReturnsError)
   pool.shutdown();
   auto result = pool.try_post([] {});
   ASSERT_FALSE(result.has_value());
-  EXPECT_EQ(result.error(),
-            std::make_error_code(std::errc::operation_canceled));
+  EXPECT_EQ(result.error(), std::make_error_code(std::errc::operation_canceled));
 }
 
 TEST(PoolBackendTest, PostThrowsOnShutdown)
@@ -141,8 +134,7 @@ TEST(PoolBackendTest, ThreadPoolTryPostAcceptsMoveOnlyTask)
   std::promise<int> done;
   auto finished = done.get_future();
 
-  auto result = pool.try_post([payload = std::move(payload), &done]() mutable
-                                { done.set_value(*payload); });
+  auto result = pool.try_post([payload = std::move(payload), &done]() mutable { done.set_value(*payload); });
 
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(finished.get(), 42);
@@ -156,8 +148,7 @@ TEST(PoolBackendTest, HighPerformancePoolTryPostAcceptsMoveOnlyTask)
   std::promise<int> done;
   auto finished = done.get_future();
 
-  auto result = pool.try_post([payload = std::move(payload), &done]() mutable
-                                { done.set_value(*payload); });
+  auto result = pool.try_post([payload = std::move(payload), &done]() mutable { done.set_value(*payload); });
 
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(finished.get(), 77);
@@ -172,8 +163,7 @@ TEST(PoolBackendTest, SubmitBatchExecutesAll)
   std::atomic<int> count{ 0 };
   std::vector<std::function<void()>> tasks;
   for (int i = 0; i < 100; ++i)
-    tasks.push_back([&count]
-                      { count.fetch_add(1, std::memory_order_relaxed); });
+    tasks.push_back([&count] { count.fetch_add(1, std::memory_order_relaxed); });
 
   auto futures = pool.submit_batch(tasks.begin(), tasks.end());
   for (auto& f : futures)
@@ -189,8 +179,7 @@ TEST(PoolBackendTest, TrySubmitBatchAfterShutdown)
   std::vector<std::function<void()>> tasks = { [] {}, [] {} };
   auto result = pool.try_submit_batch(tasks.begin(), tasks.end());
   ASSERT_FALSE(result.has_value());
-  EXPECT_EQ(result.error(),
-            std::make_error_code(std::errc::operation_canceled));
+  EXPECT_EQ(result.error(), std::make_error_code(std::errc::operation_canceled));
 }
 
 TEST(PoolBackendTest, SubmitBatchOnThreadPool)
@@ -199,8 +188,7 @@ TEST(PoolBackendTest, SubmitBatchOnThreadPool)
   std::atomic<int> count{ 0 };
   std::vector<std::function<void()>> tasks;
   for (int i = 0; i < 50; ++i)
-    tasks.push_back([&count]
-                      { count.fetch_add(1, std::memory_order_relaxed); });
+    tasks.push_back([&count] { count.fetch_add(1, std::memory_order_relaxed); });
 
   auto futures = pool.submit_batch(tasks.begin(), tasks.end());
   for (auto& f : futures)
@@ -221,8 +209,7 @@ TEST(PoolBackendTest, ParallelForEachHP)
   std::vector<int> indices(100);
   std::iota(indices.begin(), indices.end(), 0);
 
-  pool.parallel_for_each(indices.begin(), indices.end(),
-                         [&values](int idx) { values[idx].store(idx * 2); });
+  pool.parallel_for_each(indices.begin(), indices.end(), [&values](int idx) { values[idx].store(idx * 2); });
 
   for (int i = 0; i < 100; ++i)
     EXPECT_EQ(values[i].load(), i * 2);
@@ -246,16 +233,14 @@ TEST(PoolBackendTest, ParallelForEachWaitsForAllTasksBeforeRethrowing)
   std::iota(values.begin(), values.end(), 0);
   std::atomic<int> completed{ 0 };
 
-  EXPECT_THROW(pool.parallel_for_each(
-                   values.begin(), values.end(),
-                   [&completed](int value)
-                     {
-                       if (value == 0)
-                         throw std::runtime_error("parallel failure");
-                       std::this_thread::sleep_for(
-                           std::chrono::milliseconds(10));
-                       completed.fetch_add(1, std::memory_order_relaxed);
-                     }),
+  EXPECT_THROW(pool.parallel_for_each(values.begin(), values.end(),
+                                      [&completed](int value)
+                                        {
+                                          if (value == 0)
+                                            throw std::runtime_error("parallel failure");
+                                          std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                                          completed.fetch_add(1, std::memory_order_relaxed);
+                                        }),
                std::runtime_error);
 
   EXPECT_EQ(completed.load(std::memory_order_relaxed), 7);
@@ -318,11 +303,9 @@ TEST(PoolBackendTest, WorkStealingDropDestroysQueuedTasksBeforeJoining)
   auto dropped = pool.submit([payload] { return *payload; });
   payload.reset();
 
-  std::thread shutdown_thread(
-      [&pool] { pool.shutdown(shutdown_policy_backend::drop_pending); });
+  std::thread shutdown_thread([&pool] { pool.shutdown(shutdown_policy_backend::drop_pending); });
 
-  EXPECT_EQ(dropped.wait_for(std::chrono::seconds(2)),
-            std::future_status::ready);
+  EXPECT_EQ(dropped.wait_for(std::chrono::seconds(2)), std::future_status::ready);
   EXPECT_THROW(dropped.get(), std::future_error);
   for (int attempt = 0; attempt < 100 && !weak_payload.expired(); ++attempt)
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -359,16 +342,14 @@ TEST(PoolBackendTest, WorkStealingSubmissionIsLinearizedWithShutdown)
 
   for (auto& future : futures)
     {
-      ASSERT_EQ(future.wait_for(std::chrono::seconds(2)),
-                std::future_status::ready);
+      ASSERT_EQ(future.wait_for(std::chrono::seconds(2)), std::future_status::ready);
       try
         {
           EXPECT_EQ(future.get(), 1);
         }
       catch (std::future_error const& error)
         {
-          EXPECT_EQ(error.code(),
-                    std::make_error_code(std::future_errc::broken_promise));
+          EXPECT_EQ(error.code(), std::make_error_code(std::future_errc::broken_promise));
         }
     }
 }
@@ -398,8 +379,7 @@ TEST(PoolBackendTest, WorkStealingDrainCompletesAcceptedConcurrentSubmissions)
 
   for (auto& future : futures)
     {
-      ASSERT_EQ(future.wait_for(std::chrono::seconds(2)),
-                std::future_status::ready);
+      ASSERT_EQ(future.wait_for(std::chrono::seconds(2)), std::future_status::ready);
       EXPECT_EQ(future.get(), 1);
     }
 }
@@ -424,17 +404,14 @@ TEST(PoolBackendTest, ShutdownForTimedDrain)
 TEST(PoolBackendTest, ConcurrentShutdownForReportsTimeout)
 {
   EXPECT_FALSE(concurrent_shutdown_for_reports_timeout<thread_pool_backend>());
-  EXPECT_FALSE(
-      concurrent_shutdown_for_reports_timeout<work_stealing_pool_backend>());
-  EXPECT_FALSE(
-      concurrent_shutdown_for_reports_timeout<lightweight_pool_backend>());
+  EXPECT_FALSE(concurrent_shutdown_for_reports_timeout<work_stealing_pool_backend>());
+  EXPECT_FALSE(concurrent_shutdown_for_reports_timeout<lightweight_pool_backend>());
 }
 
 TEST(PoolBackendTest, ShutdownForStopsNewSubmissionsBeforeWaiting)
 {
   EXPECT_TRUE(shutdown_for_stops_new_submissions<thread_pool_backend>());
-  EXPECT_TRUE(
-      shutdown_for_stops_new_submissions<work_stealing_pool_backend>());
+  EXPECT_TRUE(shutdown_for_stops_new_submissions<work_stealing_pool_backend>());
   EXPECT_TRUE(shutdown_for_stops_new_submissions<lightweight_pool_backend>());
 }
 
@@ -456,8 +433,7 @@ TEST(PoolBackendTest, ShutdownForZeroSucceedsAfterCompletedShutdown)
 TEST(PoolBackendTest, WorkerShutdownIsRejectedWithoutCorruptingPool)
 {
   thread_pool_backend regular(1);
-  auto regular_attempt = regular.submit(
-      [&regular] { regular.shutdown(shutdown_policy_backend::drain); });
+  auto regular_attempt = regular.submit([&regular] { regular.shutdown(shutdown_policy_backend::drain); });
   try
     {
       regular_attempt.get();
@@ -465,16 +441,14 @@ TEST(PoolBackendTest, WorkerShutdownIsRejectedWithoutCorruptingPool)
     }
   catch (std::system_error const& error)
     {
-      EXPECT_EQ(error.code(), std::make_error_code(
-                                  std::errc::resource_deadlock_would_occur));
+      EXPECT_EQ(error.code(), std::make_error_code(std::errc::resource_deadlock_would_occur));
     }
   EXPECT_EQ(regular.submit([] { return 1; }).get(), 1);
   regular.shutdown();
 
   work_stealing_pool_backend work_stealing(1);
-  auto stealing_attempt = work_stealing.submit(
-      [&work_stealing]
-        { work_stealing.shutdown(shutdown_policy_backend::drain); });
+  auto stealing_attempt
+      = work_stealing.submit([&work_stealing] { work_stealing.shutdown(shutdown_policy_backend::drain); });
   try
     {
       stealing_attempt.get();
@@ -482,8 +456,7 @@ TEST(PoolBackendTest, WorkerShutdownIsRejectedWithoutCorruptingPool)
     }
   catch (std::system_error const& error)
     {
-      EXPECT_EQ(error.code(), std::make_error_code(
-                                  std::errc::resource_deadlock_would_occur));
+      EXPECT_EQ(error.code(), std::make_error_code(std::errc::resource_deadlock_would_occur));
     }
   EXPECT_EQ(work_stealing.submit([] { return 2; }).get(), 2);
   work_stealing.shutdown();
@@ -503,22 +476,19 @@ TEST(PoolBackendTest, WorkerShutdownIsRejectedWithoutCorruptingPool)
               lightweight_error.set_value(error.code());
             }
         });
-  EXPECT_EQ(lightweight_error.get_future().get(),
-            std::make_error_code(std::errc::resource_deadlock_would_occur));
+  EXPECT_EQ(lightweight_error.get_future().get(), std::make_error_code(std::errc::resource_deadlock_would_occur));
   lightweight.shutdown();
 }
 
 TEST(PoolBackendTest, WorkerWaitIsRejectedWithoutDeadlock)
 {
   thread_pool_backend regular(1);
-  auto regular_attempt
-      = regular.submit([&regular] { regular.wait_for_tasks(); });
+  auto regular_attempt = regular.submit([&regular] { regular.wait_for_tasks(); });
   EXPECT_THROW(regular_attempt.get(), std::system_error);
   regular.shutdown();
 
   work_stealing_pool_backend work_stealing(1);
-  auto stealing_attempt = work_stealing.submit(
-      [&work_stealing] { work_stealing.wait_for_tasks(); });
+  auto stealing_attempt = work_stealing.submit([&work_stealing] { work_stealing.wait_for_tasks(); });
   EXPECT_THROW(stealing_attempt.get(), std::system_error);
   work_stealing.shutdown();
 }
@@ -537,8 +507,7 @@ TEST(PoolBackendTest, HPPoolPost)
           ran = true;
           done.set_value();
         });
-  EXPECT_EQ(completed.wait_for(std::chrono::seconds(5)),
-            std::future_status::ready);
+  EXPECT_EQ(completed.wait_for(std::chrono::seconds(5)), std::future_status::ready);
   pool.shutdown(shutdown_policy_backend::drain);
   EXPECT_TRUE(ran);
 }
@@ -571,11 +540,8 @@ TEST(PoolBackendTest, TraceCallbacksHP)
   std::atomic<int> starts{ 0 };
   std::atomic<int> ends{ 0 };
 
-  pool.set_on_task_start(
-      [&starts](auto, auto)
-        { starts.fetch_add(1, std::memory_order_relaxed); });
-  pool.set_on_task_end([&ends](auto, auto, auto)
-                         { ends.fetch_add(1, std::memory_order_relaxed); });
+  pool.set_on_task_start([&starts](auto, auto) { starts.fetch_add(1, std::memory_order_relaxed); });
+  pool.set_on_task_end([&ends](auto, auto, auto) { ends.fetch_add(1, std::memory_order_relaxed); });
 
   for (int i = 0; i < 10; ++i)
     pool.post([] {});
@@ -591,11 +557,8 @@ TEST(PoolBackendTest, TraceCallbacksThreadPool)
   std::atomic<int> starts{ 0 };
   std::atomic<int> ends{ 0 };
 
-  pool.set_on_task_start(
-      [&starts](auto, auto)
-        { starts.fetch_add(1, std::memory_order_relaxed); });
-  pool.set_on_task_end([&ends](auto, auto, auto)
-                         { ends.fetch_add(1, std::memory_order_relaxed); });
+  pool.set_on_task_start([&starts](auto, auto) { starts.fetch_add(1, std::memory_order_relaxed); });
+  pool.set_on_task_end([&ends](auto, auto, auto) { ends.fetch_add(1, std::memory_order_relaxed); });
 
   for (int i = 0; i < 10; ++i)
     pool.post([] {});
@@ -608,10 +571,8 @@ TEST(PoolBackendTest, TraceCallbacksThreadPool)
 TEST(PoolBackendTest, ThrowingTraceCallbacksDoNotStopWorkers)
 {
   work_stealing_pool_backend work_stealing(1);
-  work_stealing.set_on_task_start(
-      [](auto, auto) { throw std::runtime_error("start callback"); });
-  work_stealing.set_on_task_end(
-      [](auto, auto, auto) { throw std::runtime_error("end callback"); });
+  work_stealing.set_on_task_start([](auto, auto) { throw std::runtime_error("start callback"); });
+  work_stealing.set_on_task_end([](auto, auto, auto) { throw std::runtime_error("end callback"); });
   auto first = work_stealing.submit([] { return 1; });
   auto second = work_stealing.submit([] { return 2; });
   EXPECT_EQ(first.get(), 1);
@@ -619,10 +580,8 @@ TEST(PoolBackendTest, ThrowingTraceCallbacksDoNotStopWorkers)
   work_stealing.wait_for_tasks();
 
   thread_pool_backend regular(1);
-  regular.set_on_task_start([](auto, auto)
-                              { throw std::runtime_error("start callback"); });
-  regular.set_on_task_end([](auto, auto, auto)
-                            { throw std::runtime_error("end callback"); });
+  regular.set_on_task_start([](auto, auto) { throw std::runtime_error("start callback"); });
+  regular.set_on_task_end([](auto, auto, auto) { throw std::runtime_error("end callback"); });
   auto third = regular.submit([] { return 3; });
   auto fourth = regular.submit([] { return 4; });
   EXPECT_EQ(third.get(), 3);
@@ -672,8 +631,7 @@ TEST(PoolBackendTest, LightweightPoolPostBatch)
   std::atomic<int> count{ 0 };
   std::vector<std::function<void()>> tasks;
   for (int i = 0; i < 100; ++i)
-    tasks.push_back([&count]
-                      { count.fetch_add(1, std::memory_order_relaxed); });
+    tasks.push_back([&count] { count.fetch_add(1, std::memory_order_relaxed); });
 
   pool.post_batch(tasks.begin(), tasks.end());
   pool.shutdown(shutdown_policy_backend::drain);
@@ -722,8 +680,7 @@ TEST(PoolBackendTest, LightweightPoolConfigureThreads)
 #if defined(__MINGW32__)
   if (!r.has_value())
     {
-      EXPECT_EQ(r.error(),
-                std::make_error_code(std::errc::operation_not_permitted));
+      EXPECT_EQ(r.error(), std::make_error_code(std::errc::operation_not_permitted));
       return;
     }
 #endif
@@ -762,8 +719,7 @@ TEST(PoolBackendTest, ScheduledAfterBasic)
   scheduled_pool_backend scheduler(2);
   std::atomic<bool> ran{ false };
 
-  scheduler.schedule_after(std::chrono::milliseconds(50),
-                           [&ran] { ran = true; });
+  scheduler.schedule_after(std::chrono::milliseconds(50), [&ran] { ran = true; });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   EXPECT_TRUE(ran);
@@ -774,9 +730,8 @@ TEST(PoolBackendTest, ScheduledPeriodicRunsMultipleTimes)
   scheduled_pool_backend scheduler(2);
   std::atomic<int> count{ 0 };
 
-  auto handle = scheduler.schedule_periodic(
-      std::chrono::milliseconds(30),
-      [&count] { count.fetch_add(1, std::memory_order_relaxed); });
+  auto handle = scheduler.schedule_periodic(std::chrono::milliseconds(30),
+                                            [&count] { count.fetch_add(1, std::memory_order_relaxed); });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   handle.cancel();
@@ -792,8 +747,7 @@ TEST(PoolBackendTest, ScheduledPeriodicAcceptsMoveOnlyCallable)
 
   auto handle
       = scheduler.schedule_periodic(std::chrono::milliseconds(20),
-                                    [payload = std::make_unique<int>(55),
-                                     &first_run, reported = false]() mutable
+                                    [payload = std::make_unique<int>(55), &first_run, reported = false]() mutable
                                       {
                                         if (!reported)
                                           {
@@ -802,8 +756,7 @@ TEST(PoolBackendTest, ScheduledPeriodicAcceptsMoveOnlyCallable)
                                           }
                                       });
 
-  EXPECT_EQ(finished.wait_for(std::chrono::seconds(2)),
-            std::future_status::ready);
+  EXPECT_EQ(finished.wait_for(std::chrono::seconds(2)), std::future_status::ready);
   EXPECT_EQ(finished.get(), 55);
   handle.cancel();
 }
@@ -815,11 +768,9 @@ TEST(PoolBackendTest, ScheduledEarlierInsertionWakesScheduler)
   std::promise<void> early_ran;
   auto early_ready = early_ran.get_future();
 
-  scheduler.schedule_after(std::chrono::milliseconds(10),
-                           [&early_ran] { early_ran.set_value(); });
+  scheduler.schedule_after(std::chrono::milliseconds(10), [&early_ran] { early_ran.set_value(); });
 
-  EXPECT_EQ(early_ready.wait_for(std::chrono::seconds(1)),
-            std::future_status::ready);
+  EXPECT_EQ(early_ready.wait_for(std::chrono::seconds(1)), std::future_status::ready);
   later.cancel();
 }
 
@@ -840,8 +791,7 @@ TEST(PoolBackendTest, ScheduledShutdownCancelsAndReleasesPendingTasks)
   scheduled_pool_backend scheduler(1);
   auto payload = std::make_shared<int>(42);
   std::weak_ptr<int> weak_payload = payload;
-  auto handle = scheduler.schedule_after(std::chrono::hours(1),
-                                         [payload] { (void)*payload; });
+  auto handle = scheduler.schedule_after(std::chrono::hours(1), [payload] { (void)*payload; });
   payload.reset();
 
   scheduler.shutdown(shutdown_policy_backend::drop_pending);
@@ -864,12 +814,9 @@ TEST(PoolBackendTest, ScheduledPeriodicCallableDoesNotRunConcurrently)
       std::chrono::milliseconds(2),
       [&]
         {
-          int const current
-              = active.fetch_add(1, std::memory_order_acq_rel) + 1;
+          int const current = active.fetch_add(1, std::memory_order_acq_rel) + 1;
           int observed = maximum.load(std::memory_order_relaxed);
-          while (observed < current
-                 && !maximum.compare_exchange_weak(observed, current,
-                                                   std::memory_order_relaxed))
+          while (observed < current && !maximum.compare_exchange_weak(observed, current, std::memory_order_relaxed))
             {
             }
           if (!reported.exchange(true, std::memory_order_acq_rel))
@@ -878,8 +825,7 @@ TEST(PoolBackendTest, ScheduledPeriodicCallableDoesNotRunConcurrently)
           active.fetch_sub(1, std::memory_order_acq_rel);
         });
 
-  ASSERT_EQ(first_ready.wait_for(std::chrono::seconds(2)),
-            std::future_status::ready);
+  ASSERT_EQ(first_ready.wait_for(std::chrono::seconds(2)), std::future_status::ready);
   std::this_thread::sleep_for(std::chrono::milliseconds(60));
   handle.cancel();
   scheduler.shutdown();
@@ -892,20 +838,17 @@ TEST(PoolBackendTest, ScheduledPeriodicOverrunDoesNotBlockOtherWork)
   std::promise<void> started;
   auto started_ready = started.get_future();
   std::atomic<bool> reported{ false };
-  auto periodic = scheduler.schedule_periodic(
-      std::chrono::milliseconds(1),
-      [&]
-        {
-          if (!reported.exchange(true, std::memory_order_acq_rel))
-            started.set_value();
-          std::this_thread::sleep_for(std::chrono::milliseconds(150));
-        });
+  auto periodic = scheduler.schedule_periodic(std::chrono::milliseconds(1),
+                                              [&]
+                                                {
+                                                  if (!reported.exchange(true, std::memory_order_acq_rel))
+                                                    started.set_value();
+                                                  std::this_thread::sleep_for(std::chrono::milliseconds(150));
+                                                });
 
-  ASSERT_EQ(started_ready.wait_for(std::chrono::seconds(2)),
-            std::future_status::ready);
+  ASSERT_EQ(started_ready.wait_for(std::chrono::seconds(2)), std::future_status::ready);
   auto independent = scheduler.thread_pool().submit([] { return 42; });
-  EXPECT_EQ(independent.wait_for(std::chrono::milliseconds(75)),
-            std::future_status::ready);
+  EXPECT_EQ(independent.wait_for(std::chrono::milliseconds(75)), std::future_status::ready);
   EXPECT_EQ(independent.get(), 42);
   periodic.cancel();
   scheduler.shutdown();
@@ -930,14 +873,11 @@ TEST(PoolBackendTest, ScheduledWorkerShutdownIsRejectedWithoutCorruption)
                                  }
                              });
 
-  EXPECT_EQ(ready.get(),
-            std::make_error_code(std::errc::resource_deadlock_would_occur));
+  EXPECT_EQ(ready.get(), std::make_error_code(std::errc::resource_deadlock_would_occur));
   std::promise<void> ran;
   auto ran_ready = ran.get_future();
-  scheduler.schedule_after(std::chrono::milliseconds(1),
-                           [&ran] { ran.set_value(); });
-  EXPECT_EQ(ran_ready.wait_for(std::chrono::seconds(2)),
-            std::future_status::ready);
+  scheduler.schedule_after(std::chrono::milliseconds(1), [&ran] { ran.set_value(); });
+  EXPECT_EQ(ran_ready.wait_for(std::chrono::seconds(2)), std::future_status::ready);
   scheduler.shutdown();
 }
 
@@ -948,29 +888,25 @@ TEST(PoolBackendTest, ScheduledThreadShutdownIsRejectedWithoutCorruption)
 
   std::promise<std::error_code> attempted;
   auto ready = attempted.get_future();
-  auto payload
-      = std::shared_ptr<int>(new int(42),
-                             [&scheduler, &attempted](int* value)
-                               {
-                                 delete value;
-                                 try
-                                   {
-                                     scheduler.shutdown();
-                                     attempted.set_value({});
-                                   }
-                                 catch (std::system_error const& error)
-                                   {
-                                     attempted.set_value(error.code());
-                                   }
-                               });
-  scheduler.schedule_after(std::chrono::milliseconds(1),
-                           [payload] { (void)*payload; });
+  auto payload = std::shared_ptr<int>(new int(42),
+                                      [&scheduler, &attempted](int* value)
+                                        {
+                                          delete value;
+                                          try
+                                            {
+                                              scheduler.shutdown();
+                                              attempted.set_value({});
+                                            }
+                                          catch (std::system_error const& error)
+                                            {
+                                              attempted.set_value(error.code());
+                                            }
+                                        });
+  scheduler.schedule_after(std::chrono::milliseconds(1), [payload] { (void)*payload; });
   payload.reset();
 
-  ASSERT_EQ(ready.wait_for(std::chrono::seconds(2)),
-            std::future_status::ready);
-  EXPECT_EQ(ready.get(),
-            std::make_error_code(std::errc::resource_deadlock_would_occur));
+  ASSERT_EQ(ready.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+  EXPECT_EQ(ready.get(), std::make_error_code(std::errc::resource_deadlock_would_occur));
   EXPECT_TRUE(scheduler.scheduler_thread_info().has_value());
 
   scheduler.shutdown();
@@ -982,8 +918,7 @@ TEST(PoolBackendTest, ScheduledCancel)
   scheduled_pool_backend scheduler(2);
   std::atomic<bool> ran{ false };
 
-  auto handle = scheduler.schedule_after(std::chrono::milliseconds(200),
-                                         [&ran] { ran = true; });
+  auto handle = scheduler.schedule_after(std::chrono::milliseconds(200), [&ran] { ran = true; });
   handle.cancel();
   EXPECT_TRUE(handle.is_cancelled());
 
@@ -1029,11 +964,9 @@ TEST(PoolBackendTest, ScheduledAfterAcceptsMoveOnlyTask)
   auto finished = done.get_future();
 
   scheduler.schedule_after(std::chrono::milliseconds(20),
-                           [payload = std::move(payload), &done]() mutable
-                             { done.set_value(*payload); });
+                           [payload = std::move(payload), &done]() mutable { done.set_value(*payload); });
 
-  EXPECT_EQ(finished.wait_for(std::chrono::seconds(2)),
-            std::future_status::ready);
+  EXPECT_EQ(finished.wait_for(std::chrono::seconds(2)), std::future_status::ready);
   EXPECT_EQ(finished.get(), 55);
 }
 
@@ -1041,8 +974,7 @@ TEST(PoolBackendTest, ScheduledHPPool)
 {
   scheduled_work_stealing_pool_backend scheduler(2);
   std::atomic<bool> ran{ false };
-  scheduler.schedule_after(std::chrono::milliseconds(20),
-                           [&ran] { ran = true; });
+  scheduler.schedule_after(std::chrono::milliseconds(20), [&ran] { ran = true; });
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   EXPECT_TRUE(ran);
 }
@@ -1051,8 +983,7 @@ TEST(PoolBackendTest, ScheduledLightweight)
 {
   scheduled_lightweight_pool_backend scheduler(2);
   std::atomic<bool> ran{ false };
-  scheduler.schedule_after(std::chrono::milliseconds(20),
-                           [&ran] { ran = true; });
+  scheduler.schedule_after(std::chrono::milliseconds(20), [&ran] { ran = true; });
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   EXPECT_TRUE(ran);
 }
@@ -1064,8 +995,7 @@ TEST(PoolBackendTest, ChaosControllerThreadCanBeConfigured)
   cfg.shuffle_affinity = false;
   cfg.priority_jitter = 0;
 
-  chaos_controller chaos(cfg, [](registered_thread_info_backend const&)
-                           { return false; });
+  chaos_controller chaos(cfg, [](registered_thread_info_backend const&) { return false; });
 
   ASSERT_TRUE(chaos.configure_thread("chaos_cfg").has_value());
 
@@ -1097,8 +1027,7 @@ TEST(PoolBackendTest, InlinePoolPost)
 TEST(PoolBackendTest, InlinePoolExceptionPropagation)
 {
   inline_pool_backend pool;
-  auto f
-      = pool.submit([]() -> int { throw std::runtime_error("inline boom"); });
+  auto f = pool.submit([]() -> int { throw std::runtime_error("inline boom"); });
   EXPECT_THROW(f.get(), std::runtime_error);
 }
 
@@ -1126,8 +1055,7 @@ TEST(PoolBackendTest, TaskGroupWaitsForAll)
   {
     task_group<thread_pool_backend> group(pool);
     for (int i = 0; i < 10; ++i)
-      group.submit([&count]
-                     { count.fetch_add(1, std::memory_order_relaxed); });
+      group.submit([&count] { count.fetch_add(1, std::memory_order_relaxed); });
     group.wait();
   }
   EXPECT_EQ(count.load(), 10);
@@ -1163,8 +1091,7 @@ TEST(PoolBackendTest, TaskGroupPendingCount)
   thread_pool_backend pool(2);
   task_group<thread_pool_backend> group(pool);
   EXPECT_EQ(group.pending(), 0u);
-  group.submit(
-      [] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
+  group.submit([] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
   EXPECT_GE(group.pending(), 0u);
   group.wait();
   EXPECT_EQ(group.pending(), 0u);

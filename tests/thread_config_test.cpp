@@ -39,10 +39,8 @@ TEST_F(ThreadConfigTest, ThreadPriorityValueConstruction)
 
 TEST_F(ThreadConfigTest, ThreadPriorityClampsToSupportedRange)
 {
-  EXPECT_EQ(native_thread_priority{ -100 }.value(),
-            native_thread_priority::highest().value());
-  EXPECT_EQ(native_thread_priority{ 150 }.value(),
-            native_thread_priority::realtime_highest().value());
+  EXPECT_EQ(native_thread_priority{ -100 }.value(), native_thread_priority::highest().value());
+  EXPECT_EQ(native_thread_priority{ 150 }.value(), native_thread_priority::realtime_highest().value());
 }
 
 TEST_F(ThreadConfigTest, ThreadPriorityFactoryMethods)
@@ -97,41 +95,30 @@ TEST_F(ThreadConfigTest, WindowsPriorityMappingUsesNiceSemantics)
   EXPECT_EQ(detail::map_priority_to_win32(-20), THREAD_PRIORITY_HIGHEST);
   EXPECT_EQ(detail::map_priority_to_win32(-10), THREAD_PRIORITY_HIGHEST);
   EXPECT_EQ(detail::map_priority_to_win32(-9), THREAD_PRIORITY_ABOVE_NORMAL);
-  EXPECT_EQ(
-      detail::map_priority_to_win32(native_thread_priority::highest().value()),
-      THREAD_PRIORITY_HIGHEST);
-  EXPECT_EQ(
-      detail::map_priority_to_win32(native_thread_priority{ -5 }.value()),
-      THREAD_PRIORITY_ABOVE_NORMAL);
-  EXPECT_EQ(
-      detail::map_priority_to_win32(native_thread_priority::normal().value()),
-      THREAD_PRIORITY_NORMAL);
+  EXPECT_EQ(detail::map_priority_to_win32(native_thread_priority::highest().value()), THREAD_PRIORITY_HIGHEST);
+  EXPECT_EQ(detail::map_priority_to_win32(native_thread_priority{ -5 }.value()), THREAD_PRIORITY_ABOVE_NORMAL);
+  EXPECT_EQ(detail::map_priority_to_win32(native_thread_priority::normal().value()), THREAD_PRIORITY_NORMAL);
   EXPECT_EQ(detail::map_priority_to_win32(1), THREAD_PRIORITY_BELOW_NORMAL);
-  EXPECT_EQ(detail::map_priority_to_win32(native_thread_priority{ 5 }.value()),
-            THREAD_PRIORITY_BELOW_NORMAL);
+  EXPECT_EQ(detail::map_priority_to_win32(native_thread_priority{ 5 }.value()), THREAD_PRIORITY_BELOW_NORMAL);
   EXPECT_EQ(detail::map_priority_to_win32(9), THREAD_PRIORITY_BELOW_NORMAL);
   EXPECT_EQ(detail::map_priority_to_win32(10), THREAD_PRIORITY_LOWEST);
   EXPECT_EQ(detail::map_priority_to_win32(18), THREAD_PRIORITY_LOWEST);
-  EXPECT_EQ(
-      detail::map_priority_to_win32(native_thread_priority::lowest().value()),
-      THREAD_PRIORITY_IDLE);
+  EXPECT_EQ(detail::map_priority_to_win32(native_thread_priority::lowest().value()), THREAD_PRIORITY_IDLE);
 
-  auto params = scheduler_parameters::create_for_policy(
-      native_scheduling_policy::other, native_thread_priority::highest());
+  auto params
+      = scheduler_parameters::create_for_policy(native_scheduling_policy::other, native_thread_priority::highest());
   ASSERT_TRUE(params.has_value());
   EXPECT_EQ(params.value().sched_priority, THREAD_PRIORITY_HIGHEST);
 
-  auto realtime_params = scheduler_parameters::create_for_policy(
-      native_scheduling_policy::fifo,
-      native_thread_priority::realtime_highest());
+  auto realtime_params = scheduler_parameters::create_for_policy(native_scheduling_policy::fifo,
+                                                                 native_thread_priority::realtime_highest());
   ASSERT_TRUE(realtime_params.has_value());
   EXPECT_EQ(realtime_params.value().sched_priority, THREAD_PRIORITY_HIGHEST);
 
-  auto realtime_lowest = scheduler_parameters::create_for_policy(
-      native_scheduling_policy::rr, native_thread_priority::realtime_lowest());
+  auto realtime_lowest = scheduler_parameters::create_for_policy(native_scheduling_policy::rr,
+                                                                 native_thread_priority::realtime_lowest());
   ASSERT_TRUE(realtime_lowest.has_value());
-  EXPECT_EQ(realtime_lowest.value().sched_priority,
-            THREAD_PRIORITY_ABOVE_NORMAL);
+  EXPECT_EQ(realtime_lowest.value().sched_priority, THREAD_PRIORITY_ABOVE_NORMAL);
 }
 
 TEST_F(ThreadConfigTest, WindowsNativePriorityIsAppliedWithoutRemapping)
@@ -140,9 +127,7 @@ TEST_F(ThreadConfigTest, WindowsNativePriorityIsAppliedWithoutRemapping)
   ASSERT_NE(original, THREAD_PRIORITY_ERROR_RETURN);
 
   thread_info current;
-  auto applied
-      = current.configure(detail::native_schedule::native_windows_priority(
-          THREAD_PRIORITY_ABOVE_NORMAL));
+  auto applied = current.configure(detail::native_schedule::native_windows_priority(THREAD_PRIORITY_ABOVE_NORMAL));
   int const observed = GetThreadPriority(GetCurrentThread());
   BOOL const restored = SetThreadPriority(GetCurrentThread(), original);
 
@@ -150,11 +135,9 @@ TEST_F(ThreadConfigTest, WindowsNativePriorityIsAppliedWithoutRemapping)
   EXPECT_EQ(observed, THREAD_PRIORITY_ABOVE_NORMAL);
   EXPECT_NE(restored, 0);
 
-  auto invalid
-      = current.configure(detail::native_schedule::native_windows_priority(3));
+  auto invalid = current.configure(detail::native_schedule::native_windows_priority(3));
   ASSERT_FALSE(invalid.has_value());
-  EXPECT_EQ(invalid.error(),
-            std::make_error_code(std::errc::invalid_argument));
+  EXPECT_EQ(invalid.error(), std::make_error_code(std::errc::invalid_argument));
 }
 #endif
 
@@ -274,8 +257,7 @@ TEST_F(ThreadConfigTest, SchedulingPolicyValues)
 TEST_F(ThreadConfigTest, SchedulingPolicyToString)
 {
   std::vector<native_scheduling_policy> policies
-      = { native_scheduling_policy::other, native_scheduling_policy::fifo,
-          native_scheduling_policy::rr };
+      = { native_scheduling_policy::other, native_scheduling_policy::fifo, native_scheduling_policy::rr };
 #if defined(SCHED_DEADLINE) && !defined(_WIN32)
   policies.push_back(native_scheduling_policy::deadline);
 #endif
@@ -291,8 +273,8 @@ TEST_F(ThreadConfigTest, SchedulingPolicyToString)
 
 TEST_F(ThreadConfigTest, SchedulerParamsCreation)
 {
-  auto params_result = scheduler_parameters::create_for_policy(
-      native_scheduling_policy::other, native_thread_priority::normal());
+  auto params_result
+      = scheduler_parameters::create_for_policy(native_scheduling_policy::other, native_thread_priority::normal());
 
   // Should succeed for OTHER policy
   EXPECT_TRUE(params_result.has_value());
@@ -310,8 +292,8 @@ TEST_F(ThreadConfigTest, SchedulerParamsCreation)
 #ifndef _WIN32
 TEST_F(ThreadConfigTest, SchedulerParamsFIFO)
 {
-  auto params = scheduler_parameters::create_for_policy(
-      native_scheduling_policy::fifo, native_thread_priority::highest());
+  auto params
+      = scheduler_parameters::create_for_policy(native_scheduling_policy::fifo, native_thread_priority::highest());
 
   // May fail if we don't have permissions
   if (params.has_value())
@@ -322,10 +304,10 @@ TEST_F(ThreadConfigTest, SchedulerParamsFIFO)
 
 TEST_F(ThreadConfigTest, SchedulerParamsFIFOMapsNiceSemanticsToNativePriority)
 {
-  auto highest = scheduler_parameters::create_for_policy(
-      native_scheduling_policy::fifo, native_thread_priority::highest());
-  auto lowest = scheduler_parameters::create_for_policy(
-      native_scheduling_policy::fifo, native_thread_priority::lowest());
+  auto highest
+      = scheduler_parameters::create_for_policy(native_scheduling_policy::fifo, native_thread_priority::highest());
+  auto lowest
+      = scheduler_parameters::create_for_policy(native_scheduling_policy::fifo, native_thread_priority::lowest());
 
   ASSERT_TRUE(highest.has_value());
   ASSERT_TRUE(lowest.has_value());
@@ -334,59 +316,45 @@ TEST_F(ThreadConfigTest, SchedulerParamsFIFOMapsNiceSemanticsToNativePriority)
 
 TEST_F(ThreadConfigTest, SchedulerParamsFIFOAcceptsNativeRealtimePriorityRange)
 {
-  int const min_priority = sched_get_priority_min(
-      static_cast<int>(native_scheduling_policy::fifo));
-  int const max_priority = sched_get_priority_max(
-      static_cast<int>(native_scheduling_policy::fifo));
+  int const min_priority = sched_get_priority_min(static_cast<int>(native_scheduling_policy::fifo));
+  int const max_priority = sched_get_priority_max(static_cast<int>(native_scheduling_policy::fifo));
 
-  auto lowest = scheduler_parameters::create_for_policy(
-      native_scheduling_policy::fifo,
-      native_thread_priority::realtime_lowest());
-  auto middle = scheduler_parameters::create_for_policy(
-      native_scheduling_policy::fifo, native_thread_priority{ 50 });
-  auto highest = scheduler_parameters::create_for_policy(
-      native_scheduling_policy::fifo,
-      native_thread_priority::realtime_highest());
+  auto lowest = scheduler_parameters::create_for_policy(native_scheduling_policy::fifo,
+                                                        native_thread_priority::realtime_lowest());
+  auto middle = scheduler_parameters::create_for_policy(native_scheduling_policy::fifo, native_thread_priority{ 50 });
+  auto highest = scheduler_parameters::create_for_policy(native_scheduling_policy::fifo,
+                                                         native_thread_priority::realtime_highest());
 
   ASSERT_TRUE(lowest.has_value());
   ASSERT_TRUE(middle.has_value());
   ASSERT_TRUE(highest.has_value());
   EXPECT_EQ(lowest.value().sched_priority, min_priority);
-  EXPECT_EQ(middle.value().sched_priority,
-            std::clamp(50, min_priority, max_priority));
+  EXPECT_EQ(middle.value().sched_priority, std::clamp(50, min_priority, max_priority));
   EXPECT_EQ(highest.value().sched_priority, max_priority);
 }
 #endif
 
 TEST_F(ThreadConfigTest, SchedulingFactoriesResolveToUnifiedSemantics)
 {
-  auto const background = detail::resolve_scheduling_config(
-      detail::native_schedule::background());
+  auto const background = detail::resolve_scheduling_config(detail::native_schedule::background());
   EXPECT_EQ(background.policy, native_scheduling_policy::idle);
-  EXPECT_EQ(background.priority.value(),
-            native_thread_priority::lowest().value());
+  EXPECT_EQ(background.priority.value(), native_thread_priority::lowest().value());
 
-  auto const low_latency = detail::resolve_scheduling_config(
-      detail::native_schedule::low_latency());
+  auto const low_latency = detail::resolve_scheduling_config(detail::native_schedule::low_latency());
   EXPECT_EQ(low_latency.policy, native_scheduling_policy::other);
-  EXPECT_EQ(low_latency.priority.value(),
-            native_thread_priority::highest().value());
+  EXPECT_EQ(low_latency.priority.value(), native_thread_priority::highest().value());
 
-  auto const realtime = detail::resolve_scheduling_config(
-      detail::native_schedule::realtime_rr(99));
+  auto const realtime = detail::resolve_scheduling_config(detail::native_schedule::realtime_rr(99));
   EXPECT_EQ(realtime.policy, native_scheduling_policy::rr);
-  EXPECT_EQ(realtime.priority.value(),
-            native_thread_priority::realtime_highest().value());
+  EXPECT_EQ(realtime.priority.value(), native_thread_priority::realtime_highest().value());
 
-  auto const nice = detail::resolve_scheduling_config(
-      detail::native_schedule::posix_nice(19));
+  auto const nice = detail::resolve_scheduling_config(detail::native_schedule::posix_nice(19));
   EXPECT_EQ(nice.policy, native_scheduling_policy::other);
   EXPECT_EQ(nice.priority.value(), native_thread_priority::lowest().value());
   EXPECT_EQ(nice.model, native_priority_model::posix_nice);
   EXPECT_TRUE(nice.valid);
 
-  auto const invalid = detail::resolve_scheduling_config(
-      detail::native_schedule::posix_nice(20));
+  auto const invalid = detail::resolve_scheduling_config(detail::native_schedule::posix_nice(20));
   EXPECT_FALSE(invalid.valid);
 }
 
@@ -395,8 +363,7 @@ TEST_F(ThreadConfigTest, ThreadConfigAppliesThroughThreadAndPool)
   native_thread_config config{};
   config.scheduling = detail::native_schedule::normal();
 
-  detail::thread_backend thread(
-      [] { std::this_thread::sleep_for(std::chrono::milliseconds(10)); });
+  detail::thread_backend thread([] { std::this_thread::sleep_for(std::chrono::milliseconds(10)); });
   auto thread_result = thread.configure(config);
   EXPECT_TRUE(thread_result.has_value()) << thread_result.error().message();
   thread.join();
@@ -422,8 +389,7 @@ TEST_F(ThreadConfigTest, ApplyConfigToThread)
 
   // Try to configure the thread (may fail without permissions)
   [[maybe_unused]] auto name_result = thread.set_name("test_config");
-  [[maybe_unused]] auto priority_result
-      = thread.set_priority(native_thread_priority::normal());
+  [[maybe_unused]] auto priority_result = thread.set_priority(native_thread_priority::normal());
 
   native_thread_affinity affinity;
   affinity.add_cpu(0);
@@ -445,8 +411,8 @@ TEST_F(ThreadConfigTest, ThreadConfigWithSchedulingPolicy)
         });
 
   // Try to set scheduling policy (may fail without permissions)
-  [[maybe_unused]] auto scheduling_result = thread.set_scheduling_policy(
-      native_scheduling_policy::other, native_thread_priority::normal());
+  [[maybe_unused]] auto scheduling_result
+      = thread.set_scheduling_policy(native_scheduling_policy::other, native_thread_priority::normal());
 
   // Just ensure it doesn't crash
   thread.join();

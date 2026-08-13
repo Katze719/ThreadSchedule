@@ -72,8 +72,7 @@ read_topology() -> cpu_topology
         continue;
       topo.cpu_count += static_cast<int>(processor_count);
       for (DWORD index = 0; index < processor_count; ++index)
-        topo.node_to_cpus[0].push_back(static_cast<int>(group) * 64
-                                       + static_cast<int>(index));
+        topo.node_to_cpus[0].push_back(static_cast<int>(group) * 64 + static_cast<int>(index));
     }
   if (topo.node_to_cpus[0].empty())
     {
@@ -85,8 +84,7 @@ read_topology() -> cpu_topology
   int nodes = 0;
   for (;;)
     {
-      std::string path
-          = "/sys/devices/system/node/node" + std::to_string(nodes);
+      std::string path = "/sys/devices/system/node/node" + std::to_string(nodes);
       if (access(path.c_str(), F_OK) != 0)
         break;
       ++nodes;
@@ -98,8 +96,7 @@ read_topology() -> cpu_topology
     {
       for (int node_index = 0; node_index < nodes; ++node_index)
         {
-          std::string list_path = "/sys/devices/system/node/node"
-                                  + std::to_string(node_index) + "/cpulist";
+          std::string list_path = "/sys/devices/system/node/node" + std::to_string(node_index) + "/cpulist";
           std::ifstream in(list_path);
           if (!in)
             continue;
@@ -112,8 +109,7 @@ read_topology() -> cpu_topology
               // read number
               int start_cpu = 0;
               bool got = false;
-              while (i < s.size()
-                     && (std::isdigit(static_cast<unsigned char>(s[i])) != 0))
+              while (i < s.size() && (std::isdigit(static_cast<unsigned char>(s[i])) != 0))
                 {
                   got = true;
                   start_cpu = start_cpu * 10 + (s[i] - '0');
@@ -129,9 +125,7 @@ read_topology() -> cpu_topology
                   ++i;
                   int end_cpu = 0;
                   bool gotb = false;
-                  while (
-                      i < s.size()
-                      && (std::isdigit(static_cast<unsigned char>(s[i])) != 0))
+                  while (i < s.size() && (std::isdigit(static_cast<unsigned char>(s[i])) != 0))
                     {
                       gotb = true;
                       end_cpu = end_cpu * 10 + (s[i] - '0');
@@ -139,8 +133,7 @@ read_topology() -> cpu_topology
                     }
                   if (gotb && end_cpu >= start_cpu)
                     {
-                      for (int cpu_index = start_cpu; cpu_index <= end_cpu;
-                           ++cpu_index)
+                      for (int cpu_index = start_cpu; cpu_index <= end_cpu; ++cpu_index)
                         topo.node_to_cpus[node_index].push_back(cpu_index);
                     }
                 }
@@ -173,13 +166,12 @@ read_topology() -> cpu_topology
  * @param threads_per_node Number of CPUs to include per thread (default 1).
  */
 inline auto
-affinity_for_node(cpu_topology const& topo, int node_index, int thread_index,
-                  int threads_per_node = 1) -> native_thread_affinity
+affinity_for_node(cpu_topology const& topo, int node_index, int thread_index, int threads_per_node = 1)
+    -> native_thread_affinity
 {
   if (topo.numa_nodes <= 0)
     return {};
-  int const n
-      = (node_index % topo.numa_nodes + topo.numa_nodes) % topo.numa_nodes;
+  int const n = (node_index % topo.numa_nodes + topo.numa_nodes) % topo.numa_nodes;
   auto const& cpus = topo.node_to_cpus[n];
   native_thread_affinity aff;
   if (cpus.empty())
@@ -207,11 +199,9 @@ affinity_for_node(cpu_topology const& topo, int node_index, int thread_index,
  * @param threads_per_node Number of CPUs to include per thread (default 1).
  */
 inline auto
-affinity_for_node(int node_index, int thread_index, int threads_per_node = 1)
-    -> native_thread_affinity
+affinity_for_node(int node_index, int thread_index, int threads_per_node = 1) -> native_thread_affinity
 {
-  return affinity_for_node(read_topology(), node_index, thread_index,
-                           threads_per_node);
+  return affinity_for_node(read_topology(), node_index, thread_index, threads_per_node);
 }
 
 /**
@@ -224,15 +214,13 @@ affinity_for_node(int node_index, int thread_index, int threads_per_node = 1)
  * @return Vector of @p num_threads native_thread_affinity objects.
  */
 inline auto
-distribute_affinities_by_numa(cpu_topology const& topo, size_t num_threads)
-    -> std::vector<native_thread_affinity>
+distribute_affinities_by_numa(cpu_topology const& topo, size_t num_threads) -> std::vector<native_thread_affinity>
 {
   std::vector<native_thread_affinity> result;
   result.reserve(num_threads);
   for (size_t i = 0; i < num_threads; ++i)
     {
-      int node
-          = (topo.numa_nodes > 0) ? static_cast<int>(i % topo.numa_nodes) : 0;
+      int node = (topo.numa_nodes > 0) ? static_cast<int>(i % topo.numa_nodes) : 0;
       result.push_back(affinity_for_node(topo, node, static_cast<int>(i)));
     }
   return result;
@@ -248,8 +236,7 @@ distribute_affinities_by_numa(cpu_topology const& topo, size_t num_threads)
  * @return Vector of @p num_threads native_thread_affinity objects.
  */
 inline auto
-distribute_affinities_by_numa(size_t num_threads)
-    -> std::vector<native_thread_affinity>
+distribute_affinities_by_numa(size_t num_threads) -> std::vector<native_thread_affinity>
 {
   return distribute_affinities_by_numa(read_topology(), num_threads);
 }

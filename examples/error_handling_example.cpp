@@ -8,12 +8,10 @@ main()
 {
   threadschedule::thread_pool pool(2);
 
-  auto submitted
-      = pool.submit([]() -> int { throw std::runtime_error("task failed"); });
+  auto submitted = pool.submit([]() -> int { throw std::runtime_error("task failed"); });
   if (!submitted)
     {
-      std::cerr << "could not submit task: " << submitted.error().message()
-                << '\n';
+      std::cerr << "could not submit task: " << submitted.error().message() << '\n';
       return 1;
     }
 
