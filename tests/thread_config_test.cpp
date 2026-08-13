@@ -282,9 +282,9 @@ TEST_F(ThreadConfigTest, SchedulerParamsCreation)
 
   if (params_result.has_value())
     {
-      auto const& params = params_result.value();
       // Verify it's a valid sched_param
 #ifndef _WIN32
+      auto const& params = params_result.value();
       EXPECT_GE(params.sched_priority, 0);
 #endif
     }

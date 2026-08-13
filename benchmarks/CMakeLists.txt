@@ -45,7 +45,6 @@ foreach(target ${ALL_BENCHMARK_TARGETS})
             -O3 -DNDEBUG
             -fno-omit-frame-pointer
             -march=native
-            -ffast-math
         )
     elseif(MSVC)
         target_compile_options(${target} PRIVATE

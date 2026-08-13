@@ -100,6 +100,8 @@
   class-owning headers use the class name; platform code is isolated in POSIX and Windows headers.
 - Adopted the repository's libstdc++-inspired lowercase style, a 120-column clang-format limit, and a clang-tidy cognitive
   complexity threshold of 55.
+- Added `THREADSCHEDULE_WARNINGS_AS_ERRORS` for strict local and CI builds without applying `-Werror` to third-party source
+  files, and handled Google Benchmark's Clang 22 `__COUNTER__` diagnostic at the dependency boundary.
 
 ## v2.4.0
 

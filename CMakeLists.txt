@@ -51,6 +51,7 @@ option(THREADSCHEDULE_BUILD_BENCHMARKS "Build benchmarks" OFF)
 option(THREADSCHEDULE_INSTALL "Generate install target" ${THREADSCHEDULE_IS_TOPLEVEL_PROJECT})
 option(THREADSCHEDULE_RUNTIME "Build the optional C++ shared registry runtime" OFF)
 option(THREADSCHEDULE_BUILD_DOCS "Build API documentation with Doxygen" OFF)
+option(THREADSCHEDULE_WARNINGS_AS_ERRORS "Treat ThreadSchedule consumer warnings as errors in this build" OFF)
 
 # CPM support (optional, download if building tests or benchmarks)
 if(THREADSCHEDULE_BUILD_TESTS OR THREADSCHEDULE_BUILD_BENCHMARKS)
@@ -77,6 +78,16 @@ if(THREADSCHEDULE_BUILD_TESTS)
         "BUILD_GMOCK OFF"
         "gtest_force_shared_crt ON"
     )
+
+    # GoogleTest 1.14 performs an intentional char8_t-to-char32_t conversion
+    # in its printer. Clang 22 reports it from the dependency itself.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 22)
+        foreach(gtest_target gtest gtest_main)
+            if(TARGET ${gtest_target})
+                target_compile_options(${gtest_target} PRIVATE -Wno-character-conversion)
+            endif()
+        endforeach()
+    endif()
 endif()
 
 # Add Google Benchmark dependency (for benchmarks)
@@ -89,8 +100,19 @@ if(THREADSCHEDULE_BUILD_BENCHMARKS)
         "BENCHMARK_ENABLE_TESTING OFF"
         "BENCHMARK_ENABLE_GTEST_TESTS OFF"
         "BENCHMARK_ENABLE_INSTALL OFF"
+        "BENCHMARK_ENABLE_WERROR OFF"
         "BENCHMARK_DOWNLOAD_DEPENDENCIES ON"
     )
+
+    # Google Benchmark 1.9.4 probes __COUNTER__ in a public header. Clang 22
+    # diagnoses that probe under the dependency's own -pedantic-errors flags.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 22)
+        foreach(benchmark_target benchmark benchmark_main)
+            if(TARGET ${benchmark_target})
+                target_compile_options(${benchmark_target} PRIVATE -Wno-c2y-extensions)
+            endif()
+        endforeach()
+    endif()
 
     # Add nlohmann/json for web server and database benchmarks
     CPMAddPackage(
@@ -134,6 +156,13 @@ if(THREADSCHEDULE_IS_TOPLEVEL_PROJECT)
         target_compile_options(ThreadSchedule INTERFACE
             $<BUILD_INTERFACE:-Wall -Wextra -Wpedantic>
         )
+        if(THREADSCHEDULE_WARNINGS_AS_ERRORS)
+            target_compile_options(ThreadSchedule INTERFACE $<BUILD_INTERFACE:-Werror>)
+            if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang"
+               AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 22)
+                target_compile_options(ThreadSchedule INTERFACE $<BUILD_INTERFACE:-Wno-c2y-extensions>)
+            endif()
+        endif()
         # MinGW (GCC): allow permissive mode for broader compatibility when requested
         if(MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
             target_compile_options(ThreadSchedule INTERFACE
@@ -144,6 +173,9 @@ if(THREADSCHEDULE_IS_TOPLEVEL_PROJECT)
         target_compile_options(ThreadSchedule INTERFACE
             $<BUILD_INTERFACE:/W4 /permissive- /Zc:preprocessor /EHsc>
         )
+        if(THREADSCHEDULE_WARNINGS_AS_ERRORS)
+            target_compile_options(ThreadSchedule INTERFACE $<BUILD_INTERFACE:/WX>)
+        endif()
     endif()
 endif()
 

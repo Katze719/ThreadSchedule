@@ -12,7 +12,7 @@ using namespace threadschedule;
 // =============================================================================
 
 static void
-BM_HPPool_Throughput(benchmark::State& state)
+bm_hp_pool_throughput(benchmark::State& state)
 {
   auto const num_tasks = static_cast<size_t>(state.range(0));
 
@@ -43,14 +43,14 @@ BM_HPPool_Throughput(benchmark::State& state)
   state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(num_tasks));
 }
 
-BENCHMARK(BM_HPPool_Throughput)->Arg(1000)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
+BENCHMARK(bm_hp_pool_throughput)->Arg(1000)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
 
 // =============================================================================
 // advanced::work_stealing_pool batch processing
 // =============================================================================
 
 static void
-BM_HPPool_Batch(benchmark::State& state)
+bm_hp_pool_batch(benchmark::State& state)
 {
   auto const batch_size = static_cast<size_t>(state.range(0));
 
@@ -75,14 +75,14 @@ BM_HPPool_Batch(benchmark::State& state)
   state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(batch_size));
 }
 
-BENCHMARK(BM_HPPool_Batch)->Arg(5000)->Arg(50000)->Unit(benchmark::kMillisecond);
+BENCHMARK(bm_hp_pool_batch)->Arg(5000)->Arg(50000)->Unit(benchmark::kMillisecond);
 
 // =============================================================================
 // advanced::work_stealing_pool variable workload (simulating real tasks)
 // =============================================================================
 
 static void
-BM_HPPool_VariableWorkload(benchmark::State& state)
+bm_hp_pool_variable_workload(benchmark::State& state)
 {
   auto const num_tasks = static_cast<size_t>(state.range(0));
 
@@ -108,9 +108,10 @@ BM_HPPool_VariableWorkload(benchmark::State& state)
           futures.push_back(pool.submit(
               [amount]()
                 {
-                  volatile int x = 0;
+                  int x = 0;
                   for (int j = 0; j < amount; ++j)
                     x += j * j;
+                  benchmark::DoNotOptimize(x);
                 }));
         }
 
@@ -121,14 +122,14 @@ BM_HPPool_VariableWorkload(benchmark::State& state)
   state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(num_tasks));
 }
 
-BENCHMARK(BM_HPPool_VariableWorkload)->Arg(1000)->Arg(25000)->Unit(benchmark::kMillisecond);
+BENCHMARK(bm_hp_pool_variable_workload)->Arg(1000)->Arg(25000)->Unit(benchmark::kMillisecond);
 
 // =============================================================================
 // advanced::work_stealing_pool parallel_for_each
 // =============================================================================
 
 static void
-BM_HPPool_ParallelForEach(benchmark::State& state)
+bm_hp_pool_parallel_for_each(benchmark::State& state)
 {
   auto const data_size = static_cast<size_t>(state.range(0));
 
@@ -151,6 +152,6 @@ BM_HPPool_ParallelForEach(benchmark::State& state)
   state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(data_size));
 }
 
-BENCHMARK(BM_HPPool_ParallelForEach)->Arg(100000)->Arg(1000000)->Arg(10000000)->Unit(benchmark::kMillisecond);
+BENCHMARK(bm_hp_pool_parallel_for_each)->Arg(100000)->Arg(1000000)->Arg(10000000)->Unit(benchmark::kMillisecond);
 
 BENCHMARK_MAIN();

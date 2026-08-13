@@ -261,7 +261,9 @@ TEST_F(ThreadBackendTest, ThreadNamingRejectsInvalidUtf8)
   auto const result = thread.set_name(invalid_utf8);
   EXPECT_FALSE(result.has_value());
   if (!result.has_value())
-    EXPECT_NE(result.error(), std::make_error_code(std::errc::function_not_supported));
+    {
+      EXPECT_NE(result.error(), std::make_error_code(std::errc::function_not_supported));
+    }
   thread.join();
 }
 

@@ -23,7 +23,7 @@ using json = nlohmann::json;
 // =============================================================================
 
 // Simulated user session data
-struct UserSession
+struct user_session
 {
   std::string user_id;
   std::string session_token;
@@ -33,21 +33,21 @@ struct UserSession
 };
 
 // Thread-safe session store
-class SessionStore
+class session_store
 {
 private:
-  std::unordered_map<std::string, std::shared_ptr<UserSession>> sessions_;
+  std::unordered_map<std::string, std::shared_ptr<user_session>> sessions_;
   mutable std::shared_mutex mutex_;
 
 public:
   void
-  store_session(std::string session_id, std::shared_ptr<UserSession> session)
+  store_session(std::string session_id, std::shared_ptr<user_session> session)
   {
     std::unique_lock lock(mutex_);
     sessions_[session_id] = session;
   }
 
-  std::shared_ptr<UserSession>
+  std::shared_ptr<user_session>
   get_session(std::string const& session_id)
   {
     std::shared_lock lock(mutex_);
@@ -84,7 +84,7 @@ public:
 };
 
 // Simulated HTTP request
-struct HttpRequest
+struct http_request
 {
   std::string method;
   std::string path;
@@ -96,7 +96,7 @@ struct HttpRequest
 };
 
 // Simulated HTTP response
-struct HttpResponse
+struct http_response
 {
   int status_code;
   std::string content_type;
@@ -105,17 +105,17 @@ struct HttpResponse
 };
 
 // Thread-safe request queue
-class RequestQueue
+class request_queue
 {
 private:
-  std::queue<HttpRequest> queue_;
+  std::queue<http_request> queue_;
   mutable std::mutex mutex_;
   std::condition_variable condition_;
   bool stopped_ = false;
 
 public:
   void
-  push(HttpRequest request)
+  push(http_request request)
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!stopped_)
@@ -126,7 +126,7 @@ public:
   }
 
   bool
-  pop(HttpRequest& request, std::chrono::milliseconds timeout = std::chrono::milliseconds(100))
+  pop(http_request& request, std::chrono::milliseconds timeout = std::chrono::milliseconds(100))
   {
     std::unique_lock<std::mutex> lock(mutex_);
 
@@ -159,14 +159,14 @@ public:
 };
 
 // Web server workload simulation
-class WebServerWorkloads
+class web_server_workloads
 {
 public:
   // Simulate JSON API request processing
-  static HttpResponse
-  process_json_api_request(HttpRequest const& request, SessionStore& sessions)
+  static http_response
+  process_json_api_request(http_request const& request, session_store& sessions)
   {
-    HttpResponse response;
+    http_response response;
     response.status_code = 200;
     response.content_type = "application/json";
 
@@ -202,15 +202,15 @@ public:
   }
 
   // Simulate file upload processing
-  static HttpResponse
-  process_file_upload(HttpRequest const& request)
+  static http_response
+  process_file_upload(http_request const& request)
   {
-    HttpResponse response;
+    http_response response;
     response.content_type = "application/json";
 
     // Simulate expensive file processing operations
-    volatile size_t hash = 0;
-    std::string_view content = request.body.value("content", "");
+    size_t hash = 0;
+    std::string content = request.body.value("content", "");
 
     // Simulate content hashing (CPU intensive)
     for (size_t i = 0; i < content.size(); ++i)
@@ -232,10 +232,10 @@ public:
   }
 
   // Simulate real-time data streaming
-  static HttpResponse
-  process_websocket_message(HttpRequest const& request)
+  static http_response
+  process_websocket_message(http_request const& request)
   {
-    HttpResponse response;
+    http_response response;
     response.content_type = "application/json";
 
     // Simulate real-time data aggregation
@@ -376,11 +376,12 @@ private:
   simulate_image_processing(size_t size)
   {
     // Simulate CPU-intensive image operations
-    volatile double sum = 0.0;
+    double sum = 0.0;
     for (size_t i = 0; i < size; ++i)
       {
         sum += std::sin(i * 0.01) * std::cos(i * 0.02);
       }
+    benchmark::DoNotOptimize(sum);
   }
 };
 
@@ -389,7 +390,7 @@ private:
 // =============================================================================
 
 static void
-BM_WebServer_JSON_API_Processing(benchmark::State& state)
+bm_web_server_json_api_processing(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const requests_per_batch = state.range(1);
@@ -399,13 +400,13 @@ BM_WebServer_JSON_API_Processing(benchmark::State& state)
   pool.configure_threads("web_worker");
   pool.distribute_across_cpus();
 
-  SessionStore sessions;
-  RequestQueue request_queue;
+  session_store sessions;
+  request_queue request_queue;
 
   // Pre-populate sessions
   for (size_t i = 0; i < concurrent_users; ++i)
     {
-      auto session = std::make_shared<UserSession>();
+      auto session = std::make_shared<user_session>();
       session->user_id = "user_" + std::to_string(i);
       session->session_token = "token_" + std::to_string(i);
       session->preferences["category"] = (i % 2 == 0) ? "electronics" : "books";
@@ -421,7 +422,7 @@ BM_WebServer_JSON_API_Processing(benchmark::State& state)
       // Submit API processing tasks
       for (size_t i = 0; i < requests_per_batch; ++i)
         {
-          HttpRequest request;
+          http_request request;
           request.method = "POST";
           request.path = (i % 3 == 0) ? "/api/users" : (i % 3 == 1) ? "/api/analytics" : "/api/recommendations";
           request.session_id = "session_" + std::to_string(i % concurrent_users);
@@ -433,7 +434,7 @@ BM_WebServer_JSON_API_Processing(benchmark::State& state)
                 {
                   try
                     {
-                      auto response = WebServerWorkloads::process_json_api_request(request, sessions);
+                      auto response = web_server_workloads::process_json_api_request(request, sessions);
                       if (response.status_code == 200)
                         {
                           processed_requests.fetch_add(1, std::memory_order_relaxed);
@@ -471,7 +472,7 @@ BM_WebServer_JSON_API_Processing(benchmark::State& state)
 }
 
 static void
-BM_WebServer_FileUpload_Processing(benchmark::State& state)
+bm_web_server_file_upload_processing(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const uploads_per_batch = state.range(1);
@@ -489,7 +490,7 @@ BM_WebServer_FileUpload_Processing(benchmark::State& state)
       // Submit file upload processing tasks
       for (size_t i = 0; i < uploads_per_batch; ++i)
         {
-          HttpRequest request;
+          http_request request;
           request.method = "POST";
           request.path = "/api/upload";
 
@@ -510,7 +511,7 @@ BM_WebServer_FileUpload_Processing(benchmark::State& state)
           pool.submit(
               [&processed_uploads, &total_bytes, request]()
                 {
-                  auto response = WebServerWorkloads::process_file_upload(request);
+                  auto response = web_server_workloads::process_file_upload(request);
                   if (response.status_code == 200)
                     {
                       processed_uploads.fetch_add(1, std::memory_order_relaxed);
@@ -538,7 +539,7 @@ BM_WebServer_FileUpload_Processing(benchmark::State& state)
 }
 
 static void
-BM_WebServer_RealTimeStreaming(benchmark::State& state)
+bm_web_server_real_time_streaming(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const messages_per_second = state.range(1);
@@ -554,14 +555,12 @@ BM_WebServer_RealTimeStreaming(benchmark::State& state)
       std::atomic<double> avg_latency_ms{ 0.0 };
       std::atomic<size_t> message_count{ 0 };
 
-      auto start_time = std::chrono::steady_clock::now();
-
       // Submit streaming message processing
       for (size_t i = 0; i < messages_per_second * duration_seconds; ++i)
         {
           auto submit_time = std::chrono::steady_clock::now();
 
-          HttpRequest request;
+          http_request request;
           request.method = "POST";
           request.path = "/api/stream";
 
@@ -581,9 +580,7 @@ BM_WebServer_RealTimeStreaming(benchmark::State& state)
           pool.submit(
               [&processed_messages, &avg_latency_ms, &message_count, &request, submit_time]()
                 {
-                  auto process_start = std::chrono::steady_clock::now();
-
-                  auto response = WebServerWorkloads::process_websocket_message(request);
+                  auto response = web_server_workloads::process_websocket_message(request);
 
                   auto process_end = std::chrono::steady_clock::now();
                   auto latency
@@ -624,7 +621,7 @@ BM_WebServer_RealTimeStreaming(benchmark::State& state)
 // Registration
 // =============================================================================
 
-BENCHMARK(BM_WebServer_JSON_API_Processing)
+BENCHMARK(bm_web_server_json_api_processing)
     ->Args({ 2, 100, 10 }) // 2 threads, 100 requests, 10 users
     ->Args({ 4, 100, 20 }) // 4 threads, 100 requests, 20 users
     ->Args({ 8, 100, 50 }) // 8 threads, 100 requests, 50 users
@@ -632,7 +629,7 @@ BENCHMARK(BM_WebServer_JSON_API_Processing)
     ->Args({ 8, 500, 50 }) // 8 threads, 500 requests, 50 users
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(BM_WebServer_FileUpload_Processing)
+BENCHMARK(bm_web_server_file_upload_processing)
     ->Args({ 2, 50, 100 })  // 2 threads, 50 uploads, 100KB each
     ->Args({ 4, 50, 100 })  // 4 threads, 50 uploads, 100KB each
     ->Args({ 8, 50, 100 })  // 8 threads, 50 uploads, 100KB each
@@ -640,7 +637,7 @@ BENCHMARK(BM_WebServer_FileUpload_Processing)
     ->Args({ 8, 100, 500 }) // 8 threads, 100 uploads, 500KB each
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(BM_WebServer_RealTimeStreaming)
+BENCHMARK(bm_web_server_real_time_streaming)
     ->Args({ 2, 100 })  // 2 threads, 100 messages/sec
     ->Args({ 4, 100 })  // 4 threads, 100 messages/sec
     ->Args({ 8, 100 })  // 8 threads, 100 messages/sec

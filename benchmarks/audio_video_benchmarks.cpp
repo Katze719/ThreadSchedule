@@ -18,7 +18,7 @@ using namespace threadschedule::advanced;
 // =============================================================================
 
 // Simulated audio frame
-struct AudioFrame
+struct audio_frame
 {
   std::vector<float> samples_left;
   std::vector<float> samples_right;
@@ -28,7 +28,7 @@ struct AudioFrame
 };
 
 // Simulated video frame
-struct VideoFrame
+struct video_frame
 {
   std::vector<uint8_t> y_plane;
   std::vector<uint8_t> u_plane;
@@ -42,7 +42,7 @@ struct VideoFrame
 
 // Thread-safe frame queues
 template <typename T>
-class FrameQueue
+class frame_queue
 {
 private:
   std::queue<T> queue_;
@@ -103,13 +103,14 @@ public:
 };
 
 // Audio processing workloads
-class AudioWorkloads
+class audio_workloads
 {
 public:
   // Simulate audio encoding (MP3, AAC, etc.)
   static std::vector<uint8_t>
-  encode_audio(AudioFrame const& frame, std::string const& codec, int bitrate_kbps)
+  encode_audio(audio_frame const& frame, std::string const& codec, int bitrate_kbps)
   {
+    (void)codec;
     std::vector<uint8_t> encoded_data;
 
     // Simulate psychoacoustic analysis
@@ -136,10 +137,10 @@ public:
   }
 
   // Simulate audio filtering (equalizer, noise reduction, etc.)
-  static AudioFrame
-  apply_audio_filter(AudioFrame const& input, std::string const& filter_type)
+  static audio_frame
+  apply_audio_filter(audio_frame const& input, std::string const& filter_type)
   {
-    AudioFrame output = input;
+    audio_frame output = input;
 
     if (filter_type == "lowpass")
       {
@@ -166,13 +167,13 @@ public:
   }
 
   // Simulate audio mixing
-  static AudioFrame
-  mix_audio_frames(std::vector<AudioFrame> const& frames, double master_volume)
+  static audio_frame
+  mix_audio_frames(std::vector<audio_frame> const& frames, double master_volume)
   {
     if (frames.empty())
-      return AudioFrame{};
+      return audio_frame{};
 
-    AudioFrame result = frames[0];
+    audio_frame result = frames[0];
 
     // Mix multiple audio streams
     for (size_t i = 1; i < frames.size(); ++i)
@@ -185,7 +186,7 @@ public:
 
 private:
   static double
-  analyze_psychoacoustic_model(AudioFrame const& frame)
+  analyze_psychoacoustic_model(audio_frame const& frame)
   {
     // Simulate psychoacoustic analysis (masking thresholds, etc.)
     double total_energy = 0.0;
@@ -262,7 +263,7 @@ private:
   }
 
   static void
-  mix_two_frames(AudioFrame& target, AudioFrame const& source, double master_volume)
+  mix_two_frames(audio_frame& target, audio_frame const& source, double master_volume)
   {
     // Mix two audio frames with volume control
     size_t min_samples = std::min(target.samples_left.size(), source.samples_left.size());
@@ -276,13 +277,14 @@ private:
 };
 
 // Video processing workloads
-class VideoWorkloads
+class video_workloads
 {
 public:
   // Simulate video encoding (H.264, H.265, VP9, etc.)
   static std::vector<uint8_t>
-  encode_video_frame(VideoFrame const& frame, std::string const& codec, int bitrate_kbps)
+  encode_video_frame(video_frame const& frame, std::string const& codec, int bitrate_kbps)
   {
+    (void)codec;
     std::vector<uint8_t> encoded_data;
 
     // Simulate motion estimation and compensation
@@ -291,6 +293,7 @@ public:
     // Simulate intra/inter prediction
     size_t macroblock_count = (frame.width / 16) * (frame.height / 16);
     size_t intra_blocks = static_cast<size_t>(macroblock_count * (1.0 - motion_complexity));
+    benchmark::DoNotOptimize(intra_blocks);
 
     // Simulate entropy coding
     size_t total_bits = bitrate_kbps * 1000 * 0.033; // ~33ms per frame at 30fps
@@ -312,10 +315,10 @@ public:
   }
 
   // Simulate video filtering (resize, color correction, stabilization, etc.)
-  static VideoFrame
-  apply_video_filter(VideoFrame const& input, std::string const& filter_type)
+  static video_frame
+  apply_video_filter(video_frame const& input, std::string const& filter_type)
   {
-    VideoFrame output = input;
+    video_frame output = input;
 
     if (filter_type == "resize")
       {
@@ -342,10 +345,10 @@ public:
   }
 
   // Simulate video stabilization
-  static VideoFrame
-  stabilize_video_frame(VideoFrame const& input, std::vector<float> const& motion_vectors)
+  static video_frame
+  stabilize_video_frame(video_frame const& input, std::vector<float> const& motion_vectors)
   {
-    VideoFrame output = input;
+    video_frame output = input;
 
     // Simulate motion compensation
     float avg_motion_x = 0.0f, avg_motion_y = 0.0f;
@@ -369,7 +372,7 @@ public:
 
 private:
   static double
-  analyze_motion_complexity(VideoFrame const& frame)
+  analyze_motion_complexity(video_frame const& frame)
   {
     // Simulate motion vector analysis
     size_t total_motion = 0;
@@ -384,7 +387,7 @@ private:
         if (block_x + 16 <= frame.width && block_y + 16 <= frame.height)
           {
             // Calculate block variance as motion indicator
-            volatile int variance = 0;
+            int variance = 0;
             for (size_t y = 0; y < 16; ++y)
               {
                 for (size_t x = 0; x < 16; ++x)
@@ -404,7 +407,7 @@ private:
   }
 
   static void
-  resize_video_frame(VideoFrame& frame, size_t new_width, size_t new_height)
+  resize_video_frame(video_frame& frame, size_t new_width, size_t new_height)
   {
     // Simulate bilinear resize (simplified)
     std::vector<uint8_t> new_y_plane(new_width * new_height);
@@ -440,7 +443,7 @@ private:
   }
 
   static void
-  apply_color_correction(VideoFrame& frame)
+  apply_color_correction(video_frame& frame)
   {
     // Simulate color correction (brightness, contrast, saturation)
     float brightness = 0.1f; // Increase brightness
@@ -474,7 +477,7 @@ private:
   }
 
   static void
-  apply_denoise_filter(VideoFrame& frame)
+  apply_denoise_filter(video_frame& frame)
   {
     // Simulate simple gaussian blur for denoising
     std::vector<uint8_t> temp_y = frame.y_plane;
@@ -498,7 +501,7 @@ private:
   }
 
   static void
-  apply_sharpen_filter(VideoFrame& frame)
+  apply_sharpen_filter(video_frame& frame)
   {
     // Simulate unsharp masking for sharpening
     std::vector<uint8_t> blurred = frame.y_plane;
@@ -533,7 +536,7 @@ private:
   }
 
   static void
-  apply_motion_compensation(VideoFrame& frame, float offset_x, float offset_y)
+  apply_motion_compensation(video_frame& frame, float offset_x, float offset_y)
   {
     // Simplified motion compensation (just shift pixels)
     std::vector<uint8_t> temp_y = frame.y_plane;
@@ -560,7 +563,7 @@ private:
 // =============================================================================
 
 static void
-BM_Audio_Encoding(benchmark::State& state)
+bm_audio_encoding(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const frames_per_batch = state.range(1);
@@ -579,7 +582,7 @@ BM_Audio_Encoding(benchmark::State& state)
       // Submit audio encoding tasks
       for (size_t i = 0; i < frames_per_batch; ++i)
         {
-          AudioFrame frame;
+          audio_frame frame;
           frame.sample_rate = sample_rate;
           frame.channels = 2;
           frame.duration_ms = duration_ms;
@@ -587,17 +590,18 @@ BM_Audio_Encoding(benchmark::State& state)
           frame.samples_right.resize(sample_rate * duration_ms / 1000);
 
           // Generate test audio (sine wave)
+          constexpr double pi = 3.14159265358979323846;
           for (size_t j = 0; j < frame.samples_left.size(); ++j)
             {
               double t = static_cast<double>(j) / sample_rate;
-              frame.samples_left[j] = 0.5f * std::sin(2.0 * M_PI * 440.0 * t); // A4 note
-              frame.samples_right[j] = 0.5f * std::sin(2.0 * M_PI * 440.0 * t);
+              frame.samples_left[j] = 0.5f * std::sin(2.0 * pi * 440.0 * t); // A4 note
+              frame.samples_right[j] = 0.5f * std::sin(2.0 * pi * 440.0 * t);
             }
 
           pool.submit(
               [&frame, &encoded_frames, &total_bytes]()
                 {
-                  auto encoded = AudioWorkloads::encode_audio(frame, "AAC", 128);
+                  auto encoded = audio_workloads::encode_audio(frame, "AAC", 128);
                   encoded_frames.fetch_add(1, std::memory_order_relaxed);
                   total_bytes.fetch_add(encoded.size(), std::memory_order_relaxed);
                 });
@@ -624,7 +628,7 @@ BM_Audio_Encoding(benchmark::State& state)
 }
 
 static void
-BM_Video_Encoding(benchmark::State& state)
+bm_video_encoding(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const frames_per_batch = state.range(1);
@@ -643,7 +647,7 @@ BM_Video_Encoding(benchmark::State& state)
       // Submit video encoding tasks
       for (size_t i = 0; i < frames_per_batch; ++i)
         {
-          VideoFrame frame;
+          video_frame frame;
           frame.width = width;
           frame.height = height;
           frame.stride_y = width;
@@ -677,7 +681,7 @@ BM_Video_Encoding(benchmark::State& state)
           pool.submit(
               [&frame, &encoded_frames, &total_bytes]()
                 {
-                  auto encoded = VideoWorkloads::encode_video_frame(frame, "H264", 5000);
+                  auto encoded = video_workloads::encode_video_frame(frame, "H264", 5000);
                   encoded_frames.fetch_add(1, std::memory_order_relaxed);
                   total_bytes.fetch_add(encoded.size(), std::memory_order_relaxed);
                 });
@@ -705,7 +709,7 @@ BM_Video_Encoding(benchmark::State& state)
 }
 
 static void
-BM_AudioVideo_Pipeline_Processing(benchmark::State& state)
+bm_audio_video_pipeline_processing(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const frames_to_process = state.range(1);
@@ -714,9 +718,9 @@ BM_AudioVideo_Pipeline_Processing(benchmark::State& state)
   pool.configure_threads("pipeline_worker");
   pool.distribute_across_cpus();
 
-  FrameQueue<AudioFrame> audio_queue;
-  FrameQueue<VideoFrame> video_queue;
-  FrameQueue<std::pair<AudioFrame, VideoFrame>> processed_queue;
+  frame_queue<audio_frame> audio_queue;
+  frame_queue<video_frame> video_queue;
+  frame_queue<std::pair<audio_frame, video_frame>> processed_queue;
 
   std::atomic<size_t> processed_frames{ 0 };
 
@@ -729,16 +733,16 @@ BM_AudioVideo_Pipeline_Processing(benchmark::State& state)
           pool.submit(
               [&audio_queue, &video_queue, &processed_queue, &processed_frames]()
                 {
-                  AudioFrame audio_frame;
+                  audio_frame audio_frame;
                   if (audio_queue.pop(audio_frame, std::chrono::milliseconds(10)))
                     {
                       // Apply multiple audio filters
-                      audio_frame = AudioWorkloads::apply_audio_filter(audio_frame, "equalizer");
-                      audio_frame = AudioWorkloads::apply_audio_filter(audio_frame, "noise_reduction");
+                      audio_frame = audio_workloads::apply_audio_filter(audio_frame, "equalizer");
+                      audio_frame = audio_workloads::apply_audio_filter(audio_frame, "noise_reduction");
 
                       // Wait for corresponding video frame (simplified
                       // synchronization)
-                      VideoFrame video_frame;
+                      video_frame video_frame;
                       if (video_queue.pop(video_frame, std::chrono::milliseconds(10)))
                         {
                           processed_queue.push({ audio_frame, video_frame });
@@ -751,17 +755,17 @@ BM_AudioVideo_Pipeline_Processing(benchmark::State& state)
           pool.submit(
               [&video_queue, &audio_queue, &processed_queue, &processed_frames]()
                 {
-                  VideoFrame video_frame;
+                  video_frame video_frame;
                   if (video_queue.pop(video_frame, std::chrono::milliseconds(10)))
                     {
                       // Apply multiple video filters
-                      video_frame = VideoWorkloads::apply_video_filter(video_frame, "denoise");
-                      video_frame = VideoWorkloads::apply_video_filter(video_frame, "sharpen");
-                      video_frame = VideoWorkloads::apply_video_filter(video_frame, "color_correction");
+                      video_frame = video_workloads::apply_video_filter(video_frame, "denoise");
+                      video_frame = video_workloads::apply_video_filter(video_frame, "sharpen");
+                      video_frame = video_workloads::apply_video_filter(video_frame, "color_correction");
 
                       // Wait for corresponding audio frame (simplified
                       // synchronization)
-                      AudioFrame audio_frame;
+                      audio_frame audio_frame;
                       if (audio_queue.pop(audio_frame, std::chrono::milliseconds(10)))
                         {
                           processed_queue.push({ audio_frame, video_frame });
@@ -771,14 +775,14 @@ BM_AudioVideo_Pipeline_Processing(benchmark::State& state)
                 });
 
           // Generate test frames
-          AudioFrame audio_frame;
+          audio_frame audio_frame;
           audio_frame.sample_rate = 44100;
           audio_frame.channels = 2;
           audio_frame.duration_ms = 33; // ~30fps audio
           audio_frame.samples_left.resize(44100 * 33 / 1000);
           audio_frame.samples_right.resize(44100 * 33 / 1000);
 
-          VideoFrame video_frame;
+          video_frame video_frame;
           video_frame.width = 1920;
           video_frame.height = 1080;
           video_frame.stride_y = 1920;
@@ -810,7 +814,7 @@ BM_AudioVideo_Pipeline_Processing(benchmark::State& state)
 }
 
 static void
-BM_RealTime_Streaming_Processing(benchmark::State& state)
+bm_real_time_streaming_processing(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const stream_duration_seconds = 5;
@@ -820,8 +824,8 @@ BM_RealTime_Streaming_Processing(benchmark::State& state)
   pool.configure_threads("streaming_worker");
   pool.distribute_across_cpus();
 
-  FrameQueue<VideoFrame> input_queue;
-  FrameQueue<VideoFrame> output_queue;
+  frame_queue<video_frame> input_queue;
+  frame_queue<video_frame> output_queue;
 
   for (auto _ : state)
     {
@@ -829,15 +833,13 @@ BM_RealTime_Streaming_Processing(benchmark::State& state)
       std::atomic<size_t> dropped_frames{ 0 };
       std::atomic<double> total_latency_ms{ 0.0 };
 
-      auto start_time = std::chrono::steady_clock::now();
-
       // Producer thread (simulates camera capture)
       std::thread producer(
           [&]()
             {
               for (size_t frame_num = 0; frame_num < fps * stream_duration_seconds; ++frame_num)
                 {
-                  VideoFrame frame;
+                  video_frame frame;
                   frame.width = 1280;
                   frame.height = 720;
                   frame.stride_y = 1280;
@@ -868,18 +870,18 @@ BM_RealTime_Streaming_Processing(benchmark::State& state)
       for (size_t i = 0; i < fps * stream_duration_seconds; ++i)
         {
           pool.submit(
-              [&input_queue, &output_queue, &processed_frames, &total_latency_ms, &start_time]()
+              [&input_queue, &output_queue, &processed_frames, &total_latency_ms]()
                 {
                   auto submit_time = std::chrono::steady_clock::now();
 
-                  VideoFrame frame;
+                  video_frame frame;
                   if (input_queue.pop(frame, std::chrono::milliseconds(50)))
                     {
                       // Apply real-time processing (stabilization +
                       // enhancement)
                       std::vector<float> motion_vectors = { 0.5f, -0.3f, 0.1f }; // Simulated motion data
-                      frame = VideoWorkloads::stabilize_video_frame(frame, motion_vectors);
-                      frame = VideoWorkloads::apply_video_filter(frame, "sharpen");
+                      frame = video_workloads::stabilize_video_frame(frame, motion_vectors);
+                      frame = video_workloads::apply_video_filter(frame, "sharpen");
 
                       output_queue.push(frame);
                       processed_frames.fetch_add(1, std::memory_order_relaxed);
@@ -922,7 +924,7 @@ BM_RealTime_Streaming_Processing(benchmark::State& state)
 // Registration
 // =============================================================================
 
-BENCHMARK(BM_Audio_Encoding)
+BENCHMARK(bm_audio_encoding)
     ->Args({ 2, 100 }) // 2 threads, 100 audio frames
     ->Args({ 4, 100 }) // 4 threads, 100 audio frames
     ->Args({ 8, 100 }) // 8 threads, 100 audio frames
@@ -930,7 +932,7 @@ BENCHMARK(BM_Audio_Encoding)
     ->Args({ 8, 500 }) // 8 threads, 500 audio frames
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(BM_Video_Encoding)
+BENCHMARK(bm_video_encoding)
     ->Args({ 2, 50 })  // 2 threads, 50 video frames (1080p)
     ->Args({ 4, 50 })  // 4 threads, 50 video frames (1080p)
     ->Args({ 8, 50 })  // 8 threads, 50 video frames (1080p)
@@ -938,7 +940,7 @@ BENCHMARK(BM_Video_Encoding)
     ->Args({ 8, 100 }) // 8 threads, 100 video frames (1080p)
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(BM_AudioVideo_Pipeline_Processing)
+BENCHMARK(bm_audio_video_pipeline_processing)
     ->Args({ 2, 100 }) // 2 threads, 100 frame pairs
     ->Args({ 4, 100 }) // 4 threads, 100 frame pairs
     ->Args({ 8, 100 }) // 8 threads, 100 frame pairs
@@ -946,7 +948,7 @@ BENCHMARK(BM_AudioVideo_Pipeline_Processing)
     ->Args({ 8, 500 }) // 8 threads, 500 frame pairs
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(BM_RealTime_Streaming_Processing)
+BENCHMARK(bm_real_time_streaming_processing)
     ->Args({ 2, 30 }) // 2 threads, 30fps for 5 seconds
     ->Args({ 4, 30 }) // 4 threads, 30fps for 5 seconds
     ->Args({ 8, 30 }) // 8 threads, 30fps for 5 seconds

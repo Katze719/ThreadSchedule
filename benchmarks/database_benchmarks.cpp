@@ -22,7 +22,7 @@ using namespace threadschedule::advanced;
 // =============================================================================
 
 // Simulated database record
-struct DatabaseRecord
+struct database_record
 {
   std::string id;
   std::string user_id;
@@ -36,31 +36,31 @@ struct DatabaseRecord
 };
 
 // Simulated database query result
-struct QueryResult
+struct query_result
 {
-  std::vector<DatabaseRecord> records;
+  std::vector<database_record> records;
   size_t total_count;
   double query_time_ms;
   std::string query_plan;
 };
 
 // Thread-safe in-memory database simulation
-class SimulatedDatabase
+class simulated_database
 {
 private:
-  std::unordered_map<std::string, DatabaseRecord> records_;
+  std::unordered_map<std::string, database_record> records_;
   mutable std::shared_mutex mutex_;
   std::atomic<size_t> next_id_{ 1 };
 
 public:
   // CRUD Operations
   std::string
-  create_record(DatabaseRecord const& record)
+  create_record(database_record const& record)
   {
     std::unique_lock lock(mutex_);
 
     std::string id = "record_" + std::to_string(next_id_.fetch_add(1));
-    DatabaseRecord new_record = record;
+    database_record new_record = record;
     new_record.id = id;
     new_record.created_at = std::chrono::steady_clock::now();
     new_record.updated_at = new_record.created_at;
@@ -70,7 +70,7 @@ public:
   }
 
   bool
-  read_record(std::string const& id, DatabaseRecord& record)
+  read_record(std::string const& id, database_record& record)
   {
     std::shared_lock lock(mutex_);
 
@@ -123,10 +123,10 @@ public:
   }
 
   // Complex queries
-  QueryResult
+  query_result
   query_by_user(std::string const& user_id, size_t limit = 100, size_t offset = 0)
   {
-    QueryResult result;
+    query_result result;
     result.query_time_ms = simulate_query_latency();
 
     std::shared_lock lock(mutex_);
@@ -151,10 +151,10 @@ public:
     return result;
   }
 
-  QueryResult
+  query_result
   query_by_category(std::string const& category, size_t limit = 100)
   {
-    QueryResult result;
+    query_result result;
     result.query_time_ms = simulate_query_latency();
 
     std::shared_lock lock(mutex_);
@@ -174,10 +174,10 @@ public:
     return result;
   }
 
-  QueryResult
+  query_result
   complex_aggregation_query(std::string const& user_id, [[maybe_unused]] std::string const& date_range)
   {
-    QueryResult result;
+    query_result result;
     result.query_time_ms = simulate_query_latency();
 
     std::shared_lock lock(mutex_);
@@ -203,7 +203,7 @@ public:
 
     // Create complex result with aggregations
     result.records.clear();
-    DatabaseRecord aggregate_record;
+    database_record aggregate_record;
     aggregate_record.id = "aggregate_" + user_id;
     aggregate_record.user_id = user_id;
     aggregate_record.title = "Aggregation Result";
@@ -275,21 +275,22 @@ private:
   simulate_transaction_validation(std::string const& old_user, std::string const& new_user)
   {
     // Simulate expensive validation logic
-    volatile size_t validation_hash = 0;
+    size_t validation_hash = 0;
     for (char c : old_user + new_user)
       {
         validation_hash = validation_hash * 31 + c;
       }
+    benchmark::DoNotOptimize(validation_hash);
   }
 };
 
 // Database workload simulation
-class DatabaseWorkloads
+class database_workloads
 {
 public:
   // Simulate heavy CRUD operations
   static void
-  perform_crud_operations(SimulatedDatabase& db, size_t num_operations)
+  perform_crud_operations(simulated_database& db, size_t num_operations)
   {
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -303,13 +304,13 @@ public:
       {
         int operation = op_dist(gen);
         std::string user_id = "user_" + std::to_string(user_dist(gen));
-        std::string category = categories[category_dist(gen)];
+        const std::string& category = categories[category_dist(gen)];
 
         switch (operation)
           {
           case 0: // CREATE
             {
-              DatabaseRecord record;
+              database_record record;
               record.user_id = user_id;
               record.category = category;
               record.title = "File_" + std::to_string(i);
@@ -326,17 +327,18 @@ public:
               std::vector<std::string> record_ids;
               {
                 // Simulate getting record IDs (expensive operation)
-                volatile size_t temp = 0;
+                size_t temp = 0;
                 for (size_t j = 1; j <= db.size(); ++j)
                   {
                     temp += j;
                   }
+                benchmark::DoNotOptimize(temp);
               }
 
               // In real scenario, this would be a query to get IDs
               if (!record_ids.empty())
                 {
-                  DatabaseRecord record;
+                  database_record record;
                   db.read_record(record_ids[0], record);
                 }
               break;
@@ -363,7 +365,7 @@ public:
 
   // Simulate complex analytical queries
   static void
-  perform_analytical_queries(SimulatedDatabase& db, size_t num_queries)
+  perform_analytical_queries(simulated_database& db, size_t num_queries)
   {
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -386,7 +388,7 @@ public:
             }
           case 1: // Category query
             {
-              std::string category = categories[category_dist(gen)];
+              const std::string& category = categories[category_dist(gen)];
               auto result = db.query_by_category(category, 100);
               break;
             }
@@ -402,7 +404,7 @@ public:
 
   // Simulate concurrent transactions
   static void
-  perform_concurrent_transactions(SimulatedDatabase& db, size_t num_transactions)
+  perform_concurrent_transactions(simulated_database& db, size_t num_transactions)
   {
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -417,11 +419,12 @@ public:
         if (!db.transfer_ownership(record_id, new_user_id))
           {
             // Simulate rollback logic
-            volatile size_t rollback_work = 0;
+            size_t rollback_work = 0;
             for (size_t j = 0; j < 1000; ++j)
               {
                 rollback_work += j;
               }
+            benchmark::DoNotOptimize(rollback_work);
           }
       }
   }
@@ -432,7 +435,7 @@ public:
 // =============================================================================
 
 static void
-BM_Database_CRUD_Operations(benchmark::State& state)
+bm_database_crud_operations(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const operations_per_thread = state.range(1);
@@ -441,12 +444,12 @@ BM_Database_CRUD_Operations(benchmark::State& state)
   pool.configure_threads("db_worker");
   pool.distribute_across_cpus();
 
-  SimulatedDatabase db;
+  simulated_database db;
 
   // Pre-populate database with initial data
   for (size_t i = 0; i < 1000; ++i)
     {
-      DatabaseRecord record;
+      database_record record;
       record.user_id = "user_" + std::to_string((i % 100) + 1);
       record.category = (i % 5 == 0)   ? "documents"
                         : (i % 5 == 1) ? "images"
@@ -472,7 +475,7 @@ BM_Database_CRUD_Operations(benchmark::State& state)
                 {
                   try
                     {
-                      DatabaseWorkloads::perform_crud_operations(db, operations_per_thread / num_threads);
+                      database_workloads::perform_crud_operations(db, operations_per_thread / num_threads);
                       completed_operations.fetch_add(operations_per_thread / num_threads, std::memory_order_relaxed);
                     }
                   catch (std::exception const&)
@@ -503,7 +506,7 @@ BM_Database_CRUD_Operations(benchmark::State& state)
 }
 
 static void
-BM_Database_AnalyticalQueries(benchmark::State& state)
+bm_database_analytical_queries(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const queries_per_thread = state.range(1);
@@ -512,12 +515,12 @@ BM_Database_AnalyticalQueries(benchmark::State& state)
   pool.configure_threads("analytics_worker");
   pool.distribute_across_cpus();
 
-  SimulatedDatabase db;
+  simulated_database db;
 
   // Pre-populate with larger dataset for analytical queries
   for (size_t i = 0; i < 5000; ++i)
     {
-      DatabaseRecord record;
+      database_record record;
       record.user_id = "user_" + std::to_string((i % 200) + 1);
       record.category = (i % 5 == 0)   ? "documents"
                         : (i % 5 == 1) ? "images"
@@ -547,7 +550,7 @@ BM_Database_AnalyticalQueries(benchmark::State& state)
 
                   try
                     {
-                      DatabaseWorkloads::perform_analytical_queries(db, queries_per_thread / num_threads);
+                      database_workloads::perform_analytical_queries(db, queries_per_thread / num_threads);
 
                       auto end_time = std::chrono::steady_clock::now();
                       auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
@@ -582,7 +585,7 @@ BM_Database_AnalyticalQueries(benchmark::State& state)
 }
 
 static void
-BM_Database_ConcurrentTransactions(benchmark::State& state)
+bm_database_concurrent_transactions(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const transactions_per_thread = state.range(1);
@@ -591,12 +594,12 @@ BM_Database_ConcurrentTransactions(benchmark::State& state)
   pool.configure_threads("transaction_worker");
   pool.distribute_across_cpus();
 
-  SimulatedDatabase db;
+  simulated_database db;
 
   // Pre-populate with records for transactions
   for (size_t i = 0; i < 1000; ++i)
     {
-      DatabaseRecord record;
+      database_record record;
       record.user_id = "owner_" + std::to_string((i % 50) + 1);
       record.category = "transactions";
       record.title = "Transaction_File_" + std::to_string(i);
@@ -620,7 +623,7 @@ BM_Database_ConcurrentTransactions(benchmark::State& state)
                 {
                   try
                     {
-                      DatabaseWorkloads::perform_concurrent_transactions(db, transactions_per_thread / num_threads);
+                      database_workloads::perform_concurrent_transactions(db, transactions_per_thread / num_threads);
                       successful_transactions.fetch_add(transactions_per_thread / num_threads,
                                                         std::memory_order_relaxed);
                     }
@@ -656,7 +659,7 @@ BM_Database_ConcurrentTransactions(benchmark::State& state)
 }
 
 static void
-BM_Database_MixedWorkload(benchmark::State& state)
+bm_database_mixed_workload(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const total_operations = state.range(1);
@@ -665,12 +668,12 @@ BM_Database_MixedWorkload(benchmark::State& state)
   pool.configure_threads("mixed_worker");
   pool.distribute_across_cpus();
 
-  SimulatedDatabase db;
+  simulated_database db;
 
   // Pre-populate with mixed data
   for (size_t i = 0; i < 2000; ++i)
     {
-      DatabaseRecord record;
+      database_record record;
       record.user_id = "user_" + std::to_string((i % 100) + 1);
       record.category = (i % 5 == 0)   ? "documents"
                         : (i % 5 == 1) ? "images"
@@ -702,7 +705,7 @@ BM_Database_MixedWorkload(benchmark::State& state)
               pool.submit(
                   [&db, &crud_operations, &total_latency_ms, start_time]()
                     {
-                      DatabaseWorkloads::perform_crud_operations(db, 1);
+                      database_workloads::perform_crud_operations(db, 1);
                       auto end_time = std::chrono::steady_clock::now();
                       double latency
                           = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()
@@ -716,7 +719,7 @@ BM_Database_MixedWorkload(benchmark::State& state)
               pool.submit(
                   [&db, &analytical_queries, &total_latency_ms, start_time]()
                     {
-                      DatabaseWorkloads::perform_analytical_queries(db, 1);
+                      database_workloads::perform_analytical_queries(db, 1);
                       auto end_time = std::chrono::steady_clock::now();
                       double latency
                           = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()
@@ -730,7 +733,7 @@ BM_Database_MixedWorkload(benchmark::State& state)
               pool.submit(
                   [&db, &transactions, &total_latency_ms, start_time]()
                     {
-                      DatabaseWorkloads::perform_concurrent_transactions(db, 1);
+                      database_workloads::perform_concurrent_transactions(db, 1);
                       auto end_time = std::chrono::steady_clock::now();
                       double latency
                           = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count()
@@ -765,7 +768,7 @@ BM_Database_MixedWorkload(benchmark::State& state)
 // Registration
 // =============================================================================
 
-BENCHMARK(BM_Database_CRUD_Operations)
+BENCHMARK(bm_database_crud_operations)
     ->Args({ 2, 1000 }) // 2 threads, 1000 ops each
     ->Args({ 4, 1000 }) // 4 threads, 1000 ops each
     ->Args({ 8, 1000 }) // 8 threads, 1000 ops each
@@ -773,7 +776,7 @@ BENCHMARK(BM_Database_CRUD_Operations)
     ->Args({ 8, 5000 }) // 8 threads, 5000 ops each
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(BM_Database_AnalyticalQueries)
+BENCHMARK(bm_database_analytical_queries)
     ->Args({ 2, 100 }) // 2 threads, 100 queries each
     ->Args({ 4, 100 }) // 4 threads, 100 queries each
     ->Args({ 8, 100 }) // 8 threads, 100 queries each
@@ -781,7 +784,7 @@ BENCHMARK(BM_Database_AnalyticalQueries)
     ->Args({ 8, 500 }) // 8 threads, 500 queries each
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(BM_Database_ConcurrentTransactions)
+BENCHMARK(bm_database_concurrent_transactions)
     ->Args({ 2, 500 })  // 2 threads, 500 txns each
     ->Args({ 4, 500 })  // 4 threads, 500 txns each
     ->Args({ 8, 500 })  // 8 threads, 500 txns each
@@ -789,7 +792,7 @@ BENCHMARK(BM_Database_ConcurrentTransactions)
     ->Args({ 8, 1000 }) // 8 threads, 1000 txns each
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(BM_Database_MixedWorkload)
+BENCHMARK(bm_database_mixed_workload)
     ->Args({ 2, 1000 }) // 2 threads, 1000 mixed ops
     ->Args({ 4, 1000 }) // 4 threads, 1000 mixed ops
     ->Args({ 8, 1000 }) // 8 threads, 1000 mixed ops

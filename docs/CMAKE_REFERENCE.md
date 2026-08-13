@@ -20,6 +20,7 @@ does not force a newer standard selected by the consuming project.
 | `THREADSCHEDULE_BUILD_EXAMPLES` | `OFF` | Build examples |
 | `THREADSCHEDULE_BUILD_BENCHMARKS` | `OFF` | Build benchmarks |
 | `THREADSCHEDULE_BUILD_DOCS` | `OFF` | Add the Doxygen target when available |
+| `THREADSCHEDULE_WARNINGS_AS_ERRORS` | `OFF` | Treat warnings from ThreadSchedule headers and repository targets as errors |
 | `THREADSCHEDULE_INSTALL` | Top-level only | Generate install rules and package files |
 
 ## Header-only integration
