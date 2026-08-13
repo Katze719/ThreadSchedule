@@ -11,7 +11,7 @@
  * groups are enumerated and represented as flat @c group*64+index IDs.
  */
 
-#include "scheduler_policy.hpp"
+#include "../detail/scheduling/native.hpp"
 #include <cctype>
 #include <thread>
 #include <vector>
@@ -22,8 +22,10 @@
 #  include <unistd.h>
 #endif
 
-namespace threadschedule
+namespace threadschedule::advanced
 {
+
+using native_thread_affinity = ::threadschedule::detail::native_thread_affinity;
 
 /**
  * @brief Snapshot of basic CPU/NUMA topology.
@@ -241,4 +243,4 @@ distribute_affinities_by_numa(size_t num_threads) -> std::vector<native_thread_a
   return distribute_affinities_by_numa(read_topology(), num_threads);
 }
 
-} // namespace threadschedule
+} // namespace threadschedule::advanced

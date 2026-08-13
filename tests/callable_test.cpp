@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
-#include <threadschedule/error_handler.hpp>
+#include <threadschedule/advanced/error_handler.hpp>
 #include <threadschedule/threadschedule.hpp>
 
 using namespace threadschedule;
+using namespace threadschedule::advanced;
+using namespace threadschedule::detail;
 
 namespace
 {
@@ -39,7 +41,7 @@ TEST(CallableTest, FunctionRefWrapsLambdaReference)
 TEST(CallableTest, PublicCallbackAliasesAcceptLambdas)
 {
   task_start_callback on_start = [](std::chrono::steady_clock::time_point, std::thread::id) {};
-  error_callback_backend on_error = [](task_error_backend const&) {};
+  threadschedule::advanced::error_callback on_error = [](threadschedule::advanced::task_error const&) {};
 
   EXPECT_TRUE(static_cast<bool>(on_start));
   EXPECT_TRUE(static_cast<bool>(on_error));

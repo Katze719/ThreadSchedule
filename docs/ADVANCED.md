@@ -14,12 +14,17 @@ Include the complete advanced surface explicitly:
 
 | Type | Use case |
 | --- | --- |
+| `raw_thread_pool` | Direct access to the core shared-queue implementation |
 | `work_stealing_pool` | Irregular CPU workloads and high submission rates |
 | `polling_pool` | Latency-sensitive workloads that accept periodic wakeups |
 | `lightweight_pool` | Fire-and-forget tasks with bounded inline storage |
 | `inline_pool` | Deterministic execution and tests |
 | `global_thread_pool` | Lazily created process-wide standard pool |
 | `global_work_stealing_pool` | Lazily created process-wide work-stealing pool |
+| `raw_scheduled_pool` | Scheduler backed by `raw_thread_pool` |
+| `scheduled_work_stealing_pool` | Scheduler backed by work stealing |
+| `scheduled_polling_pool` | Scheduler backed by polling workers |
+| `scheduled_lightweight_pool` | Scheduler backed by lightweight workers |
 
 Advanced pools retain backend-specific tuning and statistics. Their task
 submission APIs are lower-level and may include explicitly throwing operations;
@@ -64,6 +69,13 @@ workers are configured explicitly with per-group masks.
 
 `composite_thread_registry` can merge independent header-only registries when
 using the shared runtime is not appropriate.
+
+Advanced facilities also have self-contained focused headers. Common choices
+are `<threadschedule/advanced/pools.hpp>`,
+`<threadschedule/advanced/native_thread.hpp>`,
+`<threadschedule/advanced/profiles.hpp>`, and
+`<threadschedule/advanced/registry.hpp>`. The full `advanced.hpp` umbrella is
+provided for applications that intentionally use several optional facilities.
 
 ## Optional utilities
 

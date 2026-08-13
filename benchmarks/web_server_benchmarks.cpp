@@ -8,11 +8,14 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <threadschedule/advanced/native_thread.hpp>
+#include <threadschedule/advanced/pools.hpp>
 #include <threadschedule/threadschedule.hpp>
 #include <unordered_map>
 #include <vector>
 
 using namespace threadschedule;
+using namespace threadschedule::advanced;
 using json = nlohmann::json;
 
 // =============================================================================
@@ -392,7 +395,7 @@ BM_WebServer_JSON_API_Processing(benchmark::State& state)
   size_t const requests_per_batch = state.range(1);
   size_t const concurrent_users = state.range(2);
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("web_worker");
   pool.distribute_across_cpus();
 
@@ -474,7 +477,7 @@ BM_WebServer_FileUpload_Processing(benchmark::State& state)
   size_t const uploads_per_batch = state.range(1);
   size_t const file_size_kb = state.range(2);
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("upload_worker");
   pool.distribute_across_cpus();
 
@@ -541,7 +544,7 @@ BM_WebServer_RealTimeStreaming(benchmark::State& state)
   size_t const messages_per_second = state.range(1);
   size_t const duration_seconds = 3;
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("streaming_worker");
   pool.distribute_across_cpus();
 

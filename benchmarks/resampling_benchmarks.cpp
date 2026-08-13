@@ -7,10 +7,13 @@
 #include <queue>
 #include <random>
 #include <thread>
+#include <threadschedule/advanced/native_thread.hpp>
+#include <threadschedule/advanced/pools.hpp>
 #include <threadschedule/threadschedule.hpp>
 #include <vector>
 
 using namespace threadschedule;
+using namespace threadschedule::advanced;
 
 // =============================================================================
 // Image Resampling Workload Simulation
@@ -169,7 +172,7 @@ BM_Resampling_HighPerformancePool_4Core(benchmark::State& state)
 
   // 4 cores: 1 producer + 3 workers (your scenario)
   size_t const num_workers = 3;
-  work_stealing_pool_backend pool(num_workers);
+  work_stealing_pool pool(num_workers);
   pool.configure_threads("resampling_worker", native_scheduling_policy::other, native_thread_priority::normal());
   pool.distribute_across_cpus();
 
@@ -246,7 +249,7 @@ BM_Resampling_FastThreadPool_4Core(benchmark::State& state)
   size_t const num_images = state.range(2);
 
   size_t const num_workers = 3;
-  polling_pool_backend pool(num_workers);
+  polling_pool pool(num_workers);
   pool.configure_threads("fast_resampling_worker");
 
   for (auto _ : state)
@@ -317,7 +320,7 @@ BM_Resampling_RealTimeVideo(benchmark::State& state)
   size_t const duration_seconds = 3; // Shorter for benchmark
   size_t const num_workers = 3;
 
-  work_stealing_pool_backend pool(num_workers);
+  work_stealing_pool pool(num_workers);
   pool.configure_threads("video_worker", native_scheduling_policy::other, native_thread_priority::normal());
   pool.distribute_across_cpus();
 
@@ -417,8 +420,8 @@ static void
 BM_Resampling_PoolComparison(benchmark::State& state)
 {
   size_t const num_images = state.range(0);
-  int const pool_type = state.range(1); // 0=thread_pool_backend, 1=polling_pool_backend,
-                                        // 2=work_stealing_pool_backend
+  int const pool_type = state.range(1); // 0=raw_thread_pool, 1=polling_pool,
+                                        // 2=work_stealing_pool
 
   size_t const num_workers = 3;
   size_t const image_width = 1024;
@@ -433,23 +436,23 @@ BM_Resampling_PoolComparison(benchmark::State& state)
       std::atomic<size_t> total_pixels_processed{ 0 };
 
       // Create the appropriate pool type
-      std::unique_ptr<thread_pool_backend> simple_pool;
-      std::unique_ptr<polling_pool_backend> fast_pool;
-      std::unique_ptr<work_stealing_pool_backend> hp_pool;
+      std::unique_ptr<raw_thread_pool> simple_pool;
+      std::unique_ptr<polling_pool> fast_pool;
+      std::unique_ptr<work_stealing_pool> hp_pool;
 
       if (pool_type == 0)
         {
-          simple_pool = std::make_unique<thread_pool_backend>(num_workers);
+          simple_pool = std::make_unique<raw_thread_pool>(num_workers);
           simple_pool->configure_threads("resampling");
         }
       else if (pool_type == 1)
         {
-          fast_pool = std::make_unique<polling_pool_backend>(num_workers);
+          fast_pool = std::make_unique<polling_pool>(num_workers);
           fast_pool->configure_threads("resampling");
         }
       else
         {
-          hp_pool = std::make_unique<work_stealing_pool_backend>(num_workers);
+          hp_pool = std::make_unique<work_stealing_pool>(num_workers);
           hp_pool->configure_threads("resampling", native_scheduling_policy::other, native_thread_priority::normal());
           hp_pool->distribute_across_cpus();
         }
@@ -540,7 +543,7 @@ BM_Resampling_PoolComparison(benchmark::State& state)
       benchmark::DoNotOptimize(output_queue.size());
     }
 
-  std::vector<std::string> pool_names = { "thread_pool_backend", "polling_pool_backend", "work_stealing_pool_backend" };
+  std::vector<std::string> pool_names = { "raw_thread_pool", "polling_pool", "work_stealing_pool" };
   state.SetItemsProcessed(state.iterations() * num_images);
   state.SetLabel(pool_names[pool_type] + " images=" + std::to_string(num_images));
 }
@@ -556,7 +559,7 @@ BM_Resampling_QueueDepthImpact(benchmark::State& state)
   size_t const num_images = 50;
   size_t const num_workers = 3;
 
-  work_stealing_pool_backend pool(num_workers);
+  work_stealing_pool pool(num_workers);
   pool.configure_threads("queue_depth_worker");
 
   for (auto _ : state)

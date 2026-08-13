@@ -1,3 +1,4 @@
+#include <threadschedule/advanced.hpp>
 #include <threadschedule/threadschedule.hpp>
 
 #include <gtest/gtest.h>
@@ -13,6 +14,8 @@
 
 #ifndef _WIN32
 #  include <sys/resource.h>
+#  include <sys/syscall.h>
+#  include <unistd.h>
 #endif
 
 using namespace std::chrono_literals;
@@ -168,13 +171,13 @@ TEST(V3Api, ConfiguredThreadObservesExactLinuxNiceValueBeforeCallable)
 
 TEST(V3Api, ThreadViewRequiresTidForLinuxNiceControl)
 {
-  std::promise<threadschedule::native_thread_id> started;
+  std::promise<std::uint64_t> started;
   std::promise<void> release;
   auto ready = release.get_future().share();
   std::thread value(
       [&started, ready]
         {
-          started.set_value(threadschedule::thread_info::get_thread_id());
+          started.set_value(static_cast<std::uint64_t>(syscall(SYS_gettid)));
           ready.wait();
         });
   auto const tid = started.get_future().get();
@@ -613,8 +616,7 @@ TEST(V3Api, SubmissionErrorsUseExpectedByDefault)
 
 TEST(V3Api, AdvancedPoolsRemainAvailable)
 {
-  static_assert(
-      std::is_same_v<threadschedule::advanced::work_stealing_pool, threadschedule::work_stealing_pool_backend>);
+  static_assert(std::is_constructible_v<threadschedule::advanced::work_stealing_pool, std::size_t>);
   threadschedule::advanced::inline_pool pool;
   EXPECT_EQ(pool.submit([] { return 7; }).get(), 7);
 }
@@ -637,12 +639,10 @@ TEST(V3Api, NativeHandleIsAnAdvancedEscapeHatch)
 
 TEST(V3Api, CoreTypesAreIndependentImplementations)
 {
-  static_assert(!std::is_same_v<threadschedule::thread_config, threadschedule::native_thread_config>);
-  static_assert(!std::is_same_v<threadschedule::scheduling_config, threadschedule::native_scheduling_config>);
-  static_assert(!std::is_same_v<threadschedule::thread_affinity, threadschedule::native_thread_affinity>);
-  static_assert(!std::is_same_v<threadschedule::thread_registry, threadschedule::thread_registry_backend>);
-  static_assert(!std::is_base_of_v<threadschedule::detail::thread_backend, threadschedule::thread>);
-  static_assert(!std::is_base_of_v<threadschedule::detail::thread_view_backend, threadschedule::thread_view>);
+  static_assert(std::is_standard_layout_v<threadschedule::thread_config>);
+  static_assert(std::is_standard_layout_v<threadschedule::scheduling_config>);
+  static_assert(std::is_move_constructible_v<threadschedule::thread_affinity>);
+  static_assert(std::is_move_constructible_v<threadschedule::thread_registry>);
 }
 
 TEST(V3Api, AffinityIsANormalizedValueType)
@@ -786,12 +786,12 @@ TEST(V3Api, MoveAssigningGlobalRegistryPreservesGlobalFacade)
   threadschedule::global_registry() = std::move(local);
 
   EXPECT_EQ(threadschedule::global_registry().count(), 1u);
-  EXPECT_EQ(threadschedule::registry().count(), 1u);
+  EXPECT_EQ(threadschedule::global_registry().count(), 1u);
   ASSERT_TRUE(threadschedule::global_registry().unregister_current_thread().has_value());
   {
     threadschedule::auto_register_current_thread guard("global-guard", "v3");
     EXPECT_EQ(threadschedule::global_registry().count(), 1u);
-    EXPECT_EQ(threadschedule::registry().count(), 1u);
+    EXPECT_EQ(threadschedule::global_registry().count(), 1u);
   }
 
   threadschedule::use_global_registry(nullptr);

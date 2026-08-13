@@ -5,6 +5,7 @@
 #include <vector>
 
 using namespace threadschedule;
+using namespace threadschedule::detail;
 
 class ThreadPoolTest : public ::testing::Test
 {

@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file callable.hpp
+ * @file detail/callable/storage.hpp
  * @brief ABI-consistent C++17 callable storage helpers.
  */
 

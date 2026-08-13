@@ -3,10 +3,13 @@
 #include <memory>
 #include <numeric>
 #include <random>
+#include <threadschedule/advanced/native_thread.hpp>
+#include <threadschedule/advanced/pools.hpp>
 #include <threadschedule/threadschedule.hpp>
 #include <vector>
 
 using namespace threadschedule;
+using namespace threadschedule::advanced;
 
 // =============================================================================
 // Cache Line Performance Benchmarks
@@ -44,7 +47,7 @@ BM_CacheFriendly_HighPerformancePool(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const data_size = 1000000; // 1M integers
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("cache_bench");
   pool.distribute_across_cpus();
 
@@ -80,7 +83,7 @@ BM_CacheUnfriendly_HighPerformancePool(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const data_size = 1000000;
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("cache_unfriendly_bench");
 
   std::vector<int> data(data_size, 1);
@@ -120,7 +123,7 @@ BM_MemoryAllocation_TaskCreation(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const num_allocations = state.range(1);
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("alloc_bench");
 
   for (auto _ : state)
@@ -163,7 +166,7 @@ BM_NUMA_LocalMemory(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const data_size = 10000000; // 10M integers
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("numa_bench");
   pool.distribute_across_cpus();
 
@@ -207,7 +210,7 @@ BM_FalseSharing_Avoided(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const increments_per_thread = 100000;
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("false_sharing_bench");
 
   FalseSharingTest test_data;

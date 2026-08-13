@@ -3,10 +3,13 @@
 #include <chrono>
 #include <memory>
 #include <random>
+#include <threadschedule/advanced/native_thread.hpp>
+#include <threadschedule/advanced/pools.hpp>
 #include <threadschedule/threadschedule.hpp>
 #include <vector>
 
 using namespace threadschedule;
+using namespace threadschedule::advanced;
 
 // =============================================================================
 // High-Throughput Benchmarks (10k+ tasks/second scenarios)
@@ -18,7 +21,7 @@ BM_HighThroughput_HighPerformancePool(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const tasks_per_iteration = state.range(1);
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("htp_bench", native_scheduling_policy::other, native_thread_priority::normal());
   pool.distribute_across_cpus();
 
@@ -58,7 +61,7 @@ BM_HighThroughput_FastThreadPool(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const tasks_per_iteration = state.range(1);
 
-  polling_pool_backend pool(num_threads);
+  polling_pool pool(num_threads);
   pool.configure_threads("ftp_bench");
 
   for (auto _ : state)
@@ -92,7 +95,7 @@ BM_Scalability_WorkStealing(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const num_tasks = 50000; // Fixed task count
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("scale_bench", native_scheduling_policy::other, native_thread_priority::normal());
   pool.distribute_across_cpus();
 
@@ -143,7 +146,7 @@ BM_Contention_SubmissionStorm(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const num_submitters = state.range(1); // Number of threads submitting tasks
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("contention_bench");
 
   for (auto _ : state)
@@ -197,7 +200,7 @@ BM_MemoryAccess_Sequential(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const data_size = 1000000; // 1M elements
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("mem_bench");
 
   std::vector<int> data(data_size);
@@ -223,7 +226,7 @@ BM_MemoryAccess_Random(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const data_size = 1000000;
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("mem_rand_bench");
 
   std::vector<int> data(data_size);

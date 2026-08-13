@@ -1,9 +1,10 @@
 #include <atomic>
 #include <gtest/gtest.h>
-#include <threadschedule/detail/registered_thread_backend.hpp>
+#include <threadschedule/detail/registry/registered_thread.hpp>
 #include <threadschedule/thread_registry.hpp>
 
 using namespace threadschedule;
+using namespace threadschedule::detail;
 
 TEST(ThreadRegistryStress, ManyThreadsRegisterAndControl)
 {
@@ -26,9 +27,9 @@ TEST(ThreadRegistryStress, ManyThreadsRegisterAndControl)
   std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
   // Try bulk operations concurrently with active threads
-  registry().apply([](registered_thread_info_backend const& e) { return e.component == "even"; },
-                   [&](registered_thread_info_backend const& e)
-                     { (void)registry().set_priority(e.tid, native_thread_priority{ 0 }); });
+  runtime_registry().apply([](registered_thread_info_backend const& e) { return e.component == "even"; },
+                           [&](registered_thread_info_backend const& e)
+                             { (void)runtime_registry().set_priority(e.tid, native_thread_priority{ 0 }); });
 
   for (auto& t : threads)
     {

@@ -30,6 +30,20 @@
   families, experimental C ABI, `StableAbi` target, modules, coroutine
   helpers, ranges-only overloads, and reflection surface are removed. The
   optional runtime is a same-toolchain shared C++ registry.
+- **Focused public headers** -- the core thread, affinity, configuration,
+  registry, pool, scheduler, task, policy, error, and runtime contracts are
+  independently includable. `core.hpp` and `threadschedule.hpp` remain core
+  umbrellas, while optional facilities live under `advanced/` and
+  `threadschedule::advanced`.
+- **Backend names are private** -- root backend types and duplicate optional
+  root APIs were removed without compatibility aliases. Specialized pools are
+  exposed with semantic advanced names such as `advanced::raw_thread_pool`
+  and `advanced::raw_scheduled_pool`; portable registry users use
+  `thread_registry`.
+- **Private runtime registry ABI** -- the shared runtime now exports only its
+  internal registry hooks. The backend-returning `registry()` and
+  `set_external_registry()` exports were removed; `global_registry()`,
+  `use_global_registry()`, and `ThreadSchedule::Runtime` remain supported.
 
 ### Configuration and Scheduling
 
@@ -111,6 +125,14 @@
   error handling under `threadschedule::advanced`.
 
 ### Compatibility and Release Hygiene
+
+- **Responsibility-based implementation headers** -- callable binding,
+  worker context, queue strategies, wait policies, specialized pools,
+  scheduled task state, registry control/query/storage/composition, and
+  Windows versus POSIX native control now live in separate `detail` headers.
+- **Header self-containment matrix** -- every documented Core and Advanced
+  header compiles in its own translation unit under the configured language
+  standard.
 
 - **Stable C++17 core surface** -- public callable and inline implementation
   storage remains stable under C++17, C++20, C++23, and C++26.

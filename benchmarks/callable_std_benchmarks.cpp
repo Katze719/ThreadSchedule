@@ -3,14 +3,14 @@
 // ThreadSchedule stores type-erased tasks in one of two ways:
 //
 //   - detail::move_callable<Signature>  -- the hot-path storage used by
-//     thread_pool_backend / polling_pool_backend / work_stealing_pool_backend.
+//     raw_thread_pool / polling_pool / work_stealing_pool.
 //     It is an alias for std::function on C++17/20 and for
 //     std::move_only_function on C++23+.
 //   - detail::copyable_callable<Signature> -- the copyable callback storage
 //     used by tracing, registry, and error hooks. It is an alias for
 //     std::function before C++26 and for std::copyable_function on C++26.
 //   - detail::sbo_callable<TaskSize>     -- the small-buffer callable used by
-//     lightweight_pool_backend. It stores callables up to TaskSize-8 bytes
+//     lightweight_pool. It stores callables up to TaskSize-8 bytes
 //     inline and is identical across every C++ standard.
 //
 // This benchmark isolates the construction (including any heap allocation) and
@@ -31,7 +31,7 @@
 #include <benchmark/benchmark.h>
 #include <cstdint>
 #include <memory>
-#include <threadschedule/callable.hpp>
+#include <threadschedule/detail/callable/storage.hpp>
 #include <threadschedule/thread_pool.hpp>
 #include <vector>
 
@@ -107,7 +107,7 @@ BM_CopyableCallable_Large(benchmark::State& state)
   bench_storage<detail::copyable_callable<void()>, 16>(state); // 128 B capture
 }
 
-// sbo_callable<64> == lightweight_pool_backend storage (56 B inline buffer)
+// sbo_callable<64> == lightweight_pool storage (56 B inline buffer)
 static void
 BM_Sbo_Small(benchmark::State& state)
 {

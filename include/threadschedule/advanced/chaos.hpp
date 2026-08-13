@@ -10,18 +10,25 @@
  * contention, and priority changes.
  */
 
-#include "detail/thread_backend.hpp"
-#include "scheduler_policy.hpp"
-#include "thread_registry.hpp"
+#include "../detail/scheduling/native.hpp"
+#include "../detail/thread_backend.hpp"
+#include "../thread_registry.hpp"
 #include "topology.hpp"
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <future>
 #include <random>
 #include <thread>
 
-namespace threadschedule
+namespace threadschedule::advanced
 {
+
+namespace implementation = ::threadschedule::detail;
+using native_scheduling_policy = implementation::native_scheduling_policy;
+using native_thread_affinity = implementation::native_thread_affinity;
+using native_thread_id = implementation::native_thread_id;
+using native_thread_priority = implementation::native_thread_priority;
 
 /**
  * @brief Plain value type holding runtime chaos-testing parameters.
@@ -55,7 +62,8 @@ struct chaos_config
  * On construction, `chaos_controller` spawns a background control thread
  * that wakes every `chaos_config::interval` and applies perturbations
  * (affinity shuffling, priority jitter) to threads in the global
- * `registry()` that match the user-supplied predicate.
+ * `global_registry()` that match the user-supplied predicate. The predicate
+ * receives a portable `registered_thread` snapshot.
  *
  * **Ownership semantics:**
  * - Non-copyable, non-movable.
@@ -63,7 +71,7 @@ struct chaos_config
  *   joins. Do not destroy from a context where blocking is unacceptable.
  *
  * **Thread safety:**
- * The controller operates on the global `registry()`, which is internally
+ * The controller operates on `global_registry()`, which is internally
  * synchronized, so multiple controllers or concurrent registrations are
  * safe.
  *
@@ -83,7 +91,7 @@ struct chaos_config
  * // destructor joins the worker thread
  * @endcode
  *
- * @see chaos_config, registry()
+ * @see chaos_config, global_registry()
  */
 class chaos_controller
 {
@@ -94,15 +102,15 @@ public:
     std::promise<native_thread_id> worker_started;
     auto worker_ready = worker_started.get_future();
 
-    worker_ = detail::thread_backend(
+    worker_ = implementation::thread_backend(
         [this, pred, started = std::move(worker_started)]() mutable
           {
-            started.set_value(thread_info::get_thread_id());
+            started.set_value(implementation::thread_info::get_thread_id());
             run_loop(pred);
           });
 
     worker_tid_ = worker_ready.get();
-    (void)threadschedule::thread_info(worker_tid_).set_name("ts_chaos_ctl");
+    (void)implementation::thread_info(worker_tid_).set_name("ts_chaos_ctl");
   }
 
   ~chaos_controller()
@@ -116,11 +124,13 @@ public:
   auto operator=(chaos_controller const&) -> chaos_controller& = delete;
 
   [[nodiscard]] auto
-  thread_info() const -> std::optional<thread_info>
+  thread_info() const -> std::optional<registered_thread>
   {
     if (!worker_.joinable() || worker_tid_ == native_thread_id{})
       return std::nullopt;
-    return threadschedule::thread_info(worker_tid_);
+    auto const name = implementation::thread_info(worker_tid_).get_name();
+    return registered_thread{ static_cast<std::uint64_t>(worker_tid_), worker_.get_id(), name.value_or(std::string{}),
+                              "chaos", true };
   }
 
   auto
@@ -128,10 +138,10 @@ public:
                    native_thread_priority priority = native_thread_priority::normal())
       -> expected<void, std::error_code>
   {
-    auto info = thread_info();
-    if (!info.has_value())
+    if (!worker_.joinable() || worker_tid_ == native_thread_id{})
       return unexpected(std::make_error_code(std::errc::no_such_process));
-    return detail::configure_thread(info.value(), name, policy, priority);
+    auto info = implementation::thread_info(worker_tid_);
+    return implementation::configure_thread(info, name, policy, priority);
   }
 
 private:
@@ -142,25 +152,30 @@ private:
     std::mt19937 rng(std::random_device{}());
     while (!stop_)
       {
-        detail::runtime_registry().apply(pred,
-                                         [&](registered_thread_info_backend const& info)
-                                           {
-                                             auto blk = detail::runtime_registry().get(info.tid);
-                                             (void)blk;
-                                           });
+        auto selected = [&pred](implementation::registered_thread_info_backend const& info)
+          {
+            return std::invoke(pred, registered_thread{ static_cast<std::uint64_t>(info.tid), info.std_id, info.name,
+                                                        info.component, info.alive });
+          };
+        implementation::runtime_registry().apply(selected,
+                                                 [&](implementation::registered_thread_info_backend const& info)
+                                                   {
+                                                     auto blk = implementation::runtime_registry().get(info.tid);
+                                                     (void)blk;
+                                                   });
 
         // Affinity shuffle using topology
         if (config_.shuffle_affinity)
           {
             auto topo = read_topology();
             size_t idx = 0;
-            detail::runtime_registry().apply(
-                pred,
-                [&](registered_thread_info_backend const& info)
+            implementation::runtime_registry().apply(
+                selected,
+                [&](implementation::registered_thread_info_backend const& info)
                   {
                     native_thread_affinity aff = affinity_for_node(
                         static_cast<int>(idx % (topo.numa_nodes > 0 ? topo.numa_nodes : 1)), static_cast<int>(idx));
-                    (void)detail::runtime_registry().set_affinity(info.tid, aff);
+                    (void)implementation::runtime_registry().set_affinity(info.tid, aff);
                     ++idx;
                   });
           }
@@ -169,19 +184,19 @@ private:
         if (config_.priority_jitter != 0)
           {
             std::uniform_int_distribution<int> dist(-config_.priority_jitter, config_.priority_jitter);
-            detail::runtime_registry().apply(pred,
-                                             [&](registered_thread_info_backend const& info)
-                                               {
-                                                 int delta = dist(rng);
-                                                 int baseline = native_thread_priority::normal().value();
+            implementation::runtime_registry().apply(selected,
+                                                     [&](implementation::registered_thread_info_backend const& info)
+                                                       {
+                                                         int delta = dist(rng);
+                                                         int baseline = native_thread_priority::normal().value();
 #ifndef _WIN32
-                                                 sched_param sp{};
-                                                 if (sched_getparam(info.tid, &sp) == 0)
-                                                   baseline = sp.sched_priority;
+                                                         sched_param sp{};
+                                                         if (sched_getparam(info.tid, &sp) == 0)
+                                                           baseline = sp.sched_priority;
 #endif
-                                                 (void)detail::runtime_registry().set_priority(
-                                                     info.tid, native_thread_priority{ baseline + delta });
-                                               });
+                                                         (void)implementation::runtime_registry().set_priority(
+                                                             info.tid, native_thread_priority{ baseline + delta });
+                                                       });
           }
 
         std::this_thread::sleep_for(config_.interval);
@@ -190,8 +205,8 @@ private:
 
   chaos_config config_;
   std::atomic<bool> stop_;
-  detail::thread_backend worker_;
+  implementation::thread_backend worker_;
   native_thread_id worker_tid_{};
 };
 
-} // namespace threadschedule
+} // namespace threadschedule::advanced

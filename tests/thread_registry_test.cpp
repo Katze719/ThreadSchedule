@@ -3,13 +3,14 @@
 #include <future>
 #include <gtest/gtest.h>
 #include <thread>
-#include <threadschedule/detail/registered_thread_backend.hpp>
+#include <threadschedule/detail/registry/registered_thread.hpp>
 #include <threadschedule/thread_registry.hpp>
 #ifndef _WIN32
 #  include <sched.h>
 #endif
 
 using namespace threadschedule;
+using namespace threadschedule::detail;
 
 TEST(ThreadRegistryTest, RegistersAndApplies)
 {
@@ -25,14 +26,14 @@ TEST(ThreadRegistryTest, RegistersAndApplies)
 
   // Find by tag and set a neutral priority
   bool found = false;
-  registry().apply(
+  runtime_registry().apply(
       [&](registered_thread_info_backend const& e)
         {
           found = found || (e.component == "test");
           return e.component == "test";
         },
       [&](registered_thread_info_backend const& e)
-        { (void)registry().set_priority(e.tid, native_thread_priority{ 0 }); });
+        { (void)runtime_registry().set_priority(e.tid, native_thread_priority{ 0 }); });
 
   EXPECT_TRUE(found);
 
@@ -53,12 +54,12 @@ TEST(ThreadRegistryTest, LinuxAffinitySet)
   aff.add_cpu(0);
 
   bool attempted = false;
-  registry().apply([](registered_thread_info_backend const& e) { return e.component == "aff"; },
-                   [&](registered_thread_info_backend const& e)
-                     {
-                       attempted = true;
-                       (void)registry().set_affinity(e.tid, aff);
-                     });
+  runtime_registry().apply([](registered_thread_info_backend const& e) { return e.component == "aff"; },
+                           [&](registered_thread_info_backend const& e)
+                             {
+                               attempted = true;
+                               (void)runtime_registry().set_affinity(e.tid, aff);
+                             });
 
   EXPECT_TRUE(attempted);
   t.join();
@@ -69,15 +70,15 @@ TEST(ThreadRegistryTest, DuplicateRegistrationIsNoOp)
 {
   // Register current thread manually twice and ensure the first registration
   // wins and that count remains 1 and properties are from the first call
-  registry().unregister_current_thread();
+  runtime_registry().unregister_current_thread();
 
-  auto_register_current_thread guard1("first-name", "first-comp");
+  registration_guard_backend guard1("first-name", "first-comp");
 
   // Attempt duplicate registration for the same thread id
-  registry().register_current_thread(std::string("second-name"), std::string("second-comp"));
+  runtime_registry().register_current_thread(std::string("second-name"), std::string("second-comp"));
 
   // Snapshot and checks
-  auto snapshot = registry().query().entries();
+  auto snapshot = runtime_registry().query().entries();
   ASSERT_GE(snapshot.size(), static_cast<size_t>(1));
 
   // Find this current thread's entry by std::thread::id
@@ -95,10 +96,10 @@ TEST(ThreadRegistryTest, NestedRegistrationGuardDoesNotRemoveOuterEntry)
 {
   thread_registry_backend local;
   {
-    auto_register_current_thread outer(local, "outer", "test");
+    registration_guard_backend outer(local, "outer", "test");
     EXPECT_EQ(local.count(), 1u);
     {
-      auto_register_current_thread inner(local, "inner", "test");
+      registration_guard_backend inner(local, "inner", "test");
       EXPECT_EQ(local.count(), 1u);
     }
     EXPECT_EQ(local.count(), 1u);
@@ -113,13 +114,13 @@ TEST(ThreadRegistryTest, GlobalGuardUnregistersFromCapturedRegistry)
 {
   thread_registry_backend first;
   thread_registry_backend second;
-  set_external_registry(&first);
+  runtime_set_external_registry(&first);
   {
-    auto_register_current_thread guard("captured", "test");
+    registration_guard_backend guard("captured", "test");
     EXPECT_EQ(first.count(), 1u);
-    set_external_registry(&second);
+    runtime_set_external_registry(&second);
   }
-  set_external_registry(nullptr);
+  runtime_set_external_registry(nullptr);
 
   EXPECT_TRUE(first.empty());
   EXPECT_TRUE(second.empty());
@@ -226,7 +227,7 @@ TEST(ThreadRegistryTest, GuardDoesNotRemoveReplacementRegistration)
         });
 
   {
-    auto_register_current_thread guard(local, "original", "test");
+    registration_guard_backend guard(local, "original", "test");
     auto entry = local.get(thread_info::get_thread_id());
     ASSERT_TRUE(entry.has_value());
     EXPECT_EQ(entry->control, replacement);
@@ -244,7 +245,7 @@ TEST(ThreadRegistryTest, ThrowingCallbacksDoNotEscapeRegistryOperations)
                             { throw std::runtime_error("unregister callback"); });
 
   EXPECT_NO_THROW({
-    auto_register_current_thread guard(local, "callbacks", "test");
+    registration_guard_backend guard(local, "callbacks", "test");
     EXPECT_EQ(local.count(), 1u);
   });
   EXPECT_TRUE(local.empty());
@@ -253,14 +254,14 @@ TEST(ThreadRegistryTest, ThrowingCallbacksDoNotEscapeRegistryOperations)
 TEST(ThreadRegistryTest, CallbackOnRegisterFires)
 {
   // Ensure clean state and no side effects from other tests
-  registry().unregister_current_thread();
+  runtime_registry().unregister_current_thread();
 
   std::atomic<int> calls{ 0 };
   std::atomic<native_thread_id> lastTid{ 0 };
   std::string lastName;
   std::string lastComp;
 
-  registry().set_on_register(
+  runtime_registry().set_on_register(
       [&](registered_thread_info_backend const& e)
         {
           calls.fetch_add(1, std::memory_order_relaxed);
@@ -270,7 +271,7 @@ TEST(ThreadRegistryTest, CallbackOnRegisterFires)
         });
 
   {
-    auto_register_current_thread guard("cb-name", "cb-comp");
+    registration_guard_backend guard("cb-name", "cb-comp");
     EXPECT_GE(calls.load(std::memory_order_relaxed), 1);
     EXPECT_EQ(lastTid.load(std::memory_order_relaxed), thread_info::get_thread_id());
     EXPECT_EQ(lastName, std::string("cb-name"));
@@ -278,7 +279,7 @@ TEST(ThreadRegistryTest, CallbackOnRegisterFires)
   }
 
   // Reset hook
-  registry().set_on_register({});
+  runtime_registry().set_on_register({});
 }
 
 TEST(ThreadRegistryTest, RegisteredThreadBackendMoveAssign)
@@ -312,12 +313,12 @@ TEST(ThreadRegistryTest, RegisteredThreadBackendAcceptsPackagedTask)
 
 TEST(ThreadRegistryTest, CallbackOnUnregisterFires)
 {
-  registry().unregister_current_thread();
+  runtime_registry().unregister_current_thread();
 
   std::atomic<int> calls{ 0 };
   std::atomic<native_thread_id> lastTid{ 0 };
 
-  registry().set_on_unregister(
+  runtime_registry().set_on_unregister(
       [&](registered_thread_info_backend const& e)
         {
           calls.fetch_add(1, std::memory_order_relaxed);
@@ -326,7 +327,7 @@ TEST(ThreadRegistryTest, CallbackOnUnregisterFires)
 
   native_thread_id currentTid = 0;
   {
-    auto_register_current_thread guard("cb2-name", "cb2-comp");
+    registration_guard_backend guard("cb2-name", "cb2-comp");
     currentTid = thread_info::get_thread_id();
   } // guard dtor should unregister
 
@@ -334,5 +335,5 @@ TEST(ThreadRegistryTest, CallbackOnUnregisterFires)
   EXPECT_EQ(lastTid.load(std::memory_order_relaxed), currentTid);
 
   // Reset hook
-  registry().set_on_unregister({});
+  runtime_registry().set_on_unregister({});
 }

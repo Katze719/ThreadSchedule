@@ -7,6 +7,7 @@
 #include <threadschedule/threadschedule.hpp>
 
 using namespace threadschedule;
+using namespace threadschedule::detail;
 
 class ThreadBackendTest : public ::testing::Test
 {

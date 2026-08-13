@@ -11,15 +11,15 @@
  * on pool type.
  */
 
-#include "expected.hpp"
-#include "thread_pool.hpp"
+#include "../../expected.hpp"
+#include "backend.hpp"
 #include <functional>
 #include <future>
 #include <system_error>
 #include <type_traits>
 #include <vector>
 
-namespace threadschedule
+namespace threadschedule::detail
 {
 
 /**
@@ -177,4 +177,4 @@ private:
   bool stop_{ false };
 };
 
-} // namespace threadschedule
+} // namespace threadschedule::detail

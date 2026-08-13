@@ -8,11 +8,14 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <threadschedule/advanced/native_thread.hpp>
+#include <threadschedule/advanced/pools.hpp>
 #include <threadschedule/threadschedule.hpp>
 #include <unordered_map>
 #include <vector>
 
 using namespace threadschedule;
+using namespace threadschedule::advanced;
 
 // =============================================================================
 // Realistic Database Workloads
@@ -434,7 +437,7 @@ BM_Database_CRUD_Operations(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const operations_per_thread = state.range(1);
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("db_worker");
   pool.distribute_across_cpus();
 
@@ -505,7 +508,7 @@ BM_Database_AnalyticalQueries(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const queries_per_thread = state.range(1);
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("analytics_worker");
   pool.distribute_across_cpus();
 
@@ -584,7 +587,7 @@ BM_Database_ConcurrentTransactions(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const transactions_per_thread = state.range(1);
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("transaction_worker");
   pool.distribute_across_cpus();
 
@@ -658,7 +661,7 @@ BM_Database_MixedWorkload(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const total_operations = state.range(1);
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("mixed_worker");
   pool.distribute_across_cpus();
 

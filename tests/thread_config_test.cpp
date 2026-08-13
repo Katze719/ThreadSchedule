@@ -5,6 +5,7 @@
 #include <threadschedule/threadschedule.hpp>
 
 using namespace threadschedule;
+using namespace threadschedule::detail;
 
 class ThreadConfigTest : public ::testing::Test
 {

@@ -91,6 +91,30 @@ mask.
 | `PThreadWrapper` | Removed; use `thread` (`std::thread` internally) |
 | `ThreadPriority` / `SchedulingPolicy` | `advanced::native_thread_priority` / `advanced::native_scheduling_policy` |
 
+The architectural cleanup also removes the accidentally public v3 backend
+names without deprecated aliases:
+
+| Removed root/backend name | Supported public replacement |
+| --- | --- |
+| `thread_pool_backend` | `advanced::raw_thread_pool` |
+| `work_stealing_pool_backend` | `advanced::work_stealing_pool` |
+| `polling_pool_backend` | `advanced::polling_pool` |
+| `lightweight_pool_backend` | `advanced::lightweight_pool` |
+| `inline_pool_backend` | `advanced::inline_pool` |
+| `global_thread_pool_backend` | `advanced::global_thread_pool` |
+| `global_work_stealing_pool_backend` | `advanced::global_work_stealing_pool` |
+| `scheduled_pool_backend` | `advanced::raw_scheduled_pool` |
+| `scheduled_work_stealing_pool_backend` | `advanced::scheduled_work_stealing_pool` |
+| `scheduled_polling_pool_backend` | `advanced::scheduled_polling_pool` |
+| `scheduled_lightweight_pool_backend` | `advanced::scheduled_lightweight_pool` |
+| `thread_registry_backend` | `thread_registry` for portable use; no public backend replacement |
+
+Optional root headers and root namespace copies were removed. Include
+`<threadschedule/advanced.hpp>` or a focused header below
+`<threadschedule/advanced/>` and qualify the API with
+`threadschedule::advanced`. Backend-focused tests inside the library may use
+`threadschedule::detail`; applications must not depend on it.
+
 For ordinary non-realtime priority, prefer the new core API instead of the
 native replacements:
 
@@ -173,3 +197,9 @@ modes. `jthread` is the deliberate exception and exists only when C++20
 All participating DSOs must use one supported toolchain line and identical v3
 headers. Projects that require a compiler-neutral plugin ABI must define that
 boundary in their own application protocol.
+
+The runtime ABI changes in this release. The shared library now exports only
+private registry-storage hooks used by the portable `global_registry()` and
+`use_global_registry()` facade. The backend-returning `registry()` and
+`set_external_registry()` symbols are removed. Rebuild every participating DSO
+against the same headers and runtime library.

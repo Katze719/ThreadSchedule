@@ -3,9 +3,12 @@
 #include <benchmark/benchmark.h>
 #include <memory>
 #include <thread>
+#include <threadschedule/advanced/native_thread.hpp>
+#include <threadschedule/advanced/pools.hpp>
 #include <threadschedule/threadschedule.hpp>
 
 using namespace threadschedule;
+using namespace threadschedule::advanced;
 
 namespace
 {
@@ -50,17 +53,17 @@ run_post_benchmark(benchmark::State& state, SubmitFn&& submit)
 static void
 BM_ThreadPool_PostSmallCapture(benchmark::State& state)
 {
-  run_post_benchmark<thread_pool_backend>(
-      state, [](thread_pool_backend& pool, std::atomic<size_t>& completed)
+  run_post_benchmark<raw_thread_pool>(
+      state, [](raw_thread_pool& pool, std::atomic<size_t>& completed)
         { pool.post([&completed]() { completed.fetch_add(1, std::memory_order_relaxed); }); });
 }
 
 static void
 BM_ThreadPool_PostLargeCapture(benchmark::State& state)
 {
-  run_post_benchmark<thread_pool_backend>(
+  run_post_benchmark<raw_thread_pool>(
       state,
-      [](thread_pool_backend& pool, std::atomic<size_t>& completed)
+      [](raw_thread_pool& pool, std::atomic<size_t>& completed)
         {
           std::array<int, 32> payload{};
           payload[0] = 7;
@@ -72,17 +75,17 @@ BM_ThreadPool_PostLargeCapture(benchmark::State& state)
 static void
 BM_HighPerformancePool_PostSmallCapture(benchmark::State& state)
 {
-  run_post_benchmark<work_stealing_pool_backend>(
-      state, [](work_stealing_pool_backend& pool, std::atomic<size_t>& completed)
+  run_post_benchmark<work_stealing_pool>(
+      state, [](work_stealing_pool& pool, std::atomic<size_t>& completed)
         { pool.post([&completed]() { completed.fetch_add(1, std::memory_order_relaxed); }); });
 }
 
 static void
 BM_HighPerformancePool_PostLargeCapture(benchmark::State& state)
 {
-  run_post_benchmark<work_stealing_pool_backend>(
+  run_post_benchmark<work_stealing_pool>(
       state,
-      [](work_stealing_pool_backend& pool, std::atomic<size_t>& completed)
+      [](work_stealing_pool& pool, std::atomic<size_t>& completed)
         {
           std::array<int, 32> payload{};
           payload[0] = 11;
@@ -95,33 +98,33 @@ BM_HighPerformancePool_PostLargeCapture(benchmark::State& state)
 static void
 BM_ThreadPool_PostMoveOnlyCapture(benchmark::State& state)
 {
-  run_post_benchmark<thread_pool_backend>(state,
-                                          [](thread_pool_backend& pool, std::atomic<size_t>& completed)
-                                            {
-                                              auto payload = std::make_unique<int>(123);
-                                              pool.post(
-                                                  [payload = std::move(payload), &completed]() mutable
-                                                    {
-                                                      benchmark::DoNotOptimize(*payload);
-                                                      completed.fetch_add(1, std::memory_order_relaxed);
-                                                    });
-                                            });
+  run_post_benchmark<raw_thread_pool>(state,
+                                      [](raw_thread_pool& pool, std::atomic<size_t>& completed)
+                                        {
+                                          auto payload = std::make_unique<int>(123);
+                                          pool.post(
+                                              [payload = std::move(payload), &completed]() mutable
+                                                {
+                                                  benchmark::DoNotOptimize(*payload);
+                                                  completed.fetch_add(1, std::memory_order_relaxed);
+                                                });
+                                        });
 }
 
 static void
 BM_HighPerformancePool_PostMoveOnlyCapture(benchmark::State& state)
 {
-  run_post_benchmark<work_stealing_pool_backend>(state,
-                                                 [](work_stealing_pool_backend& pool, std::atomic<size_t>& completed)
+  run_post_benchmark<work_stealing_pool>(state,
+                                         [](work_stealing_pool& pool, std::atomic<size_t>& completed)
+                                           {
+                                             auto payload = std::make_unique<int>(456);
+                                             pool.post(
+                                                 [payload = std::move(payload), &completed]() mutable
                                                    {
-                                                     auto payload = std::make_unique<int>(456);
-                                                     pool.post(
-                                                         [payload = std::move(payload), &completed]() mutable
-                                                           {
-                                                             benchmark::DoNotOptimize(*payload);
-                                                             completed.fetch_add(1, std::memory_order_relaxed);
-                                                           });
+                                                     benchmark::DoNotOptimize(*payload);
+                                                     completed.fetch_add(1, std::memory_order_relaxed);
                                                    });
+                                           });
 }
 #endif
 

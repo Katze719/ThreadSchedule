@@ -5,10 +5,13 @@
 #include <memory>
 #include <random>
 #include <thread>
+#include <threadschedule/advanced/native_thread.hpp>
+#include <threadschedule/advanced/pools.hpp>
 #include <threadschedule/threadschedule.hpp>
 #include <vector>
 
 using namespace threadschedule;
+using namespace threadschedule::advanced;
 
 // =============================================================================
 // Realistic Audio/Video Processing Workloads
@@ -564,7 +567,7 @@ BM_Audio_Encoding(benchmark::State& state)
   size_t const sample_rate = 44100;
   size_t const duration_ms = 1000; // 1 second per frame
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("audio_encoder");
   pool.distribute_across_cpus();
 
@@ -628,7 +631,7 @@ BM_Video_Encoding(benchmark::State& state)
   size_t const width = 1920;
   size_t const height = 1080;
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("video_encoder");
   pool.distribute_across_cpus();
 
@@ -707,7 +710,7 @@ BM_AudioVideo_Pipeline_Processing(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const frames_to_process = state.range(1);
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("pipeline_worker");
   pool.distribute_across_cpus();
 
@@ -813,7 +816,7 @@ BM_RealTime_Streaming_Processing(benchmark::State& state)
   size_t const stream_duration_seconds = 5;
   size_t const fps = 30;
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("streaming_worker");
   pool.distribute_across_cpus();
 

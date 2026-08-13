@@ -4,11 +4,13 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
-#include <threadschedule/futures.hpp>
+#include <threadschedule/advanced/futures.hpp>
 #include <threadschedule/thread_pool.hpp>
 #include <vector>
 
 using namespace threadschedule;
+using namespace threadschedule::advanced;
+using namespace threadschedule::detail;
 
 // ==================== when_all (non-void) ====================
 
