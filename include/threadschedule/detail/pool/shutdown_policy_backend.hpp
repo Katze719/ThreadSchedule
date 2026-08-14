@@ -4,8 +4,15 @@
  *  @brief Internal queued-task shutdown behavior.
  */
 
-enum class shutdown_policy_backend : uint8_t
+#include <cstdint>
+
+namespace threadschedule::detail
+{
+
+enum class shutdown_policy_backend : std::uint8_t
 {
   drain,
   drop_pending
 };
+
+} // namespace threadschedule::detail

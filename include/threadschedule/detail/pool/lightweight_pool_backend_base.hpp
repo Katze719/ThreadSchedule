@@ -4,9 +4,34 @@
  * @file detail/pool/lightweight_pool_backend_base.hpp
  * @brief Low-overhead fire-and-forget pool implementation.
  *
- * Internal implementation fragment included by backend.hpp inside
- * threadschedule::detail.
+ * Self-contained internal implementation header.
  */
+
+#include "../callable/bind.hpp"
+#include "../callable/move_only_function.hpp"
+#include "callbacks.hpp"
+#include "shutdown_policy_backend.hpp"
+#include "worker_context_guard.hpp"
+#include "worker_count.hpp"
+
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <cstddef>
+#include <future>
+#include <memory>
+#include <mutex>
+#include <queue>
+#include <stdexcept>
+#include <string>
+#include <system_error>
+#include <thread>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+namespace threadschedule::detail
+{
 
 // ---------------------------------------------------------------------------
 // lightweight_pool_backend_base
@@ -26,13 +51,13 @@
  * @code
  *   Producer(s)          Single Queue            Worker Threads
  *  +---------+      +------------------+      +----------------+
- *  | post()  | ---> | sbo_callable<64>  | ---> | detail::thread_backend  |
- *  | post()  | ---> | sbo_callable<64>  | ---> | detail::thread_backend  |
+ *  | post()  | ---> | move_only_function | ---> | detail::thread_backend |
+ *  | post()  | ---> | move_only_function | ---> | detail::thread_backend |
  *  +---------+      +------------------+      +----------------+
  *                     mutex + cond_var
  * @endcode
  *
- * - **Queue**: Single @c std::queue of @ref detail::sbo_callable objects
+ * - **Queue**: Single queue of library-owned small-buffer callables
  *   protected by one mutex + condition_variable.
  * - **Workers**: @ref detail::thread_backend instances so that thread naming,
  * CPU affinity, and scheduling policy can be configured after construction.
@@ -75,7 +100,7 @@
  * @par Copyability / movability
  * Not copyable, not movable.
  *
- * @tparam TaskSize Total size in bytes of each @ref detail::sbo_callable
+ * @tparam TaskSize Total size in bytes reserved for each callable slot
  *         slot (default 64). Usable inline buffer = @c TaskSize - 8 bytes
  *         on 64-bit platforms.
  *
@@ -92,8 +117,8 @@ public:
    * @param num_threads Number of worker threads (clamped to at least 1).
    *                    Defaults to @c std::thread::hardware_concurrency().
    */
-  explicit lightweight_pool_backend_base(size_t num_threads = std::thread::hardware_concurrency())
-      : num_threads_(num_threads == 0 ? 1 : num_threads)
+  explicit lightweight_pool_backend_base(size_t num_threads = default_worker_count())
+      : num_threads_(checked_worker_count(num_threads))
   {
     workers_.reserve(num_threads_);
     try
@@ -127,7 +152,7 @@ public:
    * @brief Post a fire-and-forget task (throwing variant).
    *
    * The callable and its arguments are bound into a
-   * @ref detail::sbo_callable and pushed into the shared queue.
+   * `move_only_function` and pushed into the shared queue.
    *
    * @tparam F    Callable type.
    * @tparam Args Argument types forwarded to @p F.
@@ -153,7 +178,8 @@ public:
   auto
   try_post(F&& f, Args&&... args) -> expected<void, std::error_code>
   {
-    detail::sbo_callable<TaskSize> task(detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
+    detail::move_only_function<void(), TaskSize - sizeof(void*)> task(
+        detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (stop_)
@@ -191,7 +217,7 @@ public:
   auto
   try_post_batch(Iterator begin, Iterator end) -> expected<void, std::error_code>
   {
-    std::vector<detail::sbo_callable<TaskSize>> prepared;
+    std::vector<detail::move_only_function<void(), TaskSize - sizeof(void*)>> prepared;
     prepared.reserve(std::distance(begin, end));
     for (auto it = begin; it != end; ++it)
       prepared.emplace_back(*it);
@@ -239,7 +265,7 @@ public:
     if (is_current_worker())
       detail::throw_worker_deadlock();
     std::lock_guard<std::recursive_mutex> shutdown_lock(shutdown_mutex_);
-    std::queue<detail::sbo_callable<TaskSize>> discarded;
+    std::queue<detail::move_only_function<void(), TaskSize - sizeof(void*)>> discarded;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (stop_)
@@ -252,7 +278,7 @@ public:
     condition_.notify_all();
     drain_condition_.notify_all();
     {
-      std::queue<detail::sbo_callable<TaskSize>> empty;
+      std::queue<detail::move_only_function<void(), TaskSize - sizeof(void*)>> empty;
       discarded.swap(empty);
     }
     for (auto& w : workers_)
@@ -288,7 +314,7 @@ public:
     condition_.notify_all();
     bool const drained = drain_condition_.wait_until(
         lock, deadline, [this] { return tasks_.empty() && active_tasks_.load(std::memory_order_acquire) == 0; });
-    std::queue<detail::sbo_callable<TaskSize>> discarded;
+    std::queue<detail::move_only_function<void(), TaskSize - sizeof(void*)>> discarded;
     if (!drained)
       tasks_.swap(discarded);
     shutdown_completed_all_ = discarded.empty();
@@ -296,7 +322,7 @@ public:
     condition_.notify_all();
     drain_condition_.notify_all();
     {
-      std::queue<detail::sbo_callable<TaskSize>> empty;
+      std::queue<detail::move_only_function<void(), TaskSize - sizeof(void*)>> empty;
       discarded.swap(empty);
     }
     for (auto& worker : workers_)
@@ -368,7 +394,7 @@ public:
 private:
   size_t num_threads_;
   std::vector<detail::thread_backend> workers_;
-  std::queue<detail::sbo_callable<TaskSize>> tasks_;
+  std::queue<detail::move_only_function<void(), TaskSize - sizeof(void*)>> tasks_;
   std::mutex mutex_;
   std::condition_variable condition_;
   std::condition_variable drain_condition_;
@@ -385,7 +411,7 @@ private:
     detail::worker_context_guard<lightweight_pool_backend_base> worker_context(current_pool, this);
     while (true)
       {
-        detail::sbo_callable<TaskSize> task;
+        detail::move_only_function<void(), TaskSize - sizeof(void*)> task;
         {
           std::unique_lock<std::mutex> lock(mutex_);
           condition_.wait(lock, [this] { return stop_ || !tasks_.empty(); });
@@ -422,3 +448,5 @@ private:
  * @see lightweight_pool_backend_base
  */
 using lightweight_pool_backend = lightweight_pool_backend_base<>;
+
+} // namespace threadschedule::detail

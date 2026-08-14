@@ -19,6 +19,10 @@
 #include <vector>
 
 #ifdef _WIN32
+#  include "../unique_handle.hpp"
+#endif
+
+#ifdef _WIN32
 #  ifndef NOMINMAX
 #    define NOMINMAX
 #  endif
@@ -594,9 +598,9 @@ private:
 
 struct native_thread_config
 {
-  std::string name{};
-  native_scheduling_config scheduling{ detail::native_schedule::normal() };
-  std::optional<native_thread_affinity> affinity{};
+  std::optional<std::string> name;
+  std::optional<native_scheduling_config> scheduling;
+  std::optional<native_thread_affinity> affinity;
 };
 
 /**

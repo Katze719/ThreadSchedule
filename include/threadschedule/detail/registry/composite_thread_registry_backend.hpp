@@ -4,6 +4,12 @@
  *  @brief Multi-registry snapshot composition.
  */
 
+#include "thread_registry_backend.hpp"
+
+#include <mutex>
+#include <utility>
+#include <vector>
+
 namespace threadschedule
 {
 /**

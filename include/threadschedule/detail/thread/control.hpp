@@ -5,6 +5,7 @@
 #include "../../thread_affinity.hpp"
 #include "../../thread_config.hpp"
 #include "../scheduling/native.hpp"
+#include "../try_result.hpp"
 
 #include <condition_variable>
 #include <exception>
@@ -15,6 +16,7 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace threadschedule
 {
@@ -69,31 +71,10 @@ private:
   bool run_{ false };
 };
 
-[[nodiscard]] inline auto
-current_exception_error_code() noexcept -> std::error_code
-{
-  try
-    {
-      throw;
-    }
-  catch (std::system_error const& error)
-    {
-      return error.code();
-    }
-  catch (std::bad_alloc const&)
-    {
-      return std::make_error_code(std::errc::not_enough_memory);
-    }
-  catch (...)
-    {
-      return std::make_error_code(std::errc::state_not_recoverable);
-    }
-}
-
 [[nodiscard]] constexpr auto
 to_native(scheduling_config config) noexcept -> native_scheduling_config
 {
-  switch (config.intent)
+  switch (config.intent())
     {
     case scheduling_intent::background:
       return native_schedule::background();
@@ -103,18 +84,14 @@ to_native(scheduling_config config) noexcept -> native_scheduling_config
       return native_schedule::low_latency();
     case scheduling_intent::realtime_fifo:
       {
-        auto native = native_schedule::realtime_fifo(config.priority);
-        native.valid = config.priority >= 1 && config.priority <= 99;
-        return native;
+        return native_schedule::realtime_fifo(config.priority_value());
       }
     case scheduling_intent::realtime_round_robin:
       {
-        auto native = native_schedule::realtime_rr(config.priority);
-        native.valid = config.priority >= 1 && config.priority <= 99;
-        return native;
+        return native_schedule::realtime_rr(config.priority_value());
       }
     case scheduling_intent::nice:
-      return native_schedule::posix_nice(config.priority);
+      return native_schedule::posix_nice(config.priority_value());
     case scheduling_intent::normal:
     default:
       return native_schedule::normal();
@@ -124,8 +101,12 @@ to_native(scheduling_config config) noexcept -> native_scheduling_config
 [[nodiscard]] inline auto
 to_native(thread_affinity const& affinity) -> native_thread_affinity
 {
-  native_thread_affinity native(affinity.cpus());
-  if (native.get_cpus() != affinity.cpus())
+  std::vector<int> cpus;
+  cpus.reserve(affinity.cpus().size());
+  for (auto cpu : affinity.cpus())
+    cpus.push_back(static_cast<int>(cpu.value()));
+  native_thread_affinity native(cpus);
+  if (native.get_cpus() != cpus)
     throw std::system_error(std::make_error_code(std::errc::invalid_argument), "thread affinity is not representable");
   return native;
 }
@@ -134,38 +115,28 @@ to_native(thread_affinity const& affinity) -> native_thread_affinity
 to_native(thread_config const& config) -> native_thread_config
 {
   native_thread_config native;
-  native.name = config.name;
-  native.scheduling = to_native(config.scheduling);
-  if (config.affinity)
-    native.affinity = to_native(*config.affinity);
+  native.name = config.name();
+  if (config.scheduling())
+    native.scheduling = to_native(*config.scheduling());
+  if (config.affinity())
+    native.affinity = to_native(*config.affinity());
   return native;
 }
 
 [[nodiscard]] inline auto
 has_thread_configuration(thread_config const& config) noexcept -> bool
 {
-  return !config.name.empty() || config.affinity.has_value() || config.scheduling.intent != scheduling_intent::normal
-         || config.scheduling.priority != 0;
+  return !config.empty();
 }
 
 [[nodiscard]] inline auto
 from_native(native_thread_affinity const& affinity) -> thread_affinity
 {
-  return thread_affinity(affinity.get_cpus());
-}
-
-template <typename Function>
-[[nodiscard]] auto
-try_result(Function&& function) -> decltype(std::forward<Function>(function)())
-{
-  try
-    {
-      return std::forward<Function>(function)();
-    }
-  catch (...)
-    {
-      return unexpected(current_exception_error_code());
-    }
+  std::vector<cpu_id> cpus;
+  cpus.reserve(affinity.get_cpus().size());
+  for (auto cpu : affinity.get_cpus())
+    cpus.emplace_back(cpu);
+  return thread_affinity(std::move(cpus));
 }
 
 namespace thread_lifecycle
@@ -235,9 +206,9 @@ set_priority(Control& control, priority_level level) -> result<void>
 
 template <typename Control>
 auto
-set_nice(Control& control, int nice_value) -> result<void>
+set_nice(Control& control, nice_value value) -> result<void>
 {
-  return control.configure(native_schedule::posix_nice(nice_value));
+  return control.configure(native_schedule::posix_nice(value.value()));
 }
 
 [[nodiscard]] inline auto

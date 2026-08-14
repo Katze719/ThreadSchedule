@@ -508,7 +508,7 @@ TEST_F(ThreadConfigTest, NiceValue)
   auto ready = release.get_future().share();
   threadschedule::thread worker([ready] { ready.wait(); });
 
-  auto set = worker.set_nice(10);
+  auto set = worker.set_nice(threadschedule::nice_value{ 10 });
   auto priority = worker.get_priority();
   release.set_value();
   auto joined = worker.join();

@@ -132,6 +132,26 @@ find_package(Threads REQUIRED)
 add_library(ThreadSchedule INTERFACE)
 add_library(ThreadSchedule::ThreadSchedule ALIAS ThreadSchedule)
 
+# Build-tree-only layer targets document the allowed dependency direction and
+# provide focused linkage for internal compile checks. They are deliberately
+# not exported; the supported consumer targets remain ThreadSchedule and the
+# optional Runtime target.
+add_library(ThreadScheduleFoundationLayer INTERFACE)
+add_library(ThreadScheduleThreadLayer INTERFACE)
+add_library(ThreadScheduleRegistryLayer INTERFACE)
+add_library(ThreadSchedulePoolLayer INTERFACE)
+add_library(ThreadScheduleScheduledLayer INTERFACE)
+
+target_compile_features(ThreadScheduleFoundationLayer INTERFACE cxx_std_17)
+target_include_directories(ThreadScheduleFoundationLayer INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+target_link_libraries(ThreadScheduleFoundationLayer INTERFACE Threads::Threads)
+target_link_libraries(ThreadScheduleThreadLayer INTERFACE ThreadScheduleFoundationLayer)
+target_link_libraries(ThreadScheduleRegistryLayer INTERFACE ThreadScheduleThreadLayer)
+target_link_libraries(ThreadSchedulePoolLayer INTERFACE ThreadScheduleRegistryLayer)
+target_link_libraries(ThreadScheduleScheduledLayer INTERFACE ThreadSchedulePoolLayer)
+
 target_compile_features(ThreadSchedule INTERFACE cxx_std_17)
 
 # Include directories
@@ -209,7 +229,7 @@ if(THREADSCHEDULE_RUNTIME)
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
     )
-    target_link_libraries(ThreadScheduleRuntime PUBLIC ThreadSchedule)
+    target_link_libraries(ThreadScheduleRuntime PRIVATE ThreadScheduleRegistryLayer PUBLIC ThreadSchedule)
     set_target_properties(ThreadScheduleRuntime PROPERTIES
         EXPORT_NAME Runtime
         OUTPUT_NAME "threadschedule"

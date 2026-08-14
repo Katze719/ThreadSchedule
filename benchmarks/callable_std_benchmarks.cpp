@@ -1,29 +1,20 @@
 // Cross-standard callable storage micro-benchmark.
 //
-// ThreadSchedule stores type-erased tasks in one of two ways:
+// ThreadSchedule stores type-erased tasks in two intentionally distinct ways:
 //
-//   - detail::move_callable<Signature>  -- the hot-path storage used by
-//     raw_thread_pool / polling_pool / work_stealing_pool.
-//     It is an alias for std::function on C++17/20 and for
-//     std::move_only_function on C++23+.
-//   - detail::copyable_callable<Signature> -- the copyable callback storage
-//     used by tracing, registry, and error hooks. It is an alias for
-//     std::function before C++26 and for std::copyable_function on C++26.
-//   - detail::sbo_callable<TaskSize>     -- the small-buffer callable used by
-//     lightweight_pool. It stores callables up to TaskSize-8 bytes
-//     inline and is identical across every C++ standard.
+//   - detail::move_only_function<Signature, InlineSize> -- library-owned,
+//     move-only task storage with SBO and heap fallback, identical in C++17
+//     through C++26.
+//   - detail::copyable_function<Signature> -- std::function-backed callback
+//     storage used only where callbacks must be copied.
 //
 // This benchmark isolates the construction (including any heap allocation) and
 // invocation cost of those two storage types, away from thread scheduling
 // noise, so the same binary can be compiled under C++17/20/23/26 and compared.
 // It answers two questions directly:
 //
-//   1. Does replacing std::function with std::move_only_function help?
-//      -> compare BM_MoveCallable_* across standards.
-//   2. Does replacing std::function with std::copyable_function help?
-//      -> compare BM_CopyableCallable_* across standards.
-//   3. Do the SBO callables help?
-//      -> compare BM_Sbo_* against BM_MoveCallable_* for the same capture.
+//   1. What does the fixed default inline capacity cost?
+//   2. When does a larger inline capacity avoid a heap allocation?
 //
 // Written to compile as C++17 (no concepts / requires).
 
@@ -31,7 +22,8 @@
 #include <benchmark/benchmark.h>
 #include <cstdint>
 #include <memory>
-#include <threadschedule/detail/callable/move_callable.hpp>
+#include <threadschedule/detail/callable/copyable_function.hpp>
+#include <threadschedule/detail/callable/move_only_function.hpp>
 #include <threadschedule/thread_pool.hpp>
 #include <vector>
 
@@ -72,67 +64,62 @@ bench_storage(benchmark::State& state)
 
 } // namespace
 
-// move_callable == std::function (C++17/20) or std::move_only_function
-// (C++23+)
 static void
-bm_move_callable_small(benchmark::State& state)
+bm_move_only_function_small(benchmark::State& state)
 {
-  bench_storage<detail::move_callable<void()>, 1>(state); // 8 B capture (fits all)
+  bench_storage<detail::move_only_function<void()>, 1>(state);
 }
 static void
-bm_move_callable_medium(benchmark::State& state)
+bm_move_only_function_medium(benchmark::State& state)
 {
-  bench_storage<detail::move_callable<void()>, 6>(state); // 48 B capture (heap in std lib callables)
+  bench_storage<detail::move_only_function<void()>, 6>(state);
 }
 static void
-bm_move_callable_large(benchmark::State& state)
+bm_move_only_function_large(benchmark::State& state)
 {
-  bench_storage<detail::move_callable<void()>, 16>(state); // 128 B capture (heap everywhere)
+  bench_storage<detail::move_only_function<void()>, 16>(state);
 }
 
-// copyable_callable == std::function (pre-C++26) or std::copyable_function
-// (C++26)
 static void
-bm_copyable_callable_small(benchmark::State& state)
+bm_copyable_function_small(benchmark::State& state)
 {
-  bench_storage<detail::copyable_callable<void()>, 1>(state); // 8 B capture (fits all)
+  bench_storage<detail::copyable_function<void()>, 1>(state);
 }
 static void
-bm_copyable_callable_medium(benchmark::State& state)
+bm_copyable_function_medium(benchmark::State& state)
 {
-  bench_storage<detail::copyable_callable<void()>, 6>(state); // 48 B capture
+  bench_storage<detail::copyable_function<void()>, 6>(state);
 }
 static void
-bm_copyable_callable_large(benchmark::State& state)
+bm_copyable_function_large(benchmark::State& state)
 {
-  bench_storage<detail::copyable_callable<void()>, 16>(state); // 128 B capture
+  bench_storage<detail::copyable_function<void()>, 16>(state);
 }
 
-// sbo_callable<64> == lightweight_pool storage (56 B inline buffer)
 static void
-bm_sbo_small(benchmark::State& state)
+bm_large_inline_small(benchmark::State& state)
 {
-  bench_storage<detail::sbo_callable<64>, 1>(state);
+  bench_storage<detail::move_only_function<void(), 56>, 1>(state);
 }
 static void
-bm_sbo_medium(benchmark::State& state)
+bm_large_inline_medium(benchmark::State& state)
 {
-  bench_storage<detail::sbo_callable<64>, 6>(state);
+  bench_storage<detail::move_only_function<void(), 56>, 6>(state);
 }
 static void
-bm_sbo_large(benchmark::State& state)
+bm_large_inline_large(benchmark::State& state)
 {
-  bench_storage<detail::sbo_callable<64>, 16>(state);
+  bench_storage<detail::move_only_function<void(), 56>, 16>(state);
 }
 
-BENCHMARK(bm_move_callable_small)->Unit(benchmark::kNanosecond);
-BENCHMARK(bm_move_callable_medium)->Unit(benchmark::kNanosecond);
-BENCHMARK(bm_move_callable_large)->Unit(benchmark::kNanosecond);
-BENCHMARK(bm_copyable_callable_small)->Unit(benchmark::kNanosecond);
-BENCHMARK(bm_copyable_callable_medium)->Unit(benchmark::kNanosecond);
-BENCHMARK(bm_copyable_callable_large)->Unit(benchmark::kNanosecond);
-BENCHMARK(bm_sbo_small)->Unit(benchmark::kNanosecond);
-BENCHMARK(bm_sbo_medium)->Unit(benchmark::kNanosecond);
-BENCHMARK(bm_sbo_large)->Unit(benchmark::kNanosecond);
+BENCHMARK(bm_move_only_function_small)->Unit(benchmark::kNanosecond);
+BENCHMARK(bm_move_only_function_medium)->Unit(benchmark::kNanosecond);
+BENCHMARK(bm_move_only_function_large)->Unit(benchmark::kNanosecond);
+BENCHMARK(bm_copyable_function_small)->Unit(benchmark::kNanosecond);
+BENCHMARK(bm_copyable_function_medium)->Unit(benchmark::kNanosecond);
+BENCHMARK(bm_copyable_function_large)->Unit(benchmark::kNanosecond);
+BENCHMARK(bm_large_inline_small)->Unit(benchmark::kNanosecond);
+BENCHMARK(bm_large_inline_medium)->Unit(benchmark::kNanosecond);
+BENCHMARK(bm_large_inline_large)->Unit(benchmark::kNanosecond);
 
 BENCHMARK_MAIN();

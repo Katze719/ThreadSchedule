@@ -4,9 +4,25 @@
  * @file detail/pool/worker_context_guard.hpp
  * @brief Worker identity, CPU selection, and registration helpers.
  *
- * Internal implementation fragment included by backend.hpp inside
- * threadschedule::detail.
+ * Self-contained internal implementation header.
  */
+
+#include "../../expected.hpp"
+#include "../registry/backend.hpp"
+#include "../scheduling/native.hpp"
+#include "../thread_backend.hpp"
+
+#include <algorithm>
+#include <cstddef>
+#include <exception>
+#include <future>
+#include <iterator>
+#include <string>
+#include <system_error>
+#include <vector>
+
+namespace threadschedule::detail
+{
 
 template <typename Pool>
 class worker_context_guard
@@ -79,16 +95,19 @@ configure_worker_threads(WorkerRange& workers, native_thread_config const& confi
   std::error_code first_error;
   for (size_t i = 0; i < workers.size(); ++i)
     {
-      if (!config.name.empty())
+      if (config.name)
         {
-          std::string const thread_name = worker_thread_name(config.name, i);
+          std::string const thread_name = worker_thread_name(*config.name, i);
           auto named = workers[i].set_name(thread_name);
           if (!named && !first_error)
             first_error = named.error();
         }
-      auto scheduled = workers[i].configure(config.scheduling);
-      if (!scheduled && !first_error)
-        first_error = scheduled.error();
+      if (config.scheduling)
+        {
+          auto scheduled = workers[i].configure(*config.scheduling);
+          if (!scheduled && !first_error)
+            first_error = scheduled.error();
+        }
       if (config.affinity.has_value())
         {
           auto affinity = workers[i].set_affinity(*config.affinity);
@@ -195,3 +214,5 @@ parallel_for_each_chunked(Pool& pool, Iterator begin, Iterator end, F&& func, si
   if (first_error)
     std::rethrow_exception(first_error);
 }
+
+} // namespace threadschedule::detail

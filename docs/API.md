@@ -10,8 +10,8 @@ Focused consumers can include a single self-contained contract instead:
 
 | Facility | Header |
 | --- | --- |
-| Scheduling values | `<threadschedule/scheduling.hpp>` |
-| Affinity and configuration | `<threadschedule/thread_affinity.hpp>`, `<threadschedule/thread_config.hpp>` |
+| Scheduling values | `<threadschedule/scheduling.hpp>`, `<threadschedule/nice_value.hpp>`, `<threadschedule/realtime_priority.hpp>` |
+| Affinity and configuration | `<threadschedule/cpu_id.hpp>`, `<threadschedule/thread_affinity.hpp>`, `<threadschedule/thread_config.hpp>` |
 | Owning and non-owning threads | `<threadschedule/thread.hpp>`, `<threadschedule/thread_view.hpp>` |
 | C++20 joining thread | `<threadschedule/jthread.hpp>` |
 | Calling-thread controls | `<threadschedule/this_thread.hpp>` |
@@ -59,10 +59,10 @@ When the standard library provides C++23 `std::expected`, a
 converting an rvalue moves it, including move-only payloads.
 
 An accepted task returns a standard future. Exceptions thrown by the task are
-stored in the future and rethrown by `get()`. `thread_pool_config::on_task_error`
-can observe the same exception as a `task_error` without consuming it.
+stored in the future and rethrown by `get()`. A callback installed with
+`thread_pool_config::set_error_callback(...)` can observe the same exception as a `task_error` without consuming it.
 Fire-and-forget tasks submitted through `post()` have no future, so configure
-`on_task_error` when their exceptions must be observed.
+an error callback when their exceptions must be observed.
 
 | Operation | Failure channel |
 | --- | --- |
@@ -70,7 +70,7 @@ Fire-and-forget tasks submitted through `post()` have no future, so configure
 | `create(...)` | `result<T>` |
 | Configuration, submission, waiting, shutdown | `result<T>` |
 | Accepted `submit(...)` task | `std::future` |
-| Accepted `post(...)` task | `on_task_error` callback |
+| Accepted `post(...)` task | Configured error callback |
 | Explicit `*_or_throw` helper | Exception |
 
 ## Threads
@@ -87,13 +87,14 @@ if (auto result = worker.set_name("worker"); !result)
     {
         report(result.error());
     }
-if (auto result = worker.set_affinity(threadschedule::thread_affinity({ 0 })); !result)
+if (auto result = worker.set_affinity(
+        threadschedule::thread_affinity({ threadschedule::cpu_id{0} })); !result)
     {
         report(result.error());
     }
 
 threadschedule::thread_config config;
-config.scheduling = threadschedule::schedule::background();
+config.set_scheduling(threadschedule::schedule::background());
 if (auto result = worker.configure(config); !result)
     {
         report(result.error());
@@ -121,9 +122,10 @@ runs:
 
 ```cpp
 threadschedule::thread_config config;
-config.name = "metrics";
-config.scheduling = threadschedule::schedule::background();
-config.affinity = threadschedule::thread_affinity({ 0, 1 });
+config.set_name("metrics")
+    .set_scheduling(threadschedule::schedule::background())
+    .set_affinity(threadschedule::thread_affinity(
+        { threadschedule::cpu_id{0}, threadschedule::cpu_id{1} }));
 
 if (auto worker = threadschedule::thread::create(config, [] {
         // Collect metrics on the configured thread.
@@ -199,9 +201,9 @@ fallback `jthread` type in C++17.
 
 ```cpp
 threadschedule::thread_pool_config config;
-config.worker_count = 8;
-config.register_workers = true;
-config.shutdown = threadschedule::shutdown_policy::drain;
+config.set_worker_count(threadschedule::worker_count{8})
+    .set_registration(threadschedule::worker_registration::global_registry)
+    .set_shutdown_policy(threadschedule::shutdown_policy::drain);
 
 threadschedule::thread_pool pool(std::move(config));
 auto calculated = pool.submit([] { return calculate(); });
@@ -232,14 +234,18 @@ pool; arrange destruction from an external owner after the task returns.
 
 ```cpp
 threadschedule::scheduled_pool_config config;
-config.worker_count = 2;
-config.register_workers = true;
-config.workers.name = "scheduled-worker";
-config.scheduler.name = "scheduler";
-config.shutdown = threadschedule::shutdown_policy::drain;
-config.on_task_error = [](threadschedule::task_error const& error) {
-    report(error.what());
-};
+threadschedule::thread_config workers;
+workers.set_name("scheduled-worker");
+threadschedule::thread_config scheduler_thread;
+scheduler_thread.set_name("scheduler");
+config.set_worker_count(threadschedule::worker_count{2})
+    .set_registration(threadschedule::worker_registration::global_registry)
+    .set_worker_config(std::move(workers))
+    .set_scheduler_config(std::move(scheduler_thread))
+    .set_shutdown_policy(threadschedule::shutdown_policy::drain)
+    .set_error_callback([](threadschedule::task_error const& error) {
+        report(error.what());
+    });
 
 threadschedule::scheduled_pool scheduler(std::move(config));
 auto once = scheduler.schedule_after(250ms, [] { refresh(); });
@@ -294,7 +300,7 @@ Header-only builds have one instance per linked image; the optional runtime
 supplies one instance to compatible DSOs that link it.
 
 Entries added by `register_current_thread` retain a native control block, so
-their `native_id` can be passed to `thread_registry::configure` while the
+their `thread_id` can be passed to `thread_registry::configure` while the
 registered thread remains alive.
 After a move, the source registry reads as empty and mutating operations return
 `operation_canceled`. Assigning a new registry makes it usable again.
@@ -306,11 +312,10 @@ The portable factories are `background`, `normal`, `interactive`,
 
 `schedule::priority(priority_level)` provides `lowest`, `low`, `normal`,
 `high`, and `highest`. Their Linux nice values are respectively 19, 5, 0, -5,
-and -20. `schedule::nice(value)` exposes the full -20 through 19 scale. Values
-outside that range fail with `invalid_argument` when the configuration is
-applied. Portable realtime priorities use the native-style `1` through `99`
-range; other values likewise fail when applied instead of being clamped or
-reinterpreted as nice values.
+and -20. `schedule::nice(nice_value{value})` exposes the full -20 through 19
+scale. Portable realtime factories take `realtime_priority{value}` in the
+range 1 through 99. Invalid direct construction throws `std::invalid_argument`;
+the parallel `create(...)` factories return `result<T>`.
 
 On Windows, normal priorities map to `IDLE`, `BELOW_NORMAL`, `NORMAL`,
 `ABOVE_NORMAL`, or `HIGHEST`. Exact nice values use the same safe mapping and
@@ -322,9 +327,10 @@ Win32 behavior through its pthread-to-`HANDLE` adapter.
 `thread`, C++20 `jthread`, and `thread_view` provide `set_priority`,
 `set_nice`, `get_priority`, and error-preserving `get_affinity` operations. A
 Linux `thread_view` over an external
-`std::thread` needs the constructor overload taking its native TID for nice
-control; without it, nice operations report `operation_not_supported`.
-Registry-managed threads expose matching operations by `native_id`, and pool
+`std::thread` has no portable identity for nice control, so nice operations
+report `operation_not_supported`. Native identity-based control is available
+only under `advanced`.
+Registry-managed threads expose matching operations by `thread_id`, and pool
 workers use the same settings through `thread_config`.
 
 Increasing priority with a negative nice value usually requires privileges on

@@ -55,4 +55,10 @@ using native_thread_config = ::threadschedule::detail::native_thread_config;
 using scheduler_parameters = ::threadschedule::detail::scheduler_parameters;
 namespace native_schedule = ::threadschedule::detail::native_schedule;
 
+[[nodiscard]] constexpr auto
+native_id(thread_id id) noexcept -> native_thread_id
+{
+  return static_cast<native_thread_id>(::threadschedule::detail::thread_id_access::value(id));
+}
+
 } // namespace threadschedule::advanced

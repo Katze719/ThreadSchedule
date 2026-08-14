@@ -10,10 +10,10 @@
  * contention, and priority changes.
  */
 
-#include "../detail/scheduling/native.hpp"
-#include "../detail/thread_backend.hpp"
-#include "../thread_registry.hpp"
-#include "cpu_topology.hpp"
+#include "../../detail/scheduling/native.hpp"
+#include "../../detail/thread_backend.hpp"
+#include "../../thread_registry.hpp"
+#include "../cpu_topology.hpp"
 #include <atomic>
 #include <chrono>
 #include <functional>
@@ -129,8 +129,8 @@ public:
     if (!worker_.joinable() || worker_tid_ == native_thread_id{})
       return std::nullopt;
     auto const name = implementation::thread_info(worker_tid_).get_name();
-    return registered_thread{ static_cast<std::uint64_t>(worker_tid_), worker_.get_id(), name.value_or(std::string{}),
-                              "chaos", true };
+    return registered_thread{ detail::thread_id_access::make(static_cast<std::uint64_t>(worker_tid_)), worker_.get_id(),
+                              name.value_or(std::string{}), "chaos", true };
   }
 
   auto
@@ -154,8 +154,9 @@ private:
       {
         auto selected = [&pred](implementation::registered_thread_info_backend const& info)
           {
-            return std::invoke(pred, registered_thread{ static_cast<std::uint64_t>(info.tid), info.std_id, info.name,
-                                                        info.component, info.alive });
+            return std::invoke(pred,
+                               registered_thread{ detail::thread_id_access::make(static_cast<std::uint64_t>(info.tid)),
+                                                  info.std_id, info.name, info.component, info.alive });
           };
         implementation::runtime_registry().apply(selected,
                                                  [&](implementation::registered_thread_info_backend const& info)

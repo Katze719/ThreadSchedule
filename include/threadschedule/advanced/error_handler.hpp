@@ -6,7 +6,8 @@
  * and error_handled_task.
  */
 
-#include "../detail/callable/move_callable.hpp"
+#include "../detail/callable/copyable_function.hpp"
+#include "../detail/callable/move_only_function.hpp"
 #include <chrono>
 #include <exception>
 #include <functional>
@@ -127,10 +128,10 @@ struct task_error
  * Callbacks receive a const reference to the task_error describing the
  * failure.
  */
-using error_callback = implementation::copyable_callable<void(task_error const&)>;
+using error_callback = implementation::copyable_function<void(task_error const&)>;
 
 using error_callback_storage = error_callback;
-using future_error_callback = implementation::move_callable<void(std::exception_ptr)>;
+using future_error_callback = implementation::move_only_function<void(std::exception_ptr)>;
 
 /**
  * @brief Central registry and dispatcher for task-error callbacks.
@@ -179,7 +180,7 @@ public:
     static_assert(std::is_invocable_r_v<void, Callback&, task_error const&>,
                   "Error callback must be invocable with task_error const&");
     return emplace_callback(
-        implementation::make_copyable_callable<void(task_error const&)>(std::forward<Callback>(callback)));
+        implementation::make_copyable_function<void(task_error const&)>(std::forward<Callback>(callback)));
   }
 
   /**
@@ -425,7 +426,8 @@ public:
   {
     static_assert(std::is_invocable_r_v<void, Callback&, std::exception_ptr>,
                   "Error callback must be invocable with std::exception_ptr");
-    error_callback_ = implementation::make_move_callable<void(std::exception_ptr)>(std::forward<Callback>(callback));
+    error_callback_
+        = implementation::make_move_only_function<void(std::exception_ptr)>(std::forward<Callback>(callback));
     has_callback_ = true;
     return *this;
   }

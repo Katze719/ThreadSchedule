@@ -7,8 +7,16 @@
 
 #include <cstdint>
 
+#include "nice_value.hpp"
+#include "realtime_priority.hpp"
+
 namespace threadschedule
 {
+
+namespace detail
+{
+struct scheduling_config_access;
+}
 
 enum class scheduling_intent : std::uint8_t
 {
@@ -31,60 +39,91 @@ enum class priority_level : std::int8_t
   highest = -20
 };
 
-struct scheduling_config
+class scheduling_config
 {
-  scheduling_intent intent{ scheduling_intent::normal };
-  int priority{ 0 };
+public:
+  scheduling_config() noexcept = default;
+
+  [[nodiscard]] constexpr auto
+  intent() const noexcept -> scheduling_intent
+  {
+    return intent_;
+  }
+
+  [[nodiscard]] constexpr auto
+  priority_value() const noexcept -> int
+  {
+    return priority_;
+  }
+
+private:
+  friend struct detail::scheduling_config_access;
+  constexpr scheduling_config(scheduling_intent intent, int priority) noexcept : intent_(intent), priority_(priority) {}
+
+  scheduling_intent intent_{ scheduling_intent::normal };
+  int priority_{ 0 };
 };
+
+namespace detail
+{
+struct scheduling_config_access
+{
+  [[nodiscard]] static constexpr auto
+  make(scheduling_intent intent, int priority = 0) noexcept -> scheduling_config
+  {
+    return scheduling_config(intent, priority);
+  }
+};
+} // namespace detail
 
 namespace schedule
 {
 [[nodiscard]] constexpr auto
 background() noexcept -> scheduling_config
 {
-  return { scheduling_intent::background, 0 };
+  return detail::scheduling_config_access::make(scheduling_intent::background);
 }
 
 [[nodiscard]] constexpr auto
 normal() noexcept -> scheduling_config
 {
-  return { scheduling_intent::normal, 0 };
+  return detail::scheduling_config_access::make(scheduling_intent::normal);
 }
 
 [[nodiscard]] constexpr auto
 interactive() noexcept -> scheduling_config
 {
-  return { scheduling_intent::interactive, 0 };
+  return detail::scheduling_config_access::make(scheduling_intent::interactive);
 }
 
 [[nodiscard]] constexpr auto
 low_latency() noexcept -> scheduling_config
 {
-  return { scheduling_intent::low_latency, 0 };
+  return detail::scheduling_config_access::make(scheduling_intent::low_latency);
 }
 
 [[nodiscard]] constexpr auto
-realtime_fifo(int priority = 80) noexcept -> scheduling_config
+realtime_fifo(realtime_priority priority = realtime_priority{ 80 }) noexcept -> scheduling_config
 {
-  return { scheduling_intent::realtime_fifo, priority };
+  return detail::scheduling_config_access::make(scheduling_intent::realtime_fifo, priority.value());
 }
 
 [[nodiscard]] constexpr auto
-realtime_rr(int priority = 80) noexcept -> scheduling_config
+realtime_rr(realtime_priority priority = realtime_priority{ 80 }) noexcept -> scheduling_config
 {
-  return { scheduling_intent::realtime_round_robin, priority };
+  return detail::scheduling_config_access::make(scheduling_intent::realtime_round_robin, priority.value());
 }
 
 [[nodiscard]] constexpr auto
-nice(int value) noexcept -> scheduling_config
+nice(nice_value value) noexcept -> scheduling_config
 {
-  return { scheduling_intent::nice, value };
+  return detail::scheduling_config_access::make(scheduling_intent::nice, value.value());
 }
 
 [[nodiscard]] constexpr auto
 priority(priority_level level) noexcept -> scheduling_config
 {
-  return nice(static_cast<int>(level));
+  return nice(nice_value{ static_cast<int>(level) });
 }
 } // namespace schedule
 

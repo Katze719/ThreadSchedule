@@ -4,6 +4,31 @@
  *  @brief Registry storage, mutation, snapshots, and private runtime hooks.
  */
 
+#include "../../expected.hpp"
+#include "../../export.hpp"
+#include "../callable/copyable_function.hpp"
+#include "query_facade_mixin.hpp"
+#include "thread_control_block.hpp"
+
+#include <memory>
+#include <optional>
+#include <shared_mutex>
+#include <string>
+#include <system_error>
+#include <thread>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+namespace threadschedule
+{
+class auto_register_current_thread;
+}
+
+namespace threadschedule::detail
+{
+
 /**
  * @brief Central registry of threads indexed by OS-level thread ID
  * (native_thread_id).
@@ -393,15 +418,18 @@ public:
   [[nodiscard]] auto
   configure(native_thread_id tid, native_thread_config const& config) const -> expected<void, std::error_code>
   {
-    if (!config.name.empty())
+    if (config.name)
       {
-        auto named = set_name(tid, config.name);
+        auto named = set_name(tid, *config.name);
         if (!named)
           return unexpected(named.error());
       }
-    auto scheduled = configure(tid, config.scheduling);
-    if (!scheduled)
-      return unexpected(scheduled.error());
+    if (config.scheduling)
+      {
+        auto scheduled = configure(tid, *config.scheduling);
+        if (!scheduled)
+          return unexpected(scheduled.error());
+      }
     if (config.affinity.has_value())
       return set_affinity(tid, *config.affinity);
     return {};
@@ -424,8 +452,7 @@ public:
     on_register_ = std::move(cb);
   }
 
-  template <typename Callback,
-            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, registry_callback>, int> = 0>
+  template <typename Callback, std::enable_if_t<!std::is_same_v<std::decay_t<Callback>, registry_callback>, int> = 0>
   void
   set_on_register(Callback&& cb)
   {
@@ -435,7 +462,7 @@ public:
                   "const&");
     std::unique_lock<std::shared_mutex> lock(mutex_);
     on_register_
-        = detail::make_copyable_callable<void(registered_thread_info_backend const&)>(std::forward<Callback>(cb));
+        = detail::make_copyable_function<void(registered_thread_info_backend const&)>(std::forward<Callback>(cb));
   }
 
   void
@@ -445,8 +472,7 @@ public:
     on_unregister_ = std::move(cb);
   }
 
-  template <typename Callback,
-            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, registry_callback>, int> = 0>
+  template <typename Callback, std::enable_if_t<!std::is_same_v<std::decay_t<Callback>, registry_callback>, int> = 0>
   void
   set_on_unregister(Callback&& cb)
   {
@@ -456,7 +482,7 @@ public:
                   "const&");
     std::unique_lock<std::shared_mutex> lock(mutex_);
     on_unregister_
-        = detail::make_copyable_callable<void(registered_thread_info_backend const&)>(std::forward<Callback>(cb));
+        = detail::make_copyable_function<void(registered_thread_info_backend const&)>(std::forward<Callback>(cb));
   }
 
 private:
@@ -579,3 +605,5 @@ runtime_set_external_registry(thread_registry_backend* reg)
   registry_storage() = reg;
 }
 #endif
+
+} // namespace threadschedule::detail

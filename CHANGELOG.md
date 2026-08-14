@@ -32,6 +32,11 @@
 - Added `this_thread` operations for configuring the calling thread without first wrapping or registering it.
 - Added portable `scheduling_config`, `priority_level`, `schedule::*` factories, and `thread_affinity`. Native policies,
   priorities, affinities, IDs, scheduler parameters, and handle access now live under `advanced`.
+- Added non-converting `cpu_id`, `thread_id`, `nice_value`, `realtime_priority`, and `worker_count` value types plus explicit
+  `worker_registration`. Invalid direct construction throws `invalid_argument`; matching `create(...)` factories return
+  `result<T>`. Pool worker count zero no longer acts as an automatic sentinel.
+- Made scheduling and pool configurations closed classes with named mutators. `thread_config` is a patch: omitted
+  properties remain unchanged, while `set_name("")` is distinct from `clear_name()`.
 - Configured thread startup is transactional: the callable is released only after name, scheduling, and affinity setup
   succeeds. The error-returning factory reports the configuration error; the direct constructor throws `system_error`.
 - Added per-thread nice control and portable priority readback. Linux uses the requested nice value; MSVC and MinGW use a
@@ -56,6 +61,8 @@
 - Periodic intervals must be positive. Periodic work follows fixed-rate deadlines, never overlaps with itself, and skips
   missed occurrences rather than queuing an overdue backlog. Cancellation prevents future invocations but does not stop an
   invocation already running.
+- Replaced correlated periodic flags and zero-duration sentinels with separate one-shot and periodic construction paths;
+  periodic records construct only with a positive interval.
 - Hardened pool lifecycle behavior: self-wait and self-shutdown report `resource_deadlock_would_occur`, moved-from objects
   remain safely inspectable, dropped tasks release futures and captures, worker-construction failures unwind, and concurrent
   shutdown/submission paths preserve accepted work according to the selected policy.
@@ -80,6 +87,8 @@
 
 - Added public advanced names for the former specialized pools, native scheduling, profiles, topology, future combinators,
   task groups, chaos testing, composite registries, cgroups, and lower-level error handling.
+- Replaced advanced aliases to pool backends with named facade classes in focused headers, and moved chaos-only support to
+  `<threadschedule/advanced/testing/chaos_controller.hpp>`.
 - Removed the public C++20 module and `ThreadSchedule::Module`, coroutine `task`/`generator` helpers, C++26 reflection APIs,
   reflection-backed registry queries, standard-dependent ranges overloads, and the public concepts/callable utility headers.
 - Removed automatically registering wrapper subclasses. Registration is now explicit through
@@ -98,6 +107,10 @@
   core and advanced headers are compile-tested independently; C++17 is the baseline and C++20 adds `jthread`.
 - Split implementation code by thread, scheduling, registry, pool, scheduled-work, and callable responsibilities. Focused
   class-owning headers use the class name; platform code is isolated in POSIX and Windows headers.
+- Added library-owned `scope_exit`, Win32 `unique_handle`, `try_result`, and a single SBO-capable
+  `move_only_function<Signature, InlineSize>` whose representation does not vary between C++17 and C++26. Removed the former
+  internal move/SBO callable paths and manual owned-handle cleanup.
+- Added internal foundation/thread/registry/pool/scheduled CMake layer targets and an include-direction regression test.
 - Adopted the repository's libstdc++-inspired lowercase style, a 120-column clang-format limit, and a clang-tidy cognitive
   complexity threshold of 55.
 - Added `THREADSCHEDULE_WARNINGS_AS_ERRORS` for strict local and CI builds without applying `-Werror` to third-party source

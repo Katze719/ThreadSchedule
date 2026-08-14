@@ -19,13 +19,6 @@
 #include <thread>
 #include <type_traits>
 
-namespace threadschedule::detail
-{
-
 // The scheduler owns task-state values declared by the first fragment.
-// clang-format off
-#include "scheduled_task_backend.hpp"
 #include "scheduled_pool_backend_base.hpp"
-// clang-format on
-
-} // namespace threadschedule::detail
+#include "scheduled_task_backend.hpp"

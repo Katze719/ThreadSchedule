@@ -1,4 +1,4 @@
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/thread_pool.hpp>
 
 #include <iostream>
 
@@ -6,9 +6,9 @@ int
 main()
 {
   threadschedule::thread_pool_config config;
-  config.worker_count = 4;
-  config.workers.name = "worker";
-  config.workers.scheduling = threadschedule::schedule::normal();
+  threadschedule::thread_config workers;
+  workers.set_name("worker").set_scheduling(threadschedule::schedule::normal());
+  config.set_worker_count(threadschedule::worker_count{ 4 }).set_worker_config(std::move(workers));
 
   threadschedule::thread_pool pool(std::move(config));
 

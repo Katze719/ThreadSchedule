@@ -5,9 +5,10 @@
 #include <memory>
 #include <mutex>
 #include <numeric>
-#include <threadschedule/advanced/chaos_controller.hpp>
+#include <stdexcept>
 #include <threadschedule/advanced/pools.hpp>
 #include <threadschedule/advanced/task_group.hpp>
+#include <threadschedule/advanced/testing/chaos_controller.hpp>
 #include <threadschedule/threadschedule.hpp>
 #include <vector>
 
@@ -85,6 +86,14 @@ shutdown_for_stops_new_submissions() -> bool
 } // namespace
 
 // ==================== Backend try_submit / try_post ====================
+
+TEST(PoolBackendTest, BackendWorkerCountsRejectZeroInsteadOfUsingASentinel)
+{
+  EXPECT_THROW((void)thread_pool_backend{ 0 }, std::invalid_argument);
+  EXPECT_THROW((void)work_stealing_pool_backend{ 0 }, std::invalid_argument);
+  EXPECT_THROW((void)lightweight_pool_backend{ 0 }, std::invalid_argument);
+  EXPECT_THROW((void)scheduled_pool_backend{ 0 }, std::invalid_argument);
+}
 
 TEST(PoolBackendTest, TrySubmitReturnsExpected)
 {

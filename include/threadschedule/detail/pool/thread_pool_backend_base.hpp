@@ -4,9 +4,37 @@
  * @file detail/pool/thread_pool_backend_base.hpp
  * @brief Shared-queue pool implementation and public detail aliases.
  *
- * Internal implementation fragment included by backend.hpp inside
- * threadschedule::detail.
+ * Self-contained internal implementation header.
  */
+
+#include "../callable/bind.hpp"
+#include "../callable/move_only_function.hpp"
+#include "callbacks.hpp"
+#include "indefinite_wait.hpp"
+#include "polling_wait.hpp"
+#include "shutdown_policy_backend.hpp"
+#include "worker_context_guard.hpp"
+#include "worker_count.hpp"
+
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <future>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <queue>
+#include <string>
+#include <system_error>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+namespace threadschedule::detail
+{
 
 // ---------------------------------------------------------------------------
 // thread_pool_backend_base
@@ -69,7 +97,7 @@ class thread_pool_backend_base
 {
 public:
   using task_type = std::function<void()>;
-  using queued_task = detail::move_callable<void()>;
+  using queued_task = detail::move_only_function<void()>;
 
   struct statistics
   {
@@ -81,9 +109,8 @@ public:
     std::chrono::microseconds avg_task_time;
   };
 
-  explicit thread_pool_backend_base(size_t num_threads = std::thread::hardware_concurrency(),
-                                    bool register_workers = false)
-      : num_threads_(num_threads == 0 ? 1 : num_threads), register_workers_(register_workers), stop_(false),
+  explicit thread_pool_backend_base(size_t num_threads = default_worker_count(), bool register_workers = false)
+      : num_threads_(checked_worker_count(num_threads)), register_workers_(register_workers), stop_(false),
         start_time_(std::chrono::steady_clock::now())
   {
     workers_.reserve(num_threads_);
@@ -488,7 +515,7 @@ public:
     static_assert(std::is_invocable_r_v<void, Callback&, std::chrono::steady_clock::time_point, std::thread::id>,
                   "Task start callback must accept (time_point, std::thread::id)");
     std::lock_guard<std::mutex> lock(trace_mutex_);
-    on_task_start_ = detail::make_copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id)>(
+    on_task_start_ = detail::make_copyable_function<void(std::chrono::steady_clock::time_point, std::thread::id)>(
         std::forward<Callback>(cb));
   }
 
@@ -514,7 +541,7 @@ public:
                   "Task end callback must accept (time_point, std::thread::id, "
                   "std::chrono::microseconds)");
     std::lock_guard<std::mutex> lock(trace_mutex_);
-    on_task_end_ = detail::make_copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id,
+    on_task_end_ = detail::make_copyable_function<void(std::chrono::steady_clock::time_point, std::thread::id,
                                                        std::chrono::microseconds)>(std::forward<Callback>(cb));
   }
 
@@ -661,3 +688,5 @@ using thread_pool_backend = thread_pool_backend_base<indefinite_wait>;
  * @see thread_pool_backend_base, polling_wait
  */
 using polling_pool_backend = thread_pool_backend_base<polling_wait<>>;
+
+} // namespace threadschedule::detail

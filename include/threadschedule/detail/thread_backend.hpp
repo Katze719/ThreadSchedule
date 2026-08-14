@@ -7,6 +7,9 @@
 
 #include "../expected.hpp"
 #include "scheduling/native.hpp"
+#ifdef _WIN32
+#  include "unique_handle.hpp"
+#endif
 #include <condition_variable>
 #include <functional>
 #include <memory>
@@ -177,15 +180,18 @@ template <typename ThreadLike>
 inline auto
 configure_thread(ThreadLike& thread, native_thread_config const& config) -> expected<void, std::error_code>
 {
-  if (!config.name.empty())
+  if (config.name)
     {
-      auto named = thread.set_name(config.name);
+      auto named = thread.set_name(*config.name);
       if (!named)
         return unexpected(named.error());
     }
-  auto scheduled = thread.configure(config.scheduling);
-  if (!scheduled)
-    return unexpected(scheduled.error());
+  if (config.scheduling)
+    {
+      auto scheduled = thread.configure(*config.scheduling);
+      if (!scheduled)
+        return unexpected(scheduled.error());
+    }
   if (config.affinity.has_value())
     return thread.set_affinity(*config.affinity);
   return {};
@@ -941,13 +947,8 @@ private:
                         THREAD_SET_INFORMATION | THREAD_QUERY_INFORMATION, FALSE, 0)
         != 0)
       {
-        native_handle_ = real_handle;
-        native_handle_owner_ = std::shared_ptr<void>(real_handle,
-                                                     [](void* handle)
-                                                       {
-                                                         if (handle)
-                                                           CloseHandle(static_cast<HANDLE>(handle));
-                                                       });
+        native_handle_owner_ = std::make_shared<unique_handle>(real_handle);
+        native_handle_ = native_handle_owner_->get();
         has_native_handle_ = true;
       }
 #else
@@ -971,7 +972,7 @@ private:
   native_thread_id tid_{};
 #ifdef _WIN32
   native_handle_type native_handle_ = nullptr;
-  std::shared_ptr<void> native_handle_owner_;
+  std::shared_ptr<unique_handle> native_handle_owner_;
 #else
   native_handle_type native_handle_{};
 #endif

@@ -4,6 +4,11 @@
  *  @brief Blocking idle-wait strategy for queue-based pools.
  */
 
+#include <condition_variable>
+
+namespace threadschedule::detail
+{
+
 struct indefinite_wait
 {
   template <typename Lock, typename Pred>
@@ -14,3 +19,5 @@ struct indefinite_wait
     return true;
   }
 };
+
+} // namespace threadschedule::detail

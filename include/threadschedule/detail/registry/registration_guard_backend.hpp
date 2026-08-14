@@ -4,6 +4,12 @@
  *  @brief Internal RAII registration used by worker implementations.
  */
 
+#include "thread_registry_backend.hpp"
+
+#include <memory>
+#include <string>
+#include <utility>
+
 namespace threadschedule::detail
 {
 /** @brief Internal movable RAII guard for worker registration. */

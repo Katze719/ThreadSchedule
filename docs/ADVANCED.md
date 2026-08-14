@@ -79,7 +79,8 @@ are `<threadschedule/advanced/pools.hpp>`,
 several optional facilities.
 
 Focused headers that primarily define a class use that class name, including
-`cpu_topology.hpp` and `chaos_controller.hpp`. Function-only collections such
+`cpu_topology.hpp`; chaos support intentionally lives at
+`advanced/testing/chaos_controller.hpp`. Function-only collections such
 as `futures.hpp` retain a responsibility-based name.
 
 ## Optional utilities

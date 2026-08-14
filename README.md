@@ -78,7 +78,7 @@ optional `ThreadSchedule::Runtime`; header-only mode remains the default.
 
 int main()
 {
-    threadschedule::thread_pool pool(2);
+    threadschedule::thread_pool pool(threadschedule::worker_count{2});
     auto answer = pool.submit([] { return 42; });
     if (!answer) {
         std::cerr << answer.error().message() << '\n';
@@ -133,12 +133,12 @@ ThreadSchedule keeps failure channels explicit:
 | `create(...)` | Returns `expected<T, std::error_code>` |
 | Configuration and shutdown | Return `expected<void, std::error_code>` |
 | `thread_pool::submit(...)` | Submission error in `expected`; task exception in the future |
-| `thread_pool::post(...)` | Submission error in `expected`; task exception via `on_task_error` |
+| `thread_pool::post(...)` | Submission error in `expected`; task exception via the configured error callback |
 | Explicit `*_or_throw` operation | Throws `std::system_error` on failure |
 
 Always inspect an `expected` before dereferencing it. A task submitted with
-`post()` has no future; configure `on_task_error` if its exceptions must be
-observed.
+`post()` has no future; call `set_error_callback(...)` on the pool config if
+its exceptions must be observed.
 
 `threadschedule::thread` owns a `std::thread` but deliberately joins a joinable
 thread on destruction. Destruction and move assignment can therefore block.
@@ -159,8 +159,7 @@ error value:
 
 ```cpp
 threadschedule::thread_config config;
-config.name = "metrics";
-config.scheduling = threadschedule::schedule::background();
+config.set_name("metrics").set_scheduling(threadschedule::schedule::background());
 
 auto worker = threadschedule::thread::create(config, [] {
     collect_metrics();
@@ -220,11 +219,13 @@ See the compile-tested [jthread example](examples/jthread_example.cpp).
 
 ```cpp
 threadschedule::thread_pool_config config;
-config.worker_count = 4;
-config.workers.name = "worker";
-config.on_task_error = [](threadschedule::task_error const& error) {
-    log(error.what());
-};
+threadschedule::thread_config workers;
+workers.set_name("worker");
+config.set_worker_count(threadschedule::worker_count{4})
+    .set_worker_config(std::move(workers))
+    .set_error_callback([](threadschedule::task_error const& error) {
+        log(error.what());
+    });
 
 threadschedule::thread_pool pool(std::move(config));
 auto answer = pool.submit([] { return calculate(); });
@@ -248,8 +249,10 @@ auto interactive = threadschedule::schedule::interactive();
 auto low_latency = threadschedule::schedule::low_latency();
 auto lower_priority = threadschedule::schedule::priority(
     threadschedule::priority_level::low);
-auto exact_nice = threadschedule::schedule::nice(10);
-auto realtime = threadschedule::schedule::realtime_fifo(80);
+auto exact_nice = threadschedule::schedule::nice(
+    threadschedule::nice_value{10});
+auto realtime = threadschedule::schedule::realtime_fifo(
+    threadschedule::realtime_priority{80});
 ```
 
 The five `priority_level` values are the simplest cross-platform choice.

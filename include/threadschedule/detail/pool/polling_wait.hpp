@@ -4,6 +4,12 @@
  *  @brief Timed idle-wait strategy for queue-based pools.
  */
 
+#include <chrono>
+#include <condition_variable>
+
+namespace threadschedule::detail
+{
+
 template <unsigned IntervalMs = 10>
 struct polling_wait
 {
@@ -14,3 +20,5 @@ struct polling_wait
     return cv.wait_for(lock, std::chrono::milliseconds(IntervalMs), pred);
   }
 };
+
+} // namespace threadschedule::detail

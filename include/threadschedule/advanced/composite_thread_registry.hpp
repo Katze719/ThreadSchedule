@@ -38,20 +38,17 @@ public:
   [[nodiscard]] auto
   snapshot() const -> result<std::vector<registered_thread>>
   {
-    try
-      {
-        auto entries = implementation_.query().entries();
-        std::vector<registered_thread> result_entries;
-        result_entries.reserve(entries.size());
-        for (auto const& entry : entries)
-          result_entries.push_back(
-              { static_cast<std::uint64_t>(entry.tid), entry.std_id, entry.name, entry.component, entry.alive });
-        return result_entries;
-      }
-    catch (...)
-      {
-        return unexpected(::threadschedule::detail::current_exception_error_code());
-      }
+    return ::threadschedule::detail::try_result(
+        [this]() -> result<std::vector<registered_thread>>
+          {
+            auto entries = implementation_.query().entries();
+            std::vector<registered_thread> result_entries;
+            result_entries.reserve(entries.size());
+            for (auto const& entry : entries)
+              result_entries.push_back({ detail::thread_id_access::make(static_cast<std::uint64_t>(entry.tid)),
+                                         entry.std_id, entry.name, entry.component, entry.alive });
+            return result_entries;
+          });
   }
 
   /** @brief Number of entries in a newly merged snapshot. */

@@ -350,131 +350,109 @@ read_scheduling_policy(HANDLE handle) -> std::optional<native_scheduling_policy>
 inline auto
 apply_priority(native_thread_id tid, native_thread_priority priority) -> expected<void, std::error_code>
 {
-  HANDLE handle = OpenThread(THREAD_SET_INFORMATION, FALSE, tid);
+  unique_handle handle(OpenThread(THREAD_SET_INFORMATION, FALSE, tid));
   if (!handle)
     return unexpected(last_win32_error());
 
-  auto result = apply_priority(handle, priority);
-  CloseHandle(handle);
-  return result;
+  return apply_priority(handle.get(), priority);
 }
 
 inline auto
 apply_windows_thread_priority(native_thread_id tid, int priority) -> expected<void, std::error_code>
 {
-  HANDLE handle = OpenThread(THREAD_SET_INFORMATION, FALSE, tid);
+  unique_handle handle(OpenThread(THREAD_SET_INFORMATION, FALSE, tid));
   if (!handle)
     return unexpected(last_win32_error());
-  auto result = apply_windows_thread_priority(handle, priority);
-  CloseHandle(handle);
-  return result;
+  return apply_windows_thread_priority(handle.get(), priority);
 }
 
 inline auto
 apply_nice_value(native_thread_id tid, int nice_value) -> expected<void, std::error_code>
 {
-  HANDLE handle = OpenThread(THREAD_SET_INFORMATION, FALSE, tid);
+  unique_handle handle(OpenThread(THREAD_SET_INFORMATION, FALSE, tid));
   if (!handle)
     return unexpected(last_win32_error());
-  auto result = apply_nice_value(handle, nice_value);
-  CloseHandle(handle);
-  return result;
+  return apply_nice_value(handle.get(), nice_value);
 }
 
 inline auto
 apply_scheduling_policy(native_thread_id tid, native_scheduling_policy policy, native_thread_priority priority)
     -> expected<void, std::error_code>
 {
-  HANDLE handle = OpenThread(THREAD_SET_INFORMATION, FALSE, tid);
+  unique_handle handle(OpenThread(THREAD_SET_INFORMATION, FALSE, tid));
   if (!handle)
     return unexpected(last_win32_error());
 
-  auto result = apply_scheduling_policy(handle, policy, priority);
-  CloseHandle(handle);
-  return result;
+  return apply_scheduling_policy(handle.get(), policy, priority);
 }
 
 inline auto
 apply_affinity(native_thread_id tid, native_thread_affinity const& affinity) -> expected<void, std::error_code>
 {
-  HANDLE handle = OpenThread(THREAD_SET_INFORMATION, FALSE, tid);
+  unique_handle handle(OpenThread(THREAD_SET_INFORMATION, FALSE, tid));
   if (!handle)
     return unexpected(last_win32_error());
 
-  auto result = apply_affinity(handle, affinity);
-  CloseHandle(handle);
-  return result;
+  return apply_affinity(handle.get(), affinity);
 }
 
 inline auto
 apply_name(native_thread_id tid, std::string const& name) -> expected<void, std::error_code>
 {
-  HANDLE handle = OpenThread(THREAD_SET_LIMITED_INFORMATION, FALSE, tid);
+  unique_handle handle(OpenThread(THREAD_SET_LIMITED_INFORMATION, FALSE, tid));
   if (!handle)
     return unexpected(std::make_error_code(std::errc::no_such_process));
 
-  auto result = apply_name(handle, name);
-  CloseHandle(handle);
-  return result;
+  return apply_name(handle.get(), name);
 }
 
 inline auto
 read_name(native_thread_id tid) -> expected<std::string, std::error_code>
 {
-  HANDLE handle = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, tid);
+  unique_handle handle(OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, tid));
   if (!handle)
     return unexpected(last_win32_error());
 
-  auto result = read_name(handle);
-  CloseHandle(handle);
-  return result;
+  return read_name(handle.get());
 }
 
 inline auto
 read_affinity(native_thread_id tid) -> expected<native_thread_affinity, std::error_code>
 {
-  HANDLE handle = OpenThread(THREAD_QUERY_INFORMATION, FALSE, tid);
+  unique_handle handle(OpenThread(THREAD_QUERY_INFORMATION, FALSE, tid));
   if (!handle)
     return unexpected(last_win32_error());
 
-  auto result = read_affinity(handle);
-  CloseHandle(handle);
-  return result;
+  return read_affinity(handle.get());
 }
 
 inline auto
 read_priority(native_thread_id tid) -> std::optional<int>
 {
-  HANDLE handle = OpenThread(THREAD_QUERY_INFORMATION, FALSE, tid);
+  unique_handle handle(OpenThread(THREAD_QUERY_INFORMATION, FALSE, tid));
   if (!handle)
     return std::nullopt;
 
-  auto result = read_priority(handle);
-  CloseHandle(handle);
-  return result;
+  return read_priority(handle.get());
 }
 
 inline auto
 read_nice_value(native_thread_id tid) -> expected<int, std::error_code>
 {
-  HANDLE handle = OpenThread(THREAD_QUERY_INFORMATION, FALSE, tid);
+  unique_handle handle(OpenThread(THREAD_QUERY_INFORMATION, FALSE, tid));
   if (!handle)
     return unexpected(last_win32_error());
-  auto result = read_nice_value(handle);
-  CloseHandle(handle);
-  return result;
+  return read_nice_value(handle.get());
 }
 
 inline auto
 read_scheduling_policy(native_thread_id tid) -> std::optional<native_scheduling_policy>
 {
-  HANDLE handle = OpenThread(THREAD_QUERY_INFORMATION, FALSE, tid);
+  unique_handle handle(OpenThread(THREAD_QUERY_INFORMATION, FALSE, tid));
   if (!handle)
     return std::nullopt;
 
-  auto result = read_scheduling_policy(handle);
-  CloseHandle(handle);
-  return result;
+  return read_scheduling_policy(handle.get());
 }
 
 #if defined(__MINGW32__)

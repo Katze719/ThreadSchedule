@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 482" width="820" height="482" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
 <rect x="0" y="0" width="820" height="482" rx="14" fill="#ffffff" stroke="#dbe3ef" />
-<text x="24" y="34" fill="#122033" font-size="18" font-weight="700">Do the SBO callables help? (C++26)</text>
-<text x="24" y="56" fill="#5b6b82" font-size="13">Per-task cost; the 48 B capture fits the SBO buffer but spills the std-library callable to the heap (lower is better)</text>
+<text x="24" y="34" fill="#122033" font-size="18" font-weight="700">Does a larger inline capacity help? (C++26)</text>
+<text x="24" y="56" fill="#5b6b82" font-size="13">Per-task cost; the 48 B capture fits the 56 B buffer but spills the default buffer to the heap (lower is better)</text>
 <line x1="64" y1="396.0" x2="796" y2="396.0" stroke="#dbe3ef" stroke-width="1" />
 <text x="56" y="400.0" fill="#5b6b82" font-size="11" text-anchor="end">0.0</text>
 <line x1="64" y1="336.0" x2="796" y2="336.0" stroke="#dbe3ef" stroke-width="1" />
@@ -15,17 +15,17 @@
 <line x1="64" y1="96.0" x2="796" y2="96.0" stroke="#dbe3ef" stroke-width="1" />
 <text x="56" y="100.0" fill="#5b6b82" font-size="11" text-anchor="end">30.0</text>
 <text x="16" y="88" fill="#5b6b82" font-size="12" font-weight="600">ns per task</text>
-<rect x="103.0" y="363.5" width="81.0" height="32.5" rx="3" fill="#2a7fff" />
-<rect x="186.0" y="364.9" width="81.0" height="31.1" rx="3" fill="#db2777" />
+<rect x="103.0" y="361.0" width="81.0" height="35.0" rx="3" fill="#2a7fff" />
+<rect x="186.0" y="352.6" width="81.0" height="43.4" rx="3" fill="#db2777" />
 <text x="186.0" y="414.0" fill="#122033" font-size="12" font-weight="600" text-anchor="middle">small (8 B)</text>
-<rect x="347.0" y="178.7" width="81.0" height="217.3" rx="3" fill="#2a7fff" />
-<rect x="430.0" y="356.8" width="81.0" height="39.2" rx="3" fill="#db2777" />
+<rect x="347.0" y="172.5" width="81.0" height="223.5" rx="3" fill="#2a7fff" />
+<rect x="430.0" y="366.5" width="81.0" height="29.5" rx="3" fill="#db2777" />
 <text x="430.0" y="414.0" fill="#122033" font-size="12" font-weight="600" text-anchor="middle">medium (48 B)</text>
-<rect x="591.0" y="192.8" width="81.0" height="203.2" rx="3" fill="#2a7fff" />
-<rect x="674.0" y="162.2" width="81.0" height="233.8" rx="3" fill="#db2777" />
+<rect x="591.0" y="191.2" width="81.0" height="204.8" rx="3" fill="#2a7fff" />
+<rect x="674.0" y="187.2" width="81.0" height="208.8" rx="3" fill="#db2777" />
 <text x="674.0" y="414.0" fill="#122033" font-size="12" font-weight="600" text-anchor="middle">large (128 B)</text>
 <rect x="64" y="440" width="14" height="14" rx="3" fill="#2a7fff" />
-<text x="84" y="452" fill="#122033" font-size="12">move_callable (thread_pool_backend / std lib)</text>
-<rect x="353.2" y="440" width="14" height="14" rx="3" fill="#db2777" />
-<text x="373.2" y="452" fill="#122033" font-size="12">sbo_callable (lightweight_pool_backend)</text>
+<text x="84" y="452" fill="#122033" font-size="12">move_only_function (default inline size)</text>
+<rect x="382.0" y="440" width="14" height="14" rx="3" fill="#db2777" />
+<text x="402.0" y="452" fill="#122033" font-size="12">move_only_function (56 B inline size)</text>
 </svg>

@@ -7,7 +7,7 @@
 
 #include "../../expected.hpp"
 #include "../../export.hpp"
-#include "../callable/move_callable.hpp"
+#include "../callable/copyable_function.hpp"
 #include "../scheduling/native.hpp"
 #include "../thread_backend.hpp"
 #include <algorithm>
@@ -35,22 +35,9 @@
 #  include <sys/types.h>
 #endif
 
-namespace threadschedule
-{
-class auto_register_current_thread;
-}
-
-namespace threadschedule::detail
-{
-
 // These fragments form a dependency chain; keep this order.
-// clang-format off
-#include "thread_control_block.hpp"
-#include "query_facade_mixin.hpp"
-#include "thread_registry_backend.hpp"
-// clang-format on
-
-} // namespace threadschedule::detail
-
 #include "composite_thread_registry_backend.hpp"
+#include "query_facade_mixin.hpp"
 #include "registration_guard_backend.hpp"
+#include "thread_control_block.hpp"
+#include "thread_registry_backend.hpp"
