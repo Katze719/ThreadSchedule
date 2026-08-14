@@ -9,7 +9,7 @@
  * pool submissions.
  */
 
-#include "expected.hpp"
+#include "../expected.hpp"
 
 #include <chrono>
 #include <exception>
@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-namespace threadschedule
+namespace threadschedule::advanced
 {
 
 /**
@@ -216,4 +216,4 @@ when_any(std::vector<std::future<void>>& futures) -> size_t
     }
 }
 
-} // namespace threadschedule
+} // namespace threadschedule::advanced

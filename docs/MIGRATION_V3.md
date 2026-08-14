@@ -1,175 +1,394 @@
-# Migrating to ThreadSchedule 3.0
+# Migrating from ThreadSchedule 2.4.0 to 3.0.0
 
-Version 3.0 is a hard API reset. It deliberately does not provide deprecated
-aliases for 2.x names.
+ThreadSchedule 3.0.0 replaces the 2.4.0 public API with a smaller lowercase core and a separate advanced API. It provides no
+compatibility aliases for the 2.4.0 names, and its shared runtime is not binary compatible with version 2.4.0.
 
-## Core renames
+## Recommended migration order
 
-| 2.x | 3.0 |
-| --- | --- |
-| `ThreadWrapper` | `thread` |
-| `ThreadWrapperView` / ordinary `ThreadInfo` use | `thread_view` |
-| `ThreadRegistry` | `thread_registry` |
-| `registry()` | `global_registry()` |
-| `set_external_registry()` | `use_global_registry()` |
-| `build_mode()` | `current_build_mode()` |
-| `ThreadPool` | `thread_pool` |
-| `ScheduledThreadPool` | `scheduled_pool` |
-| `ThreadConfig` | `thread_config` |
-| `ThreadSchedulingConfig` | `scheduling_config` |
-| `ThreadAffinity` | `thread_affinity` |
-| `ShutdownPolicy` | `shutdown_policy` |
-| `ScheduledTaskHandle` | `scheduled_task` |
-| `TaskError` | `task_error` |
+1. Keep `<threadschedule/threadschedule.hpp>` temporarily, rename the core types, and make every new `result<T>` explicit.
+2. Replace native priority/policy calls with `thread_config` and `schedule::*` wherever portable behavior is sufficient.
+3. Move specialized pools and optional utilities to `threadschedule::advanced`.
+4. Replace registry query chains with a checked `snapshot()` and ordinary STL algorithms.
+5. Remove deleted module, stable-ABI, reflection, and coroutine build options or code.
+6. Rebuild every executable and shared library that links `ThreadSchedule::Runtime`.
+7. Once the code builds, replace the umbrellas with focused includes where useful.
 
-These are real v3 types, not source-compatibility aliases. The implementation
-backends are private details. Code that depended on inheritance or native
-storage must move to the documented lowercase operations or an explicit
-`advanced` API.
+## Includes and namespaces
 
-Threads, registries, and pools are directly constructible in the standard
-library style. Their constructors can throw on resource or initial
-configuration failures. The static `create(...)` factories remain available
-when an `expected` result is preferable. `thread_pool::submit` and `post` are
-non-throwing submission operations; use `submit_or_throw` or `post_or_throw`
-only when that policy is intentional.
-
-## Thread state and error handling
-
-Operations whose normal failure mode is recoverable now return
-`threadschedule::result<T>` (an `expected<T, std::error_code>` specialization).
-Callers should inspect the returned error instead of relying on exceptions or
-on an empty value that loses the platform failure.
-
-In particular, `thread::join()` and `thread::detach()` report
-`std::errc::invalid_argument` when the thread is not joinable. Use
-`join_or_throw()` and `detach_or_throw()` only when standard-style exceptions
-are desired. A control object for a thread that exited or was unregistered
-reports `std::errc::no_such_process`.
-
-Affinity getters now return `result<thread_affinity>`. An empty mask is a valid
-value and is no longer used as a fallback for failed native reads. Native
-permission, support, and validation errors are preserved, so code should not
-assume that every configuration failure is `permission_denied`.
-
-## Scheduling and affinity semantics
-
-Portable realtime policies use the explicit native-style range 1 through 99:
+The 2.4 umbrella included nearly every optional facility. In 3.0 it includes only the portable core:
 
 ```cpp
-config.scheduling = threadschedule::schedule::realtime_fifo(40);
-config.scheduling = threadschedule::schedule::realtime_rr(20);
+#include <threadschedule/threadschedule.hpp> // complete core
+#include <threadschedule/advanced.hpp>       // optional and native facilities
 ```
 
-Values outside that range return `std::errc::invalid_argument`. During
-configured thread construction they are rejected before the callable starts.
-For non-realtime work, use `schedule::priority(priority_level)` or
-`schedule::nice(-20..19)`; the latter is an exact Linux nice value and a safe
-discrete priority mapping on Windows.
+Small consumers can include one contract directly, for example:
 
-Affinity application is now lossless. A mask that the native platform cannot
-represent is rejected instead of being truncated, and a successful operation
-requires exact readback. On a partial native change the library attempts to
-restore the previous mask and returns an error. Pool worker distribution uses
-the process's allowed CPU set rather than assuming CPUs start at zero.
+```cpp
+#include <threadschedule/thread.hpp>
+#include <threadschedule/thread_config.hpp>
+#include <threadschedule/thread_pool.hpp>
+```
 
-On Windows, topology CPU identifiers are flattened as
-`processor_group * 64 + processor_index`. One affinity value can represent one
-processor group; requests that mix groups are rejected. If Windows exposes a
-default thread across multiple groups, `get_affinity()` reports the primary
-group returned by `GetThreadGroupAffinity` rather than claiming an all-group
-mask.
+The following 2.4 root headers moved or were replaced:
 
-## Advanced APIs
-
-| 2.x | 3.0 |
+| 2.4 header | 3.0 header |
 | --- | --- |
+| `thread_wrapper.hpp` | `thread.hpp`, `jthread.hpp`, `thread_view.hpp` |
+| `scheduler_policy.hpp` | `scheduling.hpp`, `thread_affinity.hpp`, `thread_config.hpp` |
+| `profiles.hpp` | `advanced/thread_profile.hpp` |
+| `topology.hpp` | `advanced/cpu_topology.hpp` |
+| `chaos.hpp` | `advanced/chaos_controller.hpp` |
+| `futures.hpp` | `advanced/futures.hpp` |
+| `task_group.hpp` | `advanced/task_group.hpp` |
+| `error_handler.hpp` | `task_error.hpp` for core callbacks, or `advanced/error_handler.hpp` |
+| `inline_pool.hpp` | `advanced/pools.hpp` |
+| `registered_threads.hpp` | No replacement header; register explicitly |
+| `pthread_wrapper.hpp` | No replacement header; use `thread` or the platform API directly |
+| `abi.hpp`, `task.hpp`, `generator.hpp`, `reflection.hpp`, `concepts.hpp`, `callable.hpp` | Removed |
+
+All optional names now require the `threadschedule::advanced` qualifier. Do not include or name anything under
+`threadschedule::detail`; those headers are implementation details and may change without compatibility guarantees.
+
+## Core type mapping
+
+The lowercase 3.0 types are new implementations, not aliases or subclasses of their 2.4 counterparts.
+
+| 2.4 | 3.0 |
+| --- | --- |
+| `ThreadWrapper` | `thread` |
+| `JThreadWrapper` | `jthread` when C++20 `std::jthread` is available |
+| `ThreadWrapperView` | `thread_view` for configuration only |
+| `ThreadAffinity` | `thread_affinity` for portable code |
+| `ThreadPriority` | `priority_level`, `schedule::nice(...)`, or an advanced native type |
+| `SchedulingPolicy` | `schedule::*` or `advanced::native_scheduling_policy` |
+| `SchedulerParams` | `advanced::scheduler_parameters` |
+| `Tid` | `advanced::native_thread_id`; registry snapshots expose `std::uint64_t` |
+| `ThreadRegistry` | `thread_registry` |
+| `RegisteredThreadInfo` | `registered_thread` |
+| `AutoRegisterCurrentThread` | `auto_register_current_thread` |
+| `ScheduledTaskHandle` | `scheduled_task` |
+| `ShutdownPolicy` | `shutdown_policy` |
+| `TaskError` used by a core pool | `task_error` |
+| `BuildMode` / `build_mode()` | `build_mode` / `current_build_mode()` |
+| `registry()` | `global_registry()` |
+| `set_external_registry(...)` | `use_global_registry(...)` |
+
+There is no 3.0 public replacement for `JThreadWrapperView`, `PThreadWrapper`, `PThreadAttributes`, `PThreadMutex`,
+`ThreadByNameView`, or the public `ThreadControlBlock`. Use the original `std::thread`/`std::jthread`, the platform API, the
+calling-thread API, or a registry snapshot according to the ownership model.
+
+The build-mode enumerators are lowercase as well: `BuildMode::HEADER_ONLY` becomes `build_mode::header_only`, and
+`BuildMode::RUNTIME` becomes `build_mode::runtime`. `is_runtime_build` and `build_mode_string()` keep their names.
+
+`ThreadInfo` split into two clearer paths:
+
+- configure the calling thread with `threadschedule::this_thread`;
+- register another live thread and control it through `thread_registry::configure(native_id, config)`.
+
+## Results and exceptions
+
+`result<T>` is `expected<T, std::error_code>`. In 3.0 it is the normal return type for recoverable configuration,
+submission, registry, waiting, and shutdown failures.
+
+```cpp
+auto joined = worker.join();
+if (!joined)
+  report(joined.error());
+```
+
+The main behavior changes are:
+
+| 2.4 operation | 3.0 operation |
+| --- | --- |
+| `ThreadWrapper::join()` / `detach()` | `thread::join()` / `detach()` return `result<void>` |
+| Join or detach a non-joinable wrapper | 2.4 silently did nothing; 3.0 returns `invalid_argument` |
+| `get_name()` / `get_affinity()` | Return `result<T>` instead of losing errors in `optional` |
+| Pool `try_submit(...)` | Core `thread_pool::submit(...)` |
+| Pool `submit(...)` | Core `thread_pool::submit_or_throw(...)`, or check `submit(...)` |
+| Pool `try_post(...)` | Core `thread_pool::post(...)` |
+| Pool `post(...)` | Core `thread_pool::post_or_throw(...)`, or check `post(...)` |
+| Scheduled `schedule_*()` | Return `result<scheduled_task>` |
+
+Direct constructors can throw `std::system_error`. Use `thread::create`, `jthread::create`, `thread_pool::create`, or
+`scheduled_pool::create` when construction must return an error value. Explicit `*_or_throw` methods are provided where the
+core operation otherwise returns a result.
+
+Task exceptions are separate from submission errors. A successful `thread_pool::submit` contains a `std::future`; an
+exception thrown by the task is rethrown by that future's `get()`. A `post()` has no future, so configure `on_task_error` if
+the exception must be observed.
+
+## Threads and configuration
+
+A direct 2.4 conversion looks like this:
+
+```cpp
+// 2.4
+threadschedule::ThreadWrapper worker([] { run(); });
+(void)worker.set_name("worker");
+(void)worker.set_scheduling_policy(
+    threadschedule::SchedulingPolicy::OTHER,
+    threadschedule::ThreadPriority::normal());
+worker.join();
+```
+
+```cpp
+// 3.0
+threadschedule::thread_config config;
+config.name = "worker";
+config.scheduling = threadschedule::schedule::normal();
+
+threadschedule::thread worker(config, [] { run(); });
+if (auto joined = worker.join(); !joined)
+  report(joined.error());
+```
+
+Unlike `ThreadWrapper::create_with_config`, which started the callable and ignored configuration failures, a configured 3.0
+thread uses a startup gate. If name, scheduling, or affinity setup fails, the callable is not invoked. The direct constructor
+throws; the factory reports the same failure:
+
+```cpp
+auto worker = threadschedule::thread::create(config, [] { run(); });
+if (!worker)
+  report(worker.error());
+else if (auto joined = worker->join(); !joined)
+  report(joined.error());
+```
+
+`thread` still joins on destruction, so destruction and move assignment can block. `release()` transfers the owned
+`std::thread`. Platform-native handle access is no longer a core member; use
+`threadschedule::advanced::native_handle(worker)` only when a native API is genuinely required.
+
+`thread_view` is deliberately control-only. Keep using the original `std::thread` for `join`, `detach`, and direct access:
+
+```cpp
+std::thread native([] { run(); });
+threadschedule::thread_view view(native);
+(void)view.set_name("worker");
+native.join();
+```
+
+On Linux, portable nice control needs the native TID. A `thread_view` over an external `std::thread` therefore requires the
+constructor that also receives its known native ID; without it, nice operations return `operation_not_supported`.
+
+In C++20, replace `JThreadWrapper` with `jthread`. It follows `std::jthread` callable rules, including stop-token injection.
+In C++17 no `jthread` name exists; the 2.4 fallback alias to `ThreadWrapper` was removed.
+
+## Scheduling and affinity
+
+Prefer portable scheduling intent:
+
+```cpp
+threadschedule::thread_config config;
+config.scheduling = threadschedule::schedule::background();
+config.affinity = threadschedule::thread_affinity({ 2, 3 });
+
+config.scheduling = threadschedule::schedule::priority(
+    threadschedule::priority_level::low);
+config.scheduling = threadschedule::schedule::nice(10);
+config.scheduling = threadschedule::schedule::realtime_fifo(40);
+```
+
+Portable nice values are validated as `-20..19`; portable FIFO/RR priorities are validated as `1..99`. Invalid values return
+`invalid_argument` instead of being clamped. Negative nice values and realtime policies commonly require elevated Linux
+privileges.
+
+The old static `ThreadWrapper::set_nice_value` changed process-level state. In 3.0, `thread::set_nice`,
+`thread_view::set_nice`, and `this_thread::set_nice` target an individual thread. On Windows, portable nice and realtime
+requests map to safe thread priorities and never select `THREAD_PRIORITY_TIME_CRITICAL`.
+
+Affinity changes are now all-or-error: an unrepresentable mask is rejected, successful application requires exact readback,
+and the implementation attempts rollback after a partial native change. On Windows, logical CPU IDs are flattened as
+`processor_group * 64 + processor_index`; one mask cannot span processor groups.
+
+For native policies and values, include `<threadschedule/advanced/native_thread.hpp>` and use
+`native_thread_priority`, `native_scheduling_policy`, `native_thread_affinity`, `native_thread_config`, and
+`scheduler_parameters` from `threadschedule::advanced`.
+
+## Pools
+
+For ordinary work, migrate `ThreadPool` to the canonical facade:
+
+```cpp
+threadschedule::thread_pool_config config;
+config.worker_count = 4;
+config.register_workers = true;
+config.workers.name = "worker";
+config.shutdown = threadschedule::shutdown_policy::drain;
+config.on_task_error = [](threadschedule::task_error const& error) {
+  log(error.what());
+};
+
+threadschedule::thread_pool pool(std::move(config));
+auto submitted = pool.submit([] { return calculate(); });
+if (!submitted)
+  report(submitted.error());
+else
+  consume(submitted->get());
+```
+
+The canonical facade intentionally omits backend tuning, statistics, batch/range algorithms, and timed shutdown. If 2.4 code
+depends on those lower-level operations, select the corresponding supported advanced pool:
+
+| 2.4 pool | 3.0 replacement |
+| --- | --- |
+| `ThreadPool` | `thread_pool`; `advanced::raw_thread_pool` for backend-specific operations |
 | `HighPerformancePool` | `advanced::work_stealing_pool` |
 | `FastThreadPool` | `advanced::polling_pool` |
 | `LightweightPool` | `advanced::lightweight_pool` |
 | `InlinePool` | `advanced::inline_pool` |
-| `PThreadWrapper` | Removed; use `thread` (`std::thread` internally) |
-| `ThreadPriority` / `SchedulingPolicy` | `advanced::native_thread_priority` / `advanced::native_scheduling_policy` |
+| `GlobalThreadPool` | `advanced::global_thread_pool` |
+| `GlobalHighPerformancePool` | `advanced::global_work_stealing_pool` |
+| `ScheduledThreadPool` | `scheduled_pool`; `advanced::raw_scheduled_pool` for backend-specific operations |
+| `ScheduledHighPerformancePool` | `advanced::scheduled_work_stealing_pool` |
+| `ScheduledFastThreadPool` | `advanced::scheduled_polling_pool` |
+| `ScheduledLightweightPool` | `advanced::scheduled_lightweight_pool` |
 
-For ordinary non-realtime priority, prefer the new core API instead of the
-native replacements:
+`ThreadPoolBase`, `PollingWait`, `LightweightPoolT`, `GlobalPool`, and `ScheduledThreadPoolT` are no longer public extension
+points. Choose a named advanced pool instead of instantiating the generic implementation machinery.
+
+`PoolWithErrors`, `ThreadPoolWithErrors`, `FastThreadPoolWithErrors`, and `HighPerformancePoolWithErrors` were removed. Set
+`thread_pool_config::on_task_error` or `scheduled_pool_config::on_task_error`. The independent lower-level `ErrorHandler`
+family remains available with lowercase names in `threadschedule::advanced`.
+
+Calling `wait()` or `shutdown()` from a task running on the same core pool now reports
+`resource_deadlock_would_occur`. Destroying a pool from one of its own tasks remains unsupported; destroy it from an external
+owner after the task returns.
+
+## Scheduled work
+
+`scheduled_pool_config` configures worker threads and the scheduler thread before either is used:
 
 ```cpp
-config.scheduling
-    = threadschedule::schedule::priority(threadschedule::priority_level::low);
-config.scheduling = threadschedule::schedule::nice(10);
+threadschedule::scheduled_pool_config config;
+config.worker_count = 2;
+config.workers.name = "timer-worker";
+config.scheduler.name = "scheduler";
+
+threadschedule::scheduled_pool pool(std::move(config));
+auto task = pool.schedule_periodic_after(
+    std::chrono::seconds(5), std::chrono::seconds(1), [] { sample(); });
+if (!task)
+  report(task.error());
+else
+  task->cancel();
 ```
 
-The five-level form is portable. Nice values are exact per-thread values on
-Linux and map to safe, discrete Win32 thread priorities on MSVC and MinGW.
-Code that genuinely needs the platform handle can call
-`threadschedule::advanced::native_handle(thread)`; native handles are not part
-of the portable core member surface.
+There is no core `configure_scheduler_thread` after construction; put its `thread_config` in
+`scheduled_pool_config::scheduler`. Periodic intervals must be positive. Periodic executions do not overlap with themselves,
+and missed fixed-rate deadlines are skipped. Cancellation is cooperative and does not interrupt a running invocation.
 
-`PoolWithErrors` and its aliases were removed. Set
-`thread_pool_config::on_task_error` instead; task exceptions remain available
-through the returned future. `scheduled_pool_config::on_task_error` provides
-the same reporting hook for scheduled fire-and-forget work.
+## Registry
 
-## Pool and scheduled-work lifecycle
+The 2.4 chainable query facade and public control blocks were removed from the portable API. Take a checked value snapshot and
+use normal C++ algorithms:
 
-Calling a pool's shutdown or wait operation from one of that pool's workers
-is rejected with `std::errc::resource_deadlock_would_occur`. Destroying a pool
-from one of its own tasks remains unsupported; arrange for an owning thread
-to destroy it after the task returns.
+```cpp
+auto& registry = threadschedule::global_registry();
+threadschedule::auto_register_current_thread registration("main", "app");
 
-`shutdown_for(timeout)` stops accepting submissions before waiting. It returns
-`true` only if every accepted task finishes by the deadline. On timeout,
-pending tasks are discarded and their futures become ready, while running
-tasks are joined before the operation returns. Consequently, the call itself
-can return after the requested timeout when a running task cannot be stopped.
-Concurrent shutdown callers are serialized safely.
+auto snapshot = registry.snapshot();
+if (!snapshot) {
+  report(snapshot.error());
+} else {
+  for (auto const& entry : *snapshot)
+    inspect(entry.name, entry.component, entry.native_id, entry.alive);
+}
+```
 
-After a move, the source pool has size zero. Submission, waiting, and worker
-configuration report `operation_canceled`; shutdown remains an idempotent
-success.
+`register_current_thread` and `unregister_current_thread` now return `result<void>`. Entries registered through the public
+API retain a guarded native control object while they are live, so they can be reconfigured using the snapshot's `native_id`:
 
-Periodic jobs use fixed-rate scheduling, never overlap with themselves, and
-skip missed deadlines instead of accumulating an overdue backlog. Cancellation
-is cooperative: it prevents future invocations but does not interrupt one that
-is already running. Pool shutdown cancels work that has not yet become due;
-work already dispatched to a worker follows the configured shutdown policy.
+```cpp
+threadschedule::thread_config config;
+config.scheduling = threadschedule::schedule::priority(
+    threadschedule::priority_level::low);
 
-## Registry lifetime
+auto changed = registry.configure(entry.native_id, config);
+if (!changed)
+  report(changed.error());
+```
 
-`auto_register_current_thread` retains the registry selected at construction.
-Nested registration of the same native thread is a no-op and the inner guard
-does not unregister the outer registration. An explicitly supplied registry
-backend must outlive its guard. Moving the public registry preserves existing
-global guards and live control blocks; the moved-from registry remains valid
-to inspect or assign but mutating operations report `operation_canceled`.
+Stale, exited, unregistered, or replaced registrations report `no_such_process`. `registered_thread` is only a portable value
+snapshot; it does not expose a native handle or own a control block.
 
-Registry control handles are valid only for the matching live registration.
-Unregistration and thread exit invalidate them before a later thread can reuse
-the same native identifier, and stale configuration attempts report
-`no_such_process`.
+Replace the automatically registering `ThreadWrapperReg`, `JThreadWrapperReg`, and `PThreadWrapperReg` by placing an
+`auto_register_current_thread` guard in the callable, or set `register_workers = true` in a pool config.
 
-Optional profiles, topology helpers, future combinators, task groups, chaos
-testing, and lower-level error handling are supported through
-`<threadschedule/advanced.hpp>` and `threadschedule::advanced`.
+For independent registries, replace `CompositeThreadRegistry` with `advanced::composite_thread_registry`. Its `attach` takes
+a `thread_registry&`, and it exposes `snapshot`, `count`, and `empty` rather than the old chainable query facade.
 
-## Removed features
+## Optional advanced utilities
 
-- the C ABI, opaque ABI handles, `ThreadSchedule::StableAbi`, and stable-ABI CMake options
-- the C++20 module target
-- the old `JThreadWrapper`; C++20 instead exposes the independent lowercase
-  `jthread`, with no C++17 fallback alias
-- coroutine `task` and `generator` helpers
-- C++26 reflection and reflection-backed registry queries
-- standard-dependent ranges overloads
+| 2.4 | 3.0 |
+| --- | --- |
+| `ThreadProfile`, `apply_profile`, `profiles::*` | `advanced::thread_profile`, `advanced::apply_profile`, `advanced::profiles::*` |
+| `CpuTopology`, topology/NUMA helpers | `advanced::cpu_topology` and lowercase helpers |
+| `ChaosConfig`, `ChaosController` | `advanced::chaos_config`, `advanced::chaos_controller` |
+| `CompositeThreadRegistry` | `advanced::composite_thread_registry` |
+| `when_all`, `when_any`, `when_all_settled` | Same names in `advanced` |
+| `task_group` | `advanced::task_group` |
+| `ErrorHandler`, `FutureWithErrorHandler` | `advanced::error_handler`, `advanced::future_with_error_handler` |
+| `ErrorHandledTask`, `make_error_handled_task` | Lowercase equivalents in `advanced` |
+| `cgroup_attach_tid` | `advanced::cgroup_attach_tid` on Linux |
 
-Applications can compile the full C++17 core API unchanged in newer language
-modes. `jthread` is the deliberate exception and exists only when C++20
-`std::jthread` support is detected.
+These advanced types are supported public APIs, but they are not included by the core umbrella.
 
-## Runtime migration
+## Removed facilities
 
-`THREADSCHEDULE_RUNTIME=ON` now builds only the optional shared C++ registry.
-All participating DSOs must use one supported toolchain line and identical v3
-headers. Projects that require a compiler-neutral plugin ABI must define that
-boundary in their own application protocol.
+The following 2.4 facilities have no 3.0 compatibility layer:
+
+- the experimental `threadschedule::abi` C ABI, opaque registry handles, status types, validation macro, and stable-ABI modes;
+- the C++20 module source and `ThreadSchedule::Module` target;
+- coroutine `task`, `generator`, `sync_wait`, `schedule_on`, `run_on`, and executor helpers;
+- C++26 reflection and reflection-backed registry queries;
+- public concepts/type traits and callable-storage helpers;
+- standard-dependent ranges overloads;
+- the dedicated pthread wrapper, registered-wrapper subclasses, by-name thread view, and jthread view;
+- generic public pool bases and wait policies.
+
+Use standard-library or application-owned implementations where no v3 replacement is listed. In particular, applications
+that need a compiler-neutral plugin ABI must define that ABI in their own protocol.
+
+## CMake and packaging
+
+The supported targets remain:
+
+```cmake
+target_link_libraries(app PRIVATE ThreadSchedule::ThreadSchedule)
+
+# Optional shared process registry:
+set(THREADSCHEDULE_RUNTIME ON)
+target_link_libraries(app PRIVATE ThreadSchedule::Runtime)
+```
+
+`THREADSCHEDULE_RUNTIME` now defaults to `OFF`, making header-only mode the default even for a top-level build.
+`THREADSCHEDULE_BUILD_DOCS` also defaults to `OFF`.
+
+Remove these 2.4 options:
+
+- `THREADSCHEDULE_STABLE_ABI`
+- `THREADSCHEDULE_STABLE_ABI_STRICT`
+- `THREADSCHEDULE_MODULE`
+- `THREADSCHEDULE_ENABLE_REFLECTION`
+
+The installed package now uses same-major version compatibility, so `find_package(ThreadSchedule 2 ...)` will not accept a
+3.x installation. Adding the project as a subdirectory no longer rewrites parent MSVC runtime flags or injects `_WIN32_WINNT`.
+A Conan 2 recipe is available; its normal `shared=True` option selects the optional runtime, while the default package stays
+header-only.
+
+## Runtime and ABI
+
+The 3.0 runtime ABI is incompatible with 2.4. The public C ABI and the exported C++ `registry()` /
+`set_external_registry()` entry points are gone. The runtime exports private registry-storage hooks used by
+`global_registry()` and `use_global_registry()`, plus runtime mode inspection through `current_build_mode()`.
+
+After upgrading:
+
+- rebuild the executable and every participating shared library with the same v3 headers;
+- use a compatible compiler and standard-library toolchain across the runtime boundary;
+- link every participant that must share one registry to `ThreadSchedule::Runtime`;
+- do not mix the 2.4 runtime library with 3.0 headers or vice versa.
+
+Header-only mode still has one registry instance per linked image. Use the optional runtime for one same-toolchain registry
+across DSOs, or `advanced::composite_thread_registry` when explicitly merging independent registries is the better model.

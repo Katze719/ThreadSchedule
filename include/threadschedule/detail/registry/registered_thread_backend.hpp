@@ -1,12 +1,12 @@
 #pragma once
 
 /**
- * @file detail/registered_thread_backend.hpp
+ * @file detail/registry/registered_thread_backend.hpp
  * @brief Thread wrappers with automatic global registry registration.
  */
 
-#include "../thread_registry.hpp"
-#include "thread_backend.hpp"
+#include "../../thread_registry.hpp"
+#include "../thread_backend.hpp"
 #include <functional>
 #include <string>
 #include <type_traits>

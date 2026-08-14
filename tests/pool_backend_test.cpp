@@ -5,12 +5,15 @@
 #include <memory>
 #include <mutex>
 #include <numeric>
-#include <threadschedule/chaos.hpp>
-#include <threadschedule/task_group.hpp>
+#include <threadschedule/advanced/chaos_controller.hpp>
+#include <threadschedule/advanced/pools.hpp>
+#include <threadschedule/advanced/task_group.hpp>
 #include <threadschedule/threadschedule.hpp>
 #include <vector>
 
 using namespace threadschedule;
+using namespace threadschedule::advanced;
+using namespace threadschedule::detail;
 
 namespace
 {
@@ -995,16 +998,14 @@ TEST(PoolBackendTest, ChaosControllerThreadCanBeConfigured)
   cfg.shuffle_affinity = false;
   cfg.priority_jitter = 0;
 
-  chaos_controller chaos(cfg, [](registered_thread_info_backend const&) { return false; });
+  chaos_controller chaos(cfg, [](registered_thread const&) { return false; });
 
   ASSERT_TRUE(chaos.configure_thread("chaos_cfg").has_value());
 
   auto info = chaos.thread_info();
   ASSERT_TRUE(info.has_value());
 
-  auto const name = info->get_name();
-  ASSERT_TRUE(name.has_value());
-  EXPECT_EQ(name.value(), "chaos_cfg");
+  EXPECT_EQ(info->name, "chaos_cfg");
 }
 
 // ==================== inline_pool_backend ====================

@@ -6,6 +6,24 @@ All standard APIs are available from:
 #include <threadschedule/threadschedule.hpp>
 ```
 
+Focused consumers can include a single self-contained contract instead:
+
+| Facility | Header |
+| --- | --- |
+| Scheduling values | `<threadschedule/scheduling.hpp>` |
+| Affinity and configuration | `<threadschedule/thread_affinity.hpp>`, `<threadschedule/thread_config.hpp>` |
+| Owning and non-owning threads | `<threadschedule/thread.hpp>`, `<threadschedule/thread_view.hpp>` |
+| C++20 joining thread | `<threadschedule/jthread.hpp>` |
+| Calling-thread controls | `<threadschedule/this_thread.hpp>` |
+| Registry | `<threadschedule/thread_registry.hpp>` |
+| General pool | `<threadschedule/thread_pool.hpp>` |
+| Scheduled work | `<threadschedule/scheduled_task.hpp>`, `<threadschedule/scheduled_pool.hpp>` |
+| Runtime mode | `<threadschedule/runtime.hpp>` |
+
+Every header above is tested in a fresh translation unit without a preceding
+umbrella include. `core.hpp` is the compatibility core umbrella and
+`threadschedule.hpp` is the recommended complete core include.
+
 The core public surface is C++17. When the standard library exposes
 `std::jthread`, C++20 consumers additionally get `threadschedule::jthread`.
 This is the only language-standard-dependent core type.

@@ -3,10 +3,13 @@
 #include <benchmark/benchmark.h>
 #include <chrono>
 #include <random>
+#include <threadschedule/advanced/native_thread.hpp>
+#include <threadschedule/advanced/pools.hpp>
 #include <threadschedule/threadschedule.hpp>
 #include <vector>
 
 using namespace threadschedule;
+using namespace threadschedule::advanced;
 
 // Benchmark configuration
 // constexpr size_t MIN_THREADS = 1;
@@ -14,61 +17,64 @@ using namespace threadschedule;
 // reference
 
 // Task workloads for different scenarios
-struct BenchmarkWorkloads
+struct benchmark_workloads
 {
   // Minimal task (testing pure overhead)
   static void
   minimal_task()
   {
-    volatile int x = 42;
-    (void)x;
+    int x = 42;
+    benchmark::DoNotOptimize(x);
   }
 
   // Light CPU work (simulating typical web service task)
   static void
   light_cpu_task()
   {
-    volatile int sum = 0;
+    int sum = 0;
     for (int i = 0; i < 100; ++i)
       {
         sum += i * i;
       }
+    benchmark::DoNotOptimize(sum);
   }
 
   // Medium CPU work
   static void
   medium_cpu_task()
   {
-    volatile int sum = 0;
+    int sum = 0;
     for (int i = 0; i < 1000; ++i)
       {
         sum += i * i;
       }
+    benchmark::DoNotOptimize(sum);
   }
 
   // Heavy CPU work
   static void
   heavy_cpu_task()
   {
-    volatile int sum = 0;
+    int sum = 0;
     for (int i = 0; i < 10000; ++i)
       {
         sum += i * i;
       }
+    benchmark::DoNotOptimize(sum);
   }
 };
 
 // =============================================================================
-// Basic thread_pool_backend Benchmarks
+// Basic raw_thread_pool Benchmarks
 // =============================================================================
 
 static void
-BM_ThreadPool_MinimalTasks(benchmark::State& state)
+bm_thread_pool_minimal_tasks(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const num_tasks = state.range(1);
 
-  thread_pool_backend pool(num_threads);
+  raw_thread_pool pool(num_threads);
   pool.configure_threads("bench");
 
   for (auto _ : state)
@@ -80,7 +86,7 @@ BM_ThreadPool_MinimalTasks(benchmark::State& state)
 
       for (size_t i = 0; i < num_tasks; ++i)
         {
-          futures.push_back(pool.submit(BenchmarkWorkloads::minimal_task));
+          futures.push_back(pool.submit(benchmark_workloads::minimal_task));
         }
 
       for (auto& future : futures)
@@ -98,12 +104,12 @@ BM_ThreadPool_MinimalTasks(benchmark::State& state)
 }
 
 static void
-BM_ThreadPool_LightTasks(benchmark::State& state)
+bm_thread_pool_light_tasks(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const num_tasks = state.range(1);
 
-  thread_pool_backend pool(num_threads);
+  raw_thread_pool pool(num_threads);
   pool.configure_threads("bench");
 
   for (auto _ : state)
@@ -113,7 +119,7 @@ BM_ThreadPool_LightTasks(benchmark::State& state)
 
       for (size_t i = 0; i < num_tasks; ++i)
         {
-          futures.push_back(pool.submit(BenchmarkWorkloads::light_cpu_task));
+          futures.push_back(pool.submit(benchmark_workloads::light_cpu_task));
         }
 
       for (auto& future : futures)
@@ -127,16 +133,16 @@ BM_ThreadPool_LightTasks(benchmark::State& state)
 }
 
 // =============================================================================
-// polling_pool_backend Benchmarks
+// polling_pool Benchmarks
 // =============================================================================
 
 static void
-BM_FastThreadPool_MinimalTasks(benchmark::State& state)
+bm_fast_thread_pool_minimal_tasks(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const num_tasks = state.range(1);
 
-  polling_pool_backend pool(num_threads);
+  polling_pool pool(num_threads);
   pool.configure_threads("bench");
 
   for (auto _ : state)
@@ -148,7 +154,7 @@ BM_FastThreadPool_MinimalTasks(benchmark::State& state)
 
       for (size_t i = 0; i < num_tasks; ++i)
         {
-          futures.push_back(pool.submit(BenchmarkWorkloads::minimal_task));
+          futures.push_back(pool.submit(benchmark_workloads::minimal_task));
         }
 
       for (auto& future : futures)
@@ -166,19 +172,19 @@ BM_FastThreadPool_MinimalTasks(benchmark::State& state)
 }
 
 static void
-BM_FastThreadPool_BatchProcessing(benchmark::State& state)
+bm_fast_thread_pool_batch_processing(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const batch_size = state.range(1);
 
-  polling_pool_backend pool(num_threads);
+  polling_pool pool(num_threads);
   pool.configure_threads("bench");
 
   std::vector<std::function<void()>> tasks;
   tasks.reserve(batch_size);
   for (size_t i = 0; i < batch_size; ++i)
     {
-      tasks.emplace_back(BenchmarkWorkloads::light_cpu_task);
+      tasks.emplace_back(benchmark_workloads::light_cpu_task);
     }
 
   for (auto _ : state)
@@ -195,16 +201,16 @@ BM_FastThreadPool_BatchProcessing(benchmark::State& state)
 }
 
 // =============================================================================
-// work_stealing_pool_backend Benchmarks (Work-Stealing)
+// work_stealing_pool Benchmarks (Work-Stealing)
 // =============================================================================
 
 static void
-BM_HighPerformancePool_MinimalTasks(benchmark::State& state)
+bm_high_performance_pool_minimal_tasks(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const num_tasks = state.range(1);
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("bench", native_scheduling_policy::other, native_thread_priority::normal());
   pool.distribute_across_cpus();
 
@@ -217,7 +223,7 @@ BM_HighPerformancePool_MinimalTasks(benchmark::State& state)
 
       for (size_t i = 0; i < num_tasks; ++i)
         {
-          futures.push_back(pool.submit(BenchmarkWorkloads::minimal_task));
+          futures.push_back(pool.submit(benchmark_workloads::minimal_task));
         }
 
       for (auto& future : futures)
@@ -237,12 +243,12 @@ BM_HighPerformancePool_MinimalTasks(benchmark::State& state)
 }
 
 static void
-BM_HighPerformancePool_BatchProcessing(benchmark::State& state)
+bm_high_performance_pool_batch_processing(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const batch_size = state.range(1);
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("bench", native_scheduling_policy::other, native_thread_priority::normal());
   pool.distribute_across_cpus();
 
@@ -250,7 +256,7 @@ BM_HighPerformancePool_BatchProcessing(benchmark::State& state)
   tasks.reserve(batch_size);
   for (size_t i = 0; i < batch_size; ++i)
     {
-      tasks.emplace_back(BenchmarkWorkloads::light_cpu_task);
+      tasks.emplace_back(benchmark_workloads::light_cpu_task);
     }
 
   for (auto _ : state)
@@ -270,12 +276,12 @@ BM_HighPerformancePool_BatchProcessing(benchmark::State& state)
 }
 
 static void
-BM_HighPerformancePool_ParallelForEach(benchmark::State& state)
+bm_high_performance_pool_parallel_for_each(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const data_size = state.range(1);
 
-  work_stealing_pool_backend pool(num_threads);
+  work_stealing_pool pool(num_threads);
   pool.configure_threads("bench", native_scheduling_policy::other, native_thread_priority::normal());
   pool.distribute_across_cpus();
 
@@ -297,16 +303,16 @@ BM_HighPerformancePool_ParallelForEach(benchmark::State& state)
 }
 
 // =============================================================================
-// lightweight_pool_backend Benchmarks (fire-and-forget via post)
+// lightweight_pool Benchmarks (fire-and-forget via post)
 // =============================================================================
 
 static void
-BM_LightweightPool_MinimalTasks(benchmark::State& state)
+bm_lightweight_pool_minimal_tasks(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const num_tasks = state.range(1);
 
-  lightweight_pool_backend pool(num_threads);
+  lightweight_pool pool(num_threads);
   pool.configure_threads("bench");
 
   for (auto _ : state)
@@ -333,12 +339,12 @@ BM_LightweightPool_MinimalTasks(benchmark::State& state)
 }
 
 static void
-BM_LightweightPool_LightTasks(benchmark::State& state)
+bm_lightweight_pool_light_tasks(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const num_tasks = state.range(1);
 
-  lightweight_pool_backend pool(num_threads);
+  lightweight_pool pool(num_threads);
   pool.configure_threads("bench");
 
   for (auto _ : state)
@@ -350,7 +356,7 @@ BM_LightweightPool_LightTasks(benchmark::State& state)
           pool.post(
               [&counter]()
                 {
-                  BenchmarkWorkloads::light_cpu_task();
+                  benchmark_workloads::light_cpu_task();
                   counter.fetch_add(1, std::memory_order_relaxed);
                 });
         }
@@ -364,12 +370,12 @@ BM_LightweightPool_LightTasks(benchmark::State& state)
 }
 
 static void
-BM_LightweightPool_BatchPost(benchmark::State& state)
+bm_lightweight_pool_batch_post(benchmark::State& state)
 {
   size_t const num_threads = state.range(0);
   size_t const batch_size = state.range(1);
 
-  lightweight_pool_backend pool(num_threads);
+  lightweight_pool pool(num_threads);
   pool.configure_threads("bench");
 
   std::vector<std::function<void()>> tasks;
@@ -380,7 +386,7 @@ BM_LightweightPool_BatchPost(benchmark::State& state)
       tasks.emplace_back(
           [&counter]()
             {
-              BenchmarkWorkloads::light_cpu_task();
+              benchmark_workloads::light_cpu_task();
               counter.fetch_add(1, std::memory_order_relaxed);
             });
     }
@@ -402,13 +408,13 @@ BM_LightweightPool_BatchPost(benchmark::State& state)
 // Comparison Benchmarks (All Pools)
 // =============================================================================
 // Note: This benchmark shows workload-dependent behavior:
-// - lightweight_pool_backend excels for fire-and-forget (no future overhead)
+// - lightweight_pool excels for fire-and-forget (no future overhead)
 // - For small task counts (< 100), simpler pools perform better
-// - For larger task counts (1k+), work_stealing_pool_backend shows its
+// - For larger task counts (1k+), work_stealing_pool shows its
 // advantage due to work-stealing
 
 static void
-BM_ComparePoolTypes_LightWorkload(benchmark::State& state)
+bm_compare_pool_types_light_workload(benchmark::State& state)
 {
   size_t const num_threads = 4;
   size_t const num_tasks = state.range(0);
@@ -418,44 +424,44 @@ BM_ComparePoolTypes_LightWorkload(benchmark::State& state)
     {
       if (pool_type == 0)
         {
-          thread_pool_backend pool(num_threads);
+          raw_thread_pool pool(num_threads);
           pool.configure_threads("bench");
           std::vector<std::future<void>> futures;
           futures.reserve(num_tasks);
 
           for (size_t i = 0; i < num_tasks; ++i)
-            futures.push_back(pool.submit(BenchmarkWorkloads::light_cpu_task));
+            futures.push_back(pool.submit(benchmark_workloads::light_cpu_task));
           for (auto& f : futures)
             f.wait();
         }
       else if (pool_type == 1)
         {
-          polling_pool_backend pool(num_threads);
+          polling_pool pool(num_threads);
           pool.configure_threads("bench");
           std::vector<std::future<void>> futures;
           futures.reserve(num_tasks);
 
           for (size_t i = 0; i < num_tasks; ++i)
-            futures.push_back(pool.submit(BenchmarkWorkloads::light_cpu_task));
+            futures.push_back(pool.submit(benchmark_workloads::light_cpu_task));
           for (auto& f : futures)
             f.wait();
         }
       else if (pool_type == 2)
         {
-          work_stealing_pool_backend pool(num_threads);
+          work_stealing_pool pool(num_threads);
           pool.configure_threads("bench");
           pool.distribute_across_cpus();
           std::vector<std::future<void>> futures;
           futures.reserve(num_tasks);
 
           for (size_t i = 0; i < num_tasks; ++i)
-            futures.push_back(pool.submit(BenchmarkWorkloads::light_cpu_task));
+            futures.push_back(pool.submit(benchmark_workloads::light_cpu_task));
           for (auto& f : futures)
             f.wait();
         }
       else if (pool_type == 3)
         {
-          lightweight_pool_backend pool(num_threads);
+          lightweight_pool pool(num_threads);
           pool.configure_threads("bench");
           std::atomic<size_t> counter{ 0 };
 
@@ -464,7 +470,7 @@ BM_ComparePoolTypes_LightWorkload(benchmark::State& state)
               pool.post(
                   [&counter]()
                     {
-                      BenchmarkWorkloads::light_cpu_task();
+                      benchmark_workloads::light_cpu_task();
                       counter.fetch_add(1, std::memory_order_relaxed);
                     });
             }
@@ -474,8 +480,7 @@ BM_ComparePoolTypes_LightWorkload(benchmark::State& state)
         }
     }
 
-  std::vector<std::string> pool_names
-      = { "thread_pool_backend", "polling_pool_backend", "work_stealing_pool_backend", "lightweight_pool_backend" };
+  std::vector<std::string> pool_names = { "raw_thread_pool", "polling_pool", "work_stealing_pool", "lightweight_pool" };
   state.SetItemsProcessed(state.iterations() * num_tasks);
   state.SetLabel(pool_names[pool_type] + " tasks=" + std::to_string(num_tasks));
 }
@@ -488,18 +493,19 @@ BM_ComparePoolTypes_LightWorkload(benchmark::State& state)
 // iteration and only runs a light task), this benchmark builds the pool once
 // and sweeps the per-task work. It shows how the best pool changes with
 // workload:
-//   - tiny     : submission overhead dominates -> lightweight_pool_backend
+//   - tiny     : submission overhead dominates -> lightweight_pool
 //   wins
 //   - heavy    : execution dominates -> the field converges
 //   - imbalanced: a few tasks are far heavier than the rest -> the
 //   work-stealing
-//                 work_stealing_pool_backend balances the load and pulls ahead
+//                 work_stealing_pool balances the load and pulls ahead
 static void
 bench_busy_work(int iters)
 {
-  volatile long sum = 0;
+  long sum = 0;
   for (int i = 0; i < iters; ++i)
     sum += static_cast<long>(i) * i;
+  benchmark::DoNotOptimize(sum);
 }
 
 // Per-task work (in busy-loop iterations) for a given workload and task index.
@@ -520,7 +526,7 @@ bench_work_iters(int workload, size_t task_index)
 }
 
 static void
-BM_ComparePoolWorkload(benchmark::State& state)
+bm_compare_pool_workload(benchmark::State& state)
 {
   size_t const num_threads = 4;
   size_t const num_tasks = 4000;
@@ -528,8 +534,7 @@ BM_ComparePoolWorkload(benchmark::State& state)
   int const workload = static_cast<int>(state.range(1));
 
   char const* const workload_names[] = { "tiny", "medium", "heavy", "imbalanced" };
-  char const* const pool_names[]
-      = { "thread_pool_backend", "polling_pool_backend", "work_stealing_pool_backend", "lightweight_pool_backend" };
+  char const* const pool_names[] = { "raw_thread_pool", "polling_pool", "work_stealing_pool", "lightweight_pool" };
 
   auto submit_loop = [&](auto& pool)
     {
@@ -546,26 +551,26 @@ BM_ComparePoolWorkload(benchmark::State& state)
 
   if (pool_type == 0)
     {
-      thread_pool_backend pool(num_threads);
+      raw_thread_pool pool(num_threads);
       pool.configure_threads("bench");
       submit_loop(pool);
     }
   else if (pool_type == 1)
     {
-      polling_pool_backend pool(num_threads);
+      polling_pool pool(num_threads);
       pool.configure_threads("bench");
       submit_loop(pool);
     }
   else if (pool_type == 2)
     {
-      work_stealing_pool_backend pool(num_threads);
+      work_stealing_pool pool(num_threads);
       pool.configure_threads("bench");
       pool.distribute_across_cpus();
       submit_loop(pool);
     }
   else
     {
-      lightweight_pool_backend pool(num_threads);
+      lightweight_pool pool(num_threads);
       pool.configure_threads("bench");
       for (auto _ : state)
         {
@@ -594,12 +599,12 @@ BM_ComparePoolWorkload(benchmark::State& state)
 // =============================================================================
 
 static void
-BM_PostVsSubmit(benchmark::State& state)
+bm_post_vs_submit(benchmark::State& state)
 {
   size_t const num_tasks = state.range(0);
   int const mode = state.range(1);
 
-  work_stealing_pool_backend pool(4);
+  work_stealing_pool pool(4);
   pool.configure_threads("bench");
 
   for (auto _ : state)
@@ -609,7 +614,7 @@ BM_PostVsSubmit(benchmark::State& state)
           std::vector<std::future<void>> futures;
           futures.reserve(num_tasks);
           for (size_t i = 0; i < num_tasks; ++i)
-            futures.push_back(pool.submit(BenchmarkWorkloads::minimal_task));
+            futures.push_back(pool.submit(benchmark_workloads::minimal_task));
           for (auto& f : futures)
             f.wait();
         }
@@ -621,7 +626,7 @@ BM_PostVsSubmit(benchmark::State& state)
               pool.post(
                   [&counter]()
                     {
-                      BenchmarkWorkloads::minimal_task();
+                      benchmark_workloads::minimal_task();
                       counter.fetch_add(1, std::memory_order_relaxed);
                     });
             }
@@ -639,7 +644,7 @@ BM_PostVsSubmit(benchmark::State& state)
 // =============================================================================
 
 // Basic throughput tests for each pool type
-BENCHMARK(BM_ThreadPool_MinimalTasks)
+BENCHMARK(bm_thread_pool_minimal_tasks)
     ->Args({ 1, 100 })
     ->Args({ 2, 100 })
     ->Args({ 4, 100 })
@@ -654,7 +659,7 @@ BENCHMARK(BM_ThreadPool_MinimalTasks)
     ->UseManualTime()
     ->Unit(benchmark::kMicrosecond);
 
-BENCHMARK(BM_ThreadPool_LightTasks)
+BENCHMARK(bm_thread_pool_light_tasks)
     ->Args({ 1, 100 })
     ->Args({ 2, 100 })
     ->Args({ 4, 100 })
@@ -664,7 +669,7 @@ BENCHMARK(BM_ThreadPool_LightTasks)
     ->Args({ 8, 1000 })
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(BM_FastThreadPool_MinimalTasks)
+BENCHMARK(bm_fast_thread_pool_minimal_tasks)
     ->Args({ 1, 100 })
     ->Args({ 2, 100 })
     ->Args({ 4, 100 })
@@ -679,7 +684,7 @@ BENCHMARK(BM_FastThreadPool_MinimalTasks)
     ->UseManualTime()
     ->Unit(benchmark::kMicrosecond);
 
-BENCHMARK(BM_FastThreadPool_BatchProcessing)
+BENCHMARK(bm_fast_thread_pool_batch_processing)
     ->Args({ 1, 1000 })
     ->Args({ 2, 1000 })
     ->Args({ 4, 1000 })
@@ -690,7 +695,7 @@ BENCHMARK(BM_FastThreadPool_BatchProcessing)
     ->Args({ 8, 10000 })
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(BM_HighPerformancePool_MinimalTasks)
+BENCHMARK(bm_high_performance_pool_minimal_tasks)
     ->Args({ 1, 100 })
     ->Args({ 2, 100 })
     ->Args({ 4, 100 })
@@ -709,7 +714,7 @@ BENCHMARK(BM_HighPerformancePool_MinimalTasks)
     ->UseManualTime()
     ->Unit(benchmark::kMicrosecond);
 
-BENCHMARK(BM_HighPerformancePool_BatchProcessing)
+BENCHMARK(bm_high_performance_pool_batch_processing)
     ->Args({ 1, 1000 })
     ->Args({ 2, 1000 })
     ->Args({ 4, 1000 })
@@ -724,7 +729,7 @@ BENCHMARK(BM_HighPerformancePool_BatchProcessing)
     ->Args({ 16, 50000 })
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(BM_HighPerformancePool_ParallelForEach)
+BENCHMARK(bm_high_performance_pool_parallel_for_each)
     ->Args({ 1, 10000 })
     ->Args({ 2, 10000 })
     ->Args({ 4, 10000 })
@@ -736,8 +741,8 @@ BENCHMARK(BM_HighPerformancePool_ParallelForEach)
     ->Args({ 16, 1000000 })
     ->Unit(benchmark::kMillisecond);
 
-// lightweight_pool_backend benchmarks
-BENCHMARK(BM_LightweightPool_MinimalTasks)
+// lightweight_pool benchmarks
+BENCHMARK(bm_lightweight_pool_minimal_tasks)
     ->Args({ 1, 100 })
     ->Args({ 2, 100 })
     ->Args({ 4, 100 })
@@ -754,7 +759,7 @@ BENCHMARK(BM_LightweightPool_MinimalTasks)
     ->UseManualTime()
     ->Unit(benchmark::kMicrosecond);
 
-BENCHMARK(BM_LightweightPool_LightTasks)
+BENCHMARK(bm_lightweight_pool_light_tasks)
     ->Args({ 1, 100 })
     ->Args({ 2, 100 })
     ->Args({ 4, 100 })
@@ -764,7 +769,7 @@ BENCHMARK(BM_LightweightPool_LightTasks)
     ->Args({ 8, 1000 })
     ->Unit(benchmark::kMillisecond);
 
-BENCHMARK(BM_LightweightPool_BatchPost)
+BENCHMARK(bm_lightweight_pool_batch_post)
     ->Args({ 1, 1000 })
     ->Args({ 2, 1000 })
     ->Args({ 4, 1000 })
@@ -776,7 +781,7 @@ BENCHMARK(BM_LightweightPool_BatchPost)
     ->Unit(benchmark::kMillisecond);
 
 // Pool comparison benchmarks (all 4 pool types)
-BENCHMARK(BM_ComparePoolTypes_LightWorkload)
+BENCHMARK(bm_compare_pool_types_light_workload)
     ->Args({ 10, 0 })
     ->Args({ 10, 1 })
     ->Args({ 10, 2 })
@@ -801,7 +806,7 @@ BENCHMARK(BM_ComparePoolTypes_LightWorkload)
 
 // Pool comparison across workload weights (pool built once)
 // Args: {pool_type 0..3, workload 0=minimal 1=light 2=medium 3=heavy}
-BENCHMARK(BM_ComparePoolWorkload)
+BENCHMARK(bm_compare_pool_workload)
     ->Args({ 0, 0 })
     ->Args({ 1, 0 })
     ->Args({ 2, 0 })
@@ -821,7 +826,7 @@ BENCHMARK(BM_ComparePoolWorkload)
     ->Unit(benchmark::kMillisecond);
 
 // Post vs Submit overhead comparison
-BENCHMARK(BM_PostVsSubmit)
+BENCHMARK(bm_post_vs_submit)
     ->Args({ 1000, 0 })
     ->Args({ 1000, 1 })
     ->Args({ 10000, 0 })

@@ -2,11 +2,11 @@
 
 /**
  * @file error_handler.hpp
- * @brief Error handling primitives: task_error_backend, error_handler_backend,
+ * @brief Error handling primitives: task_error, error_handler,
  * and error_handled_task.
  */
 
-#include "callable.hpp"
+#include "../detail/callable/move_callable.hpp"
 #include <chrono>
 #include <exception>
 #include <functional>
@@ -19,21 +19,23 @@
 #include <type_traits>
 #include <vector>
 
-namespace threadschedule
+namespace threadschedule::advanced
 {
+
+namespace implementation = ::threadschedule::detail;
 
 /**
  * @brief Holds diagnostic information captured from a failed task.
  *
- * task_error_backend is a value type (copyable and movable) that bundles the
+ * task_error is a value type (copyable and movable) that bundles the
  * original exception together with context about where and when the failure
  * occurred.
  *
  * Instances are typically created by error_handled_task and forwarded to
- * registered error_callback_backend functions through an
- * error_handler_backend.
+ * registered error_callback functions through an
+ * error_handler.
  */
-struct task_error_backend
+struct task_error
 {
   /** @brief The captured exception. Never null when produced by the library.
    */
@@ -51,15 +53,15 @@ struct task_error_backend
   std::chrono::steady_clock::time_point timestamp;
 
   /**
-   * @brief Capture the current in-flight exception into a task_error_backend.
+   * @brief Capture the current in-flight exception into a task_error.
    *
    * Must be called inside a @c catch block. Fills exception, thread_id,
    * and timestamp; optionally sets task_description.
    */
   static auto
-  capture(std::string description = {}) -> task_error_backend
+  capture(std::string description = {}) -> task_error
   {
-    task_error_backend err;
+    task_error err;
     err.exception = std::current_exception();
     err.task_description = std::move(description);
     err.thread_id = std::this_thread::get_id();
@@ -120,20 +122,20 @@ struct task_error_backend
 
 /**
  * @brief Signature for error-handling callbacks registered with
- * error_handler_backend.
+ * error_handler.
  *
- * Callbacks receive a const reference to the task_error_backend describing the
+ * Callbacks receive a const reference to the task_error describing the
  * failure.
  */
-using error_callback_backend = detail::copyable_callable<void(task_error_backend const&)>;
+using error_callback = implementation::copyable_callable<void(task_error const&)>;
 
-using error_callback_storage = error_callback_backend;
-using future_error_callback = detail::move_callable<void(std::exception_ptr)>;
+using error_callback_storage = error_callback;
+using future_error_callback = implementation::move_callable<void(std::exception_ptr)>;
 
 /**
  * @brief Central registry and dispatcher for task-error callbacks.
  *
- * error_handler_backend maintains an ordered list of error_callback_backend
+ * error_handler maintains an ordered list of error_callback
  * functions and invokes them whenever a task reports a failure through
  * handle_error().
  *
@@ -154,7 +156,7 @@ using future_error_callback = detail::move_callable<void(std::exception_ptr)>;
  * The error count returned by error_count() is monotonically increasing and
  * is only reset by an explicit call to reset_error_count().
  */
-class error_handler_backend
+class error_handler
 {
 public:
   /**
@@ -164,20 +166,20 @@ public:
    * @return Stable ID for the callback, usable with remove_callback().
    */
   auto
-  add_callback(error_callback_backend callback) -> size_t
+  add_callback(error_callback callback) -> size_t
   {
     return emplace_callback(error_callback_storage(std::move(callback)));
   }
 
   template <typename Callback,
-            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, error_callback_backend>, int> = 0>
+            std::enable_if_t<!std::is_same_v<implementation::remove_cvref_t<Callback>, error_callback>, int> = 0>
   auto
   add_callback(Callback&& callback) -> size_t
   {
-    static_assert(std::is_invocable_r_v<void, Callback&, task_error_backend const&>,
-                  "Error callback must be invocable with task_error_backend const&");
+    static_assert(std::is_invocable_r_v<void, Callback&, task_error const&>,
+                  "Error callback must be invocable with task_error const&");
     return emplace_callback(
-        detail::make_copyable_callable<void(task_error_backend const&)>(std::forward<Callback>(callback)));
+        implementation::make_copyable_callable<void(task_error const&)>(std::forward<Callback>(callback)));
   }
 
   /**
@@ -226,7 +228,7 @@ public:
    * @param error Diagnostic information about the failed task.
    */
   void
-  handle_error(task_error_backend const& error)
+  handle_error(task_error const& error)
   {
     std::vector<error_callback_storage> snapshot;
     {
@@ -292,13 +294,13 @@ private:
 
 /**
  * @brief Callable wrapper that catches exceptions and routes them to an @ref
- * error_handler_backend.
+ * error_handler.
  *
  * error_handled_task wraps an arbitrary callable @p Func and invokes it inside
  * a try / catch block.  Any exception thrown by the callable is captured into
  * a
- * @ref task_error_backend and forwarded to the associated @ref
- * error_handler_backend; the exception is
+ * @ref task_error and forwarded to the associated @ref
+ * error_handler; the exception is
  * **not** re-thrown, so from the caller's perspective the task completes
  * normally (silently succeeds).
  *
@@ -306,7 +308,7 @@ private:
  *         arguments, return value is discarded).
  *
  * @par Ownership
- * The error_handler_backend is held via @c std::shared_ptr, making it safe to
+ * The error_handler is held via @c std::shared_ptr, making it safe to
  * copy or move error_handled_task across thread boundaries without lifetime
  * issues.
  *
@@ -316,7 +318,7 @@ template <typename Func>
 class error_handled_task
 {
 public:
-  error_handled_task(Func func, std::shared_ptr<error_handler_backend> handler, std::string description = "")
+  error_handled_task(Func func, std::shared_ptr<error_handler> handler, std::string description = "")
       : func_(std::move(func)), handler_(std::move(handler)), description_(std::move(description))
   {
   }
@@ -331,13 +333,13 @@ public:
     catch (...)
       {
         if (handler_)
-          handler_->handle_error(task_error_backend::capture(description_));
+          handler_->handle_error(task_error::capture(description_));
       }
   }
 
 private:
   Func func_;
-  std::shared_ptr<error_handler_backend> handler_;
+  std::shared_ptr<error_handler> handler_;
   std::string description_;
 };
 
@@ -347,15 +349,15 @@ private:
  *
  * @tparam Func Callable type (deduced).
  * @param func        The callable to wrap.
- * @param handler     Shared pointer to the error_handler_backend that will
+ * @param handler     Shared pointer to the error_handler that will
  * receive errors.
  * @param description Optional human-readable label stored in
- * task_error_backend::task_description.
+ * task_error::task_description.
  * @return An error_handled_task containing a decayed copy of @p func.
  */
 template <typename Func>
 auto
-make_error_handled_task(Func&& func, std::shared_ptr<error_handler_backend> handler, std::string description = "")
+make_error_handled_task(Func&& func, std::shared_ptr<error_handler> handler, std::string description = "")
 {
   using function_type = std::decay_t<Func>;
   return error_handled_task<function_type>(function_type(std::forward<Func>(func)), std::move(handler),
@@ -415,14 +417,15 @@ public:
   }
 
   template <typename Callback,
-            std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<Callback>, std::function<void(std::exception_ptr)>>,
-                             int> = 0>
+            std::enable_if_t<
+                !std::is_same_v<implementation::remove_cvref_t<Callback>, std::function<void(std::exception_ptr)>>, int>
+            = 0>
   auto
   on_error(Callback&& callback) -> future_with_error_handler&
   {
     static_assert(std::is_invocable_r_v<void, Callback&, std::exception_ptr>,
                   "Error callback must be invocable with std::exception_ptr");
-    error_callback_ = detail::make_move_callable<void(std::exception_ptr)>(std::forward<Callback>(callback));
+    error_callback_ = implementation::make_move_callable<void(std::exception_ptr)>(std::forward<Callback>(callback));
     has_callback_ = true;
     return *this;
   }
@@ -512,4 +515,4 @@ private:
   bool has_callback_{ false };
 };
 
-} // namespace threadschedule
+} // namespace threadschedule::advanced

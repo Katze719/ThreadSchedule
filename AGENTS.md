@@ -52,6 +52,11 @@ normal failure mode should not require exceptions.
 - `docs/`: user-facing API, compatibility, CMake, and migration documentation
 - `.github/workflows/`: authoritative CI matrix
 
+Class-owning headers use the lowercase class name as their filename. Split
+unrelated peer classes instead of hiding them behind a generic filename.
+Headers without a primary class may keep a responsibility-based name, such as
+`bind.hpp`, `backend.hpp`, or a platform boundary.
+
 ## Build and test
 
 Use an out-of-source build. Disable ccache when validating compiler-sensitive

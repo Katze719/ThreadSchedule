@@ -5,6 +5,48 @@ add_executable(compile_test compile_test.cpp)
 target_link_libraries(compile_test ThreadSchedule::ThreadSchedule)
 add_test(NAME CompileTest COMMAND compile_test)
 
+# Every documented header is compiled in a fresh translation unit so an
+# accidental dependency on include order is caught immediately.
+set(THREADSCHEDULE_SELF_CONTAINED_HEADERS
+    threadschedule/expected.hpp
+    threadschedule/result.hpp
+    threadschedule/scheduling.hpp
+    threadschedule/thread_affinity.hpp
+    threadschedule/thread_config.hpp
+    threadschedule/thread.hpp
+    threadschedule/jthread.hpp
+    threadschedule/thread_view.hpp
+    threadschedule/this_thread.hpp
+    threadschedule/thread_registry.hpp
+    threadschedule/thread_pool.hpp
+    threadschedule/scheduled_task.hpp
+    threadschedule/scheduled_pool.hpp
+    threadschedule/task_error.hpp
+    threadschedule/shutdown_policy.hpp
+    threadschedule/runtime.hpp
+    threadschedule/core.hpp
+    threadschedule/threadschedule.hpp
+    threadschedule/advanced/cgroup.hpp
+    threadschedule/advanced/chaos_controller.hpp
+    threadschedule/advanced/composite_thread_registry.hpp
+    threadschedule/advanced/cpu_topology.hpp
+    threadschedule/advanced/error_handler.hpp
+    threadschedule/advanced/futures.hpp
+    threadschedule/advanced/native_thread.hpp
+    threadschedule/advanced/pools.hpp
+    threadschedule/advanced/thread_profile.hpp
+    threadschedule/advanced/task_group.hpp
+    threadschedule/advanced.hpp
+)
+
+foreach(header IN LISTS THREADSCHEDULE_SELF_CONTAINED_HEADERS)
+    string(MAKE_C_IDENTIFIER "${header}" header_id)
+    set(source "${CMAKE_CURRENT_BINARY_DIR}/header_self_containment/${header_id}.cpp")
+    file(GENERATE OUTPUT "${source}" CONTENT "#include <${header}>\n")
+    add_library("header_compile_${header_id}" OBJECT "${source}")
+    target_link_libraries("header_compile_${header_id}" PRIVATE ThreadSchedule::ThreadSchedule)
+endforeach()
+
 # Google Test based tests
 if(TARGET gtest)
     include(GoogleTest)

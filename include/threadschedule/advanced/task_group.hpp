@@ -15,7 +15,7 @@
 #include <mutex>
 #include <vector>
 
-namespace threadschedule
+namespace threadschedule::advanced
 {
 
 /**
@@ -24,7 +24,7 @@ namespace threadschedule
  *
  * @par Usage
  * @code
- * thread_pool_backend pool(4);
+ * raw_thread_pool pool(4);
  * {
  *     task_group group(pool);
  *     group.submit([]{ do_work_a(); });
@@ -128,4 +128,4 @@ private:
   std::vector<std::future<void>> futures_;
 };
 
-} // namespace threadschedule
+} // namespace threadschedule::advanced

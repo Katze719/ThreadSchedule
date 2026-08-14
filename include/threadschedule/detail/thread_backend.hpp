@@ -6,7 +6,7 @@
  */
 
 #include "../expected.hpp"
-#include "../scheduler_policy.hpp"
+#include "scheduling/native.hpp"
 #include <condition_variable>
 #include <functional>
 #include <memory>
@@ -31,10 +31,7 @@
 #  include <unistd.h>
 #endif
 
-namespace threadschedule
-{
-
-namespace detail
+namespace threadschedule::detail
 {
 class thread_identity_state
 {
@@ -193,8 +190,6 @@ configure_thread(ThreadLike& thread, native_thread_config const& config) -> expe
     return thread.set_affinity(*config.affinity);
   return {};
 }
-} // namespace detail
-
 /**
  * @brief Polymorphic base providing common thread management operations.
  *
@@ -255,9 +250,6 @@ configure_thread(ThreadLike& thread, native_thread_config const& config) -> expe
  * concurrent mutation of the same wrapper from multiple threads is not
  * synchronized internally.
  */
-namespace detail
-{
-
 template <typename ThreadType, typename OwnershipTag = detail::owning_tag>
 class basic_thread_backend : protected detail::thread_storage<ThreadType, OwnershipTag>
 {
@@ -606,8 +598,6 @@ public:
     return this->underlying();
   }
 };
-
-} // namespace detail
 
 /**
  * @brief Looks up an OS thread by its name via /proc and provides scheduling
@@ -988,4 +978,4 @@ private:
   bool has_native_handle_{ false };
 };
 
-} // namespace threadschedule
+} // namespace threadschedule::detail

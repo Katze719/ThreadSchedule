@@ -109,6 +109,20 @@ Include `<threadschedule/threadschedule.hpp>` for the complete core. Include
 `<threadschedule/advanced.hpp>` only when the workload requires native or
 specialized choices.
 
+For small consumers, each core contract is independently includable. For
+example, a single managed thread needs only:
+
+```cpp
+#include <threadschedule/thread.hpp>
+#include <threadschedule/thread_config.hpp>
+```
+
+Pools can use `<threadschedule/thread_pool.hpp>` or
+`<threadschedule/scheduled_pool.hpp>` directly; registry-only code can use
+`<threadschedule/thread_registry.hpp>`. The focused headers avoid making an
+application opt into unrelated APIs, while `threadschedule.hpp` remains the
+convenient complete core umbrella.
+
 ## Results, exceptions, and lifetime
 
 ThreadSchedule keeps failure channels explicit:

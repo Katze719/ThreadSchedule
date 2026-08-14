@@ -5,6 +5,7 @@
 #include <vector>
 
 using namespace threadschedule;
+using namespace threadschedule::detail;
 
 class ThreadPoolTest : public ::testing::Test
 {
@@ -432,13 +433,12 @@ TEST_F(ThreadPoolTest, MixedTaskTypes)
   pool.submit(
       [&results]()
         {
-          volatile long sum = 0;
+          long sum = 0;
           for (long i = 0; i < 1000000; ++i)
             {
               sum += i;
             }
-          (void)sum;
-          results++;
+          results.fetch_add(sum != 0 ? 1 : 0);
         });
 
   // I/O-like task (sleep)

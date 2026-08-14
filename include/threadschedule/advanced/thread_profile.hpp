@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file profiles.hpp
+ * @file thread_profile.hpp
  * @brief High-level thread configuration profiles and helpers.
  *
  * Provides simple presets (e.g. realtime, low_latency, throughput, background)
@@ -10,26 +10,24 @@
  * priority, and optional CPU affinity into a single intent.
  */
 
-#include "concepts.hpp"
-#include "scheduler_policy.hpp"
-#include "thread_pool.hpp"
-#include "thread_registry.hpp"
+#include "native_thread.hpp"
+#include "pools.hpp"
 #include <optional>
 #include <string>
 #include <vector>
 
-namespace threadschedule
+namespace threadschedule::advanced
 {
 
-template <>
-struct is_thread_like<detail::thread_backend> : std::true_type
-{
-};
-
-template <>
-struct is_thread_like<detail::thread_view_backend> : std::true_type
-{
-};
+namespace implementation = ::threadschedule::detail;
+using native_priority_model = implementation::native_priority_model;
+using native_scheduling_config = implementation::native_scheduling_config;
+using native_scheduling_intent = implementation::native_scheduling_intent;
+using native_scheduling_policy = implementation::native_scheduling_policy;
+using native_thread_affinity = implementation::native_thread_affinity;
+using native_thread_config = implementation::native_thread_config;
+using native_thread_id = implementation::native_thread_id;
+using native_thread_priority = implementation::native_thread_priority;
 
 /**
  * @brief Declarative profile bundling scheduling intent for a thread.
@@ -80,8 +78,8 @@ realtime() -> thread_profile
 inline auto
 low_latency() -> thread_profile
 {
-  auto const config = detail::native_schedule::low_latency();
-  auto const scheduling = detail::resolve_scheduling_config(config);
+  auto const config = implementation::native_schedule::low_latency();
+  auto const scheduling = implementation::resolve_scheduling_config(config);
   return thread_profile{ "low_latency", scheduling.policy, scheduling.priority, std::nullopt, scheduling.model };
 }
 
@@ -178,7 +176,7 @@ apply_profile_detailed_to(T& t, thread_profile const& p) -> std::vector<std::err
  * @param p   Profile to apply.
  * @return    Empty expected on success, or @c operation_not_permitted.
  */
-template <typename ThreadLike, std::enable_if_t<is_thread_like_v<ThreadLike>, int> = 0>
+template <typename ThreadLike>
 inline auto
 apply_profile(ThreadLike& t, thread_profile const& p) -> expected<void, std::error_code>
 {
@@ -186,65 +184,30 @@ apply_profile(ThreadLike& t, thread_profile const& p) -> expected<void, std::err
 }
 
 /**
- * @brief Apply a profile to a thread_control_block directly.
+ * @brief Apply a profile to every worker in a raw thread pool.
  */
 inline auto
-apply_profile(thread_control_block& t, thread_profile const& p) -> expected<void, std::error_code>
-{
-  return detail::apply_profile_to(t, p);
-}
-
-/**
- * @brief Apply a profile to a registered thread via its info record.
- */
-inline auto
-apply_profile(registered_thread_info_backend& t, thread_profile const& p) -> expected<void, std::error_code>
-{
-  if (!t.control)
-    return unexpected(std::make_error_code(std::errc::no_such_process));
-  return apply_profile(*t.control, p);
-}
-
-/**
- * @brief Apply a profile to every worker in a thread_pool_backend.
- */
-inline auto
-apply_profile(thread_pool_backend& pool, thread_profile const& p) -> expected<void, std::error_code>
+apply_profile(raw_thread_pool& pool, thread_profile const& p) -> expected<void, std::error_code>
 {
   return detail::apply_profile_to_pool(pool, "pool", p);
 }
 
 /**
- * @brief Apply a profile to every worker in a polling_pool_backend.
+ * @brief Apply a profile to every worker in a polling pool.
  */
 inline auto
-apply_profile(polling_pool_backend& pool, thread_profile const& p) -> expected<void, std::error_code>
+apply_profile(polling_pool& pool, thread_profile const& p) -> expected<void, std::error_code>
 {
   return detail::apply_profile_to_pool(pool, "fast", p);
 }
 
 /**
- * @brief Apply a profile to every worker in a work_stealing_pool_backend.
+ * @brief Apply a profile to every worker in a work-stealing pool.
  */
 inline auto
-apply_profile(work_stealing_pool_backend& pool, thread_profile const& p) -> expected<void, std::error_code>
+apply_profile(work_stealing_pool& pool, thread_profile const& p) -> expected<void, std::error_code>
 {
   return detail::apply_profile_to_pool(pool, "hp", p);
-}
-
-/**
- * @brief Apply a profile to a registry-managed thread identified by TID.
- */
-inline auto
-apply_profile(thread_registry_backend& reg, native_thread_id tid, thread_profile const& p)
-    -> expected<void, std::error_code>
-{
-  auto scheduled = reg.configure(tid, detail::scheduling_from_profile(p));
-  if (!scheduled)
-    return unexpected(scheduled.error());
-  if (p.affinity.has_value())
-    return reg.set_affinity(tid, *p.affinity);
-  return {};
 }
 
 /**
@@ -262,21 +225,11 @@ apply_profile(thread_registry_backend& reg, native_thread_id tid, thread_profile
  * @tparam ThreadLike A type satisfying the is_thread_like trait.
  * @return Vector of error codes, one per step attempted.
  */
-template <typename ThreadLike, std::enable_if_t<is_thread_like_v<ThreadLike>, int> = 0>
+template <typename ThreadLike>
 inline auto
 apply_profile_detailed(ThreadLike& t, thread_profile const& p) -> std::vector<std::error_code>
 {
   return detail::apply_profile_detailed_to(t, p);
 }
 
-/**
- * @brief Apply a profile to a thread_control_block with per-step errors.
- * @see apply_profile_detailed(ThreadLike&, thread_profile const&)
- */
-inline auto
-apply_profile_detailed(thread_control_block& t, thread_profile const& p) -> std::vector<std::error_code>
-{
-  return detail::apply_profile_detailed_to(t, p);
-}
-
-} // namespace threadschedule
+} // namespace threadschedule::advanced

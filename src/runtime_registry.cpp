@@ -1,6 +1,7 @@
+#include <threadschedule/runtime.hpp>
 #include <threadschedule/thread_registry.hpp>
 
-namespace threadschedule
+namespace threadschedule::detail
 {
 
 namespace
@@ -10,28 +11,21 @@ thread_registry_backend local_registry;
 } // namespace
 
 THREADSCHEDULE_API auto
-detail::runtime_registry() -> thread_registry_backend&
+runtime_registry() -> thread_registry_backend&
 {
   return external_registry != nullptr ? *external_registry : local_registry;
 }
 
 THREADSCHEDULE_API void
-detail::runtime_set_external_registry(thread_registry_backend* value)
+runtime_set_external_registry(thread_registry_backend* value)
 {
   external_registry = value;
 }
 
-THREADSCHEDULE_API auto
-registry() -> thread_registry_backend&
-{
-  return detail::runtime_registry();
-}
+} // namespace threadschedule::detail
 
-THREADSCHEDULE_API void
-set_external_registry(thread_registry_backend* value)
+namespace threadschedule
 {
-  detail::runtime_set_external_registry(value);
-}
 
 THREADSCHEDULE_API auto
 current_build_mode() -> build_mode
