@@ -1005,11 +1005,13 @@ TEST(PoolBackendTest, ChaosControllerThreadCanBeConfigured)
   chaos_config cfg;
   cfg.interval = std::chrono::milliseconds(10);
   cfg.shuffle_affinity = false;
-  cfg.priority_jitter = 0;
+  cfg.nice_jitter = 0;
 
   chaos_controller chaos(cfg, [](registered_thread const&) { return false; });
 
-  ASSERT_TRUE(chaos.configure_thread("chaos_cfg").has_value());
+  threadschedule::thread_config config;
+  config.set_name("chaos_cfg");
+  ASSERT_TRUE(chaos.configure_thread(config).has_value());
 
   auto info = chaos.thread_info();
   ASSERT_TRUE(info.has_value());

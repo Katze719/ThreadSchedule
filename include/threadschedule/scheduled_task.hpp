@@ -7,6 +7,11 @@
 
 namespace threadschedule
 {
+namespace detail
+{
+struct scheduled_task_access;
+}
+
 class scheduled_task
 {
 public:
@@ -38,6 +43,19 @@ private:
 
   detail::scheduled_task_backend impl_;
   friend class scheduled_pool;
+  friend struct detail::scheduled_task_access;
 };
+
+namespace detail
+{
+struct scheduled_task_access
+{
+  [[nodiscard]] static auto
+  make(scheduled_task_backend value) -> scheduled_task
+  {
+    return scheduled_task(std::move(value));
+  }
+};
+} // namespace detail
 
 } // namespace threadschedule

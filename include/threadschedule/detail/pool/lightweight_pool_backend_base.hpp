@@ -21,6 +21,7 @@
 #include <future>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <queue>
 #include <stdexcept>
 #include <string>
@@ -117,14 +118,14 @@ public:
    * @param num_threads Number of worker threads (clamped to at least 1).
    *                    Defaults to @c std::thread::hardware_concurrency().
    */
-  explicit lightweight_pool_backend_base(size_t num_threads = default_worker_count())
-      : num_threads_(checked_worker_count(num_threads))
+  explicit lightweight_pool_backend_base(size_t num_threads = default_worker_count(), bool register_workers = false)
+      : num_threads_(checked_worker_count(num_threads)), register_workers_(register_workers)
   {
     workers_.reserve(num_threads_);
     try
       {
         for (size_t i = 0; i < num_threads_; ++i)
-          workers_.emplace_back(&lightweight_pool_backend_base::worker_loop, this);
+          workers_.emplace_back(&lightweight_pool_backend_base::worker_loop, this, i);
       }
     catch (...)
       {
@@ -393,6 +394,7 @@ public:
 
 private:
   size_t num_threads_;
+  bool register_workers_;
   std::vector<detail::thread_backend> workers_;
   std::queue<detail::move_only_function<void(), TaskSize - sizeof(void*)>> tasks_;
   std::mutex mutex_;
@@ -406,9 +408,12 @@ private:
   inline static thread_local lightweight_pool_backend_base* current_pool = nullptr;
 
   void
-  worker_loop()
+  worker_loop(size_t worker_id)
   {
     detail::worker_context_guard<lightweight_pool_backend_base> worker_context(current_pool, this);
+    std::optional<registration_guard_backend> registration;
+    if (register_workers_)
+      registration.emplace("light_worker_" + std::to_string(worker_id), "threadschedule.pool");
     while (true)
       {
         detail::move_only_function<void(), TaskSize - sizeof(void*)> task;

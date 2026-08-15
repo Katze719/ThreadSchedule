@@ -1,5 +1,7 @@
 #include <library_cb/library_cb.hpp>
 
+#include <threadschedule/thread.hpp>
+
 #include <chrono>
 #include <mutex>
 #include <string>

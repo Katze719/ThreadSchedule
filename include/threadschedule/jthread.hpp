@@ -16,6 +16,8 @@
 namespace threadschedule
 {
 #if defined(__cpp_lib_jthread) && __cpp_lib_jthread >= 201911L
+class thread_view;
+
 class jthread
 {
 public:
@@ -95,6 +97,12 @@ public:
     return impl_.get_id();
   }
 
+  [[nodiscard]] static auto
+  hardware_concurrency() noexcept -> unsigned
+  {
+    return std::thread::hardware_concurrency();
+  }
+
   [[nodiscard]] auto
   request_stop() noexcept -> bool
   {
@@ -147,6 +155,13 @@ public:
     return detail::portable_thread_control::get_priority(view.get_nice_value());
   }
 
+  [[nodiscard]] auto
+  get_nice() const -> result<nice_value>
+  {
+    auto view = native_view();
+    return detail::portable_thread_control::get_nice(view.get_nice_value());
+  }
+
   auto
   set_name(std::string const& name) -> result<void>
   {
@@ -185,6 +200,7 @@ public:
 
 private:
   friend struct detail::native_thread_access;
+  friend class thread_view;
 
   using native_view_type = detail::basic_thread_backend<std::jthread, detail::non_owning_tag>;
 

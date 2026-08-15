@@ -115,11 +115,11 @@ to_native(thread_affinity const& affinity) -> native_thread_affinity
 to_native(thread_config const& config) -> native_thread_config
 {
   native_thread_config native;
-  native.name = config.name();
-  if (config.scheduling())
-    native.scheduling = to_native(*config.scheduling());
-  if (config.affinity())
-    native.affinity = to_native(*config.affinity());
+  native.name = config.get_name();
+  if (config.get_scheduling())
+    native.scheduling = to_native(*config.get_scheduling());
+  if (config.get_affinity())
+    native.affinity = to_native(*config.get_affinity());
   return native;
 }
 
@@ -217,6 +217,14 @@ get_priority(result<int> value) -> result<priority_level>
   if (!value)
     return unexpected(value.error());
   return to_priority_level(value.value());
+}
+
+[[nodiscard]] inline auto
+get_nice(result<int> value) -> result<nice_value>
+{
+  if (!value)
+    return unexpected(value.error());
+  return nice_value::create(value.value());
 }
 
 template <typename Control>

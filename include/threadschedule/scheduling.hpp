@@ -42,8 +42,6 @@ enum class priority_level : std::int8_t
 class scheduling_config
 {
 public:
-  scheduling_config() noexcept = default;
-
   [[nodiscard]] constexpr auto
   intent() const noexcept -> scheduling_intent
   {
@@ -60,8 +58,8 @@ private:
   friend struct detail::scheduling_config_access;
   constexpr scheduling_config(scheduling_intent intent, int priority) noexcept : intent_(intent), priority_(priority) {}
 
-  scheduling_intent intent_{ scheduling_intent::normal };
-  int priority_{ 0 };
+  scheduling_intent intent_;
+  int priority_;
 };
 
 namespace detail
@@ -103,13 +101,13 @@ low_latency() noexcept -> scheduling_config
 }
 
 [[nodiscard]] constexpr auto
-realtime_fifo(realtime_priority priority = realtime_priority{ 80 }) noexcept -> scheduling_config
+realtime_fifo(realtime_priority priority) noexcept -> scheduling_config
 {
   return detail::scheduling_config_access::make(scheduling_intent::realtime_fifo, priority.value());
 }
 
 [[nodiscard]] constexpr auto
-realtime_rr(realtime_priority priority = realtime_priority{ 80 }) noexcept -> scheduling_config
+realtime_rr(realtime_priority priority) noexcept -> scheduling_config
 {
   return detail::scheduling_config_access::make(scheduling_intent::realtime_round_robin, priority.value());
 }

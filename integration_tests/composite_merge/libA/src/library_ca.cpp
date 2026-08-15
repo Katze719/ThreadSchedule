@@ -1,5 +1,7 @@
 #include <library_ca/library_ca.hpp>
 
+#include <threadschedule/thread.hpp>
+
 #include <chrono>
 #include <mutex>
 #include <string>

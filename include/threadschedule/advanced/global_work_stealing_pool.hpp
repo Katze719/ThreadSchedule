@@ -1,6 +1,13 @@
 #pragma once
 
 #include "../detail/pool/backend.hpp"
+#include "../result.hpp"
+#include "../worker_count.hpp"
+
+#include <future>
+#include <system_error>
+#include <type_traits>
+#include <utility>
 
 namespace threadschedule::advanced
 {
@@ -8,33 +15,38 @@ class global_work_stealing_pool
 {
 public:
   static void
-  init(std::size_t count)
+  init(worker_count count)
   {
-    backend::init(count);
+    backend::init(count.resolve());
   }
   template <typename F, typename... Args>
   static auto
-  submit(F&& function, Args&&... args)
-  {
-    return backend::submit(std::forward<F>(function), std::forward<Args>(args)...);
-  }
-  template <typename F, typename... Args>
-  static auto
-  try_submit(F&& function, Args&&... args)
+  submit(F&& function, Args&&... args) -> result<std::future<std::invoke_result_t<F, Args...>>>
   {
     return backend::try_submit(std::forward<F>(function), std::forward<Args>(args)...);
   }
   template <typename F, typename... Args>
-  static void
-  post(F&& function, Args&&... args)
+  static auto
+  submit_or_throw(F&& function, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>
   {
-    backend::post(std::forward<F>(function), std::forward<Args>(args)...);
+    auto submitted = submit(std::forward<F>(function), std::forward<Args>(args)...);
+    if (!submitted)
+      throw std::system_error(submitted.error(), "global_work_stealing_pool::submit");
+    return std::move(*submitted);
   }
   template <typename F, typename... Args>
   static auto
-  try_post(F&& function, Args&&... args)
+  post(F&& function, Args&&... args) -> result<void>
   {
     return backend::try_post(std::forward<F>(function), std::forward<Args>(args)...);
+  }
+  template <typename F, typename... Args>
+  static void
+  post_or_throw(F&& function, Args&&... args)
+  {
+    auto posted = post(std::forward<F>(function), std::forward<Args>(args)...);
+    if (!posted)
+      throw std::system_error(posted.error(), "global_work_stealing_pool::post");
   }
 
 private:

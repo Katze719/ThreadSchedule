@@ -3,9 +3,9 @@
 #include <memory>
 #include <numeric>
 #include <random>
-#include <threadschedule/advanced/native_thread.hpp>
-#include <threadschedule/advanced/pools.hpp>
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/advanced/work_stealing_pool.hpp>
+#include <threadschedule/thread_config.hpp>
+#include <threadschedule/worker_count.hpp>
 #include <vector>
 
 using namespace threadschedule;
@@ -47,9 +47,9 @@ BM_CacheFriendly_HighPerformancePool(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const data_size = 1000000; // 1M integers
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("cache_bench");
-  pool.distribute_across_cpus();
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("cache_bench"));
+  pool.distribute_workers();
 
   std::vector<int> data(data_size, 1);
   size_t const chunk_size = data_size / (num_threads * 4); // Optimize for cache
@@ -61,8 +61,8 @@ BM_CacheFriendly_HighPerformancePool(benchmark::State& state)
       for (size_t i = 0; i < data_size; i += chunk_size)
         {
           size_t const end_idx = std::min(i + chunk_size, data_size);
-          futures.push_back(
-              pool.submit([&data, i, end_idx]() { CacheLineBenchmark::cache_friendly_task(data, i, end_idx - i); }));
+          futures.push_back(pool.submit_or_throw([&data, i, end_idx]()
+                                                   { CacheLineBenchmark::cache_friendly_task(data, i, end_idx - i); }));
         }
 
       for (auto& future : futures)
@@ -83,8 +83,8 @@ BM_CacheUnfriendly_HighPerformancePool(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const data_size = 1000000;
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("cache_unfriendly_bench");
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("cache_unfriendly_bench"));
 
   std::vector<int> data(data_size, 1);
   size_t const stride = 64; // Jump by cache lines
@@ -96,9 +96,9 @@ BM_CacheUnfriendly_HighPerformancePool(benchmark::State& state)
 
       for (size_t t = 0; t < num_threads; ++t)
         {
-          futures.push_back(
-              pool.submit([&data, t, elements_per_thread]()
-                            { CacheLineBenchmark::cache_unfriendly_task(data, t, stride, elements_per_thread); }));
+          futures.push_back(pool.submit_or_throw(
+              [&data, t, elements_per_thread]()
+                { CacheLineBenchmark::cache_unfriendly_task(data, t, stride, elements_per_thread); }));
         }
 
       for (auto& future : futures)
@@ -123,8 +123,8 @@ BM_MemoryAllocation_TaskCreation(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const num_allocations = state.range(1);
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("alloc_bench");
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("alloc_bench"));
 
   for (auto _ : state)
     {
@@ -133,7 +133,7 @@ BM_MemoryAllocation_TaskCreation(benchmark::State& state)
 
       for (size_t i = 0; i < num_allocations; ++i)
         {
-          futures.push_back(pool.submit(
+          futures.push_back(pool.submit_or_throw(
               []() -> std::unique_ptr<std::vector<int>>
                 {
                   auto vec = std::make_unique<std::vector<int>>(1000);
@@ -166,9 +166,9 @@ BM_NUMA_LocalMemory(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const data_size = 10000000; // 10M integers
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("numa_bench");
-  pool.distribute_across_cpus();
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("numa_bench"));
+  pool.distribute_workers();
 
   // Allocate large dataset that might span NUMA nodes
   std::vector<int> data(data_size);
@@ -210,8 +210,8 @@ BM_FalseSharing_Avoided(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const increments_per_thread = 100000;
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("false_sharing_bench");
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("false_sharing_bench"));
 
   FalseSharingTest test_data;
 
@@ -221,7 +221,7 @@ BM_FalseSharing_Avoided(benchmark::State& state)
 
       for (size_t t = 0; t < num_threads; ++t)
         {
-          futures.push_back(pool.submit(
+          futures.push_back(pool.submit_or_throw(
               [&test_data, t]()
                 {
                   std::atomic<size_t>* counter = nullptr;

@@ -3,9 +3,10 @@
 #include <chrono>
 #include <memory>
 #include <random>
-#include <threadschedule/advanced/native_thread.hpp>
-#include <threadschedule/advanced/pools.hpp>
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/advanced/polling_pool.hpp>
+#include <threadschedule/advanced/work_stealing_pool.hpp>
+#include <threadschedule/thread_config.hpp>
+#include <threadschedule/worker_count.hpp>
 #include <vector>
 
 using namespace threadschedule;
@@ -21,9 +22,9 @@ bm_high_throughput_high_performance_pool(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const tasks_per_iteration = state.range(1);
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("htp_bench", native_scheduling_policy::other, native_thread_priority::normal());
-  pool.distribute_across_cpus();
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("htp_bench"));
+  pool.distribute_workers();
 
   for (auto _ : state)
     {
@@ -33,7 +34,7 @@ bm_high_throughput_high_performance_pool(benchmark::State& state)
       // Submit tasks as fast as possible
       for (size_t i = 0; i < tasks_per_iteration; ++i)
         {
-          futures.push_back(pool.submit(
+          futures.push_back(pool.submit_or_throw(
               []()
                 {
                   // Minimal work to test pure overhead
@@ -61,8 +62,8 @@ bm_high_throughput_fast_thread_pool(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const tasks_per_iteration = state.range(1);
 
-  polling_pool pool(num_threads);
-  pool.configure_threads("ftp_bench");
+  polling_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("ftp_bench"));
 
   for (auto _ : state)
     {
@@ -71,7 +72,7 @@ bm_high_throughput_fast_thread_pool(benchmark::State& state)
 
       for (size_t i = 0; i < tasks_per_iteration; ++i)
         {
-          futures.push_back(pool.submit([]() { std::this_thread::yield(); }));
+          futures.push_back(pool.submit_or_throw([]() { std::this_thread::yield(); }));
         }
 
       for (auto& future : futures)
@@ -95,9 +96,9 @@ bm_scalability_work_stealing(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const num_tasks = 50000; // Fixed task count
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("scale_bench", native_scheduling_policy::other, native_thread_priority::normal());
-  pool.distribute_across_cpus();
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("scale_bench"));
+  pool.distribute_workers();
 
   // Create variable workload to encourage work stealing
   std::random_device rd;
@@ -112,7 +113,7 @@ bm_scalability_work_stealing(benchmark::State& state)
       for (size_t i = 0; i < num_tasks; ++i)
         {
           int work_amount = work_dist(gen);
-          futures.push_back(pool.submit(
+          futures.push_back(pool.submit_or_throw(
               [work_amount]()
                 {
                   int sum = 0;
@@ -147,8 +148,8 @@ bm_contention_submission_storm(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const num_submitters = state.range(1); // Number of threads submitting tasks
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("contention_bench");
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("contention_bench"));
 
   for (auto _ : state)
     {
@@ -169,8 +170,8 @@ bm_contention_submission_storm(benchmark::State& state)
 
                   for (size_t j = 0; j < tasks_per_submitter; ++j)
                     {
-                      futures.push_back(pool.submit([&completed_tasks]()
-                                                      { completed_tasks.fetch_add(1, std::memory_order_relaxed); }));
+                      futures.push_back(pool.submit_or_throw(
+                          [&completed_tasks]() { completed_tasks.fetch_add(1, std::memory_order_relaxed); }));
                       submitted_tasks.fetch_add(1, std::memory_order_relaxed);
                     }
 
@@ -201,8 +202,8 @@ bm_memory_access_sequential(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const data_size = 1000000; // 1M elements
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("mem_bench");
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("mem_bench"));
 
   std::vector<int> data(data_size);
   std::iota(data.begin(), data.end(), 1);
@@ -227,8 +228,8 @@ bm_memory_access_random(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const data_size = 1000000;
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("mem_rand_bench");
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("mem_rand_bench"));
 
   std::vector<int> data(data_size);
   std::vector<size_t> indices(data_size);

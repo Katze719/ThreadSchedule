@@ -19,7 +19,7 @@ struct task_error
 {
   std::exception_ptr exception;
   std::string task_description;
-  std::thread::id thread_id;
+  std::thread::id std_id;
   std::chrono::steady_clock::time_point timestamp;
 
   [[nodiscard]] static auto

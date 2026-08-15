@@ -54,27 +54,27 @@ public:
   }
 
   [[nodiscard]] auto
-  count() const noexcept -> worker_count
+  get_worker_count() const noexcept -> worker_count
   {
     return worker_count_;
   }
   [[nodiscard]] auto
-  registration() const noexcept -> worker_registration
+  get_registration() const noexcept -> worker_registration
   {
     return registration_;
   }
   [[nodiscard]] auto
-  worker_config() const noexcept -> thread_config const&
+  get_worker_config() const noexcept -> thread_config const&
   {
     return workers_;
   }
   [[nodiscard]] auto
-  shutdown() const noexcept -> shutdown_policy
+  get_shutdown_policy() const noexcept -> shutdown_policy
   {
     return shutdown_;
   }
   [[nodiscard]] auto
-  on_task_error() const noexcept -> error_callback const&
+  get_error_callback() const noexcept -> error_callback const&
   {
     return on_task_error_;
   }
@@ -97,11 +97,11 @@ public:
   explicit thread_pool(thread_pool_config config)
       : config_(std::move(config)),
         impl_(std::make_unique<detail::thread_pool_backend>(
-            config_.count().resolve(), config_.registration() == worker_registration::global_registry))
+            config_.get_worker_count().resolve(), config_.get_registration() == worker_registration::global_registry))
   {
-    if (detail::has_thread_configuration(config_.worker_config()))
+    if (detail::has_thread_configuration(config_.get_worker_config()))
       {
-        auto configured = impl_->configure_threads(detail::to_native(config_.worker_config()));
+        auto configured = impl_->configure_threads(detail::to_native(config_.get_worker_config()));
         if (!configured)
           throw std::system_error(configured.error(), "thread_pool worker configuration");
       }
@@ -117,7 +117,7 @@ public:
           {
             try
               {
-                impl_->shutdown(detail::to_native(config_.shutdown()));
+                impl_->shutdown(detail::to_native(config_.get_shutdown_policy()));
               }
             catch (...)
               {
@@ -143,7 +143,7 @@ public:
       return;
     try
       {
-        impl_->shutdown(detail::to_native(config_.shutdown()));
+        impl_->shutdown(detail::to_native(config_.get_shutdown_policy()));
       }
     catch (...)
       {
@@ -160,10 +160,10 @@ public:
         [&]() -> result<std::future<std::invoke_result_t<F, Args...>>>
           {
             using return_type = std::invoke_result_t<F, Args...>;
-            if (!config_.on_task_error())
+            if (!config_.get_error_callback())
               return impl_->try_submit(std::forward<F>(function), std::forward<Args>(args)...);
 
-            auto callback = config_.on_task_error();
+            auto callback = config_.get_error_callback();
             auto wrapped = [bound = detail::bind_args(std::forward<F>(function), std::forward<Args>(args)...),
                             callback = std::move(callback)]() mutable -> return_type
               {
@@ -215,10 +215,10 @@ public:
     return detail::try_result(
         [&]() -> result<void>
           {
-            if (!config_.on_task_error())
+            if (!config_.get_error_callback())
               return impl_->try_post(std::forward<F>(function), std::forward<Args>(args)...);
 
-            auto callback = config_.on_task_error();
+            auto callback = config_.get_error_callback();
             auto wrapped = [bound = detail::bind_args(std::forward<F>(function), std::forward<Args>(args)...),
                             callback = std::move(callback)]() mutable
               {
@@ -280,7 +280,13 @@ public:
   }
 
   auto
-  shutdown(shutdown_policy policy = shutdown_policy::drain) -> result<void>
+  shutdown() -> result<void>
+  {
+    return shutdown(config_.get_shutdown_policy());
+  }
+
+  auto
+  shutdown(shutdown_policy policy) -> result<void>
   {
     if (!impl_)
       return {};

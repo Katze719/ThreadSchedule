@@ -1,4 +1,5 @@
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/thread_pool.hpp>
+#include <threadschedule/worker_count.hpp>
 
 #include <iostream>
 

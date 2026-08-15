@@ -1,5 +1,5 @@
 #pragma once
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/thread_registry.hpp>
 
 #if defined(_WIN32) && defined(BUILD_COMPOSITE_LIBA_SHARED)
 #  define COMPOSITE_LIBA_API __declspec(dllexport)

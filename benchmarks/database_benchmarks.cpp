@@ -8,9 +8,9 @@
 #include <sstream>
 #include <string>
 #include <thread>
-#include <threadschedule/advanced/native_thread.hpp>
-#include <threadschedule/advanced/pools.hpp>
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/advanced/work_stealing_pool.hpp>
+#include <threadschedule/thread_config.hpp>
+#include <threadschedule/worker_count.hpp>
 #include <unordered_map>
 #include <vector>
 
@@ -440,9 +440,9 @@ bm_database_crud_operations(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const operations_per_thread = state.range(1);
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("db_worker");
-  pool.distribute_across_cpus();
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("db_worker"));
+  pool.distribute_workers();
 
   simulated_database db;
 
@@ -470,7 +470,7 @@ bm_database_crud_operations(benchmark::State& state)
       // Submit CRUD operations
       for (size_t t = 0; t < num_threads; ++t)
         {
-          pool.submit(
+          pool.submit_or_throw(
               [&db, operations_per_thread, num_threads, &completed_operations, &failed_operations]()
                 {
                   try
@@ -496,7 +496,7 @@ bm_database_crud_operations(benchmark::State& state)
       state.counters["work_steal_ratio"]
           = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
       state.counters["avg_task_time_ms"]
-          = benchmark::Counter(static_cast<double>(stats.avg_task_time.count()) / 1000.0);
+          = benchmark::Counter(static_cast<double>(stats.average_task_time.count()) / 1000.0);
 
       benchmark::DoNotOptimize(completed_operations.load());
     }
@@ -511,9 +511,9 @@ bm_database_analytical_queries(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const queries_per_thread = state.range(1);
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("analytics_worker");
-  pool.distribute_across_cpus();
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("analytics_worker"));
+  pool.distribute_workers();
 
   simulated_database db;
 
@@ -543,7 +543,7 @@ bm_database_analytical_queries(benchmark::State& state)
       // Submit analytical query tasks
       for (size_t t = 0; t < num_threads; ++t)
         {
-          pool.submit(
+          pool.submit_or_throw(
               [&db, queries_per_thread, num_threads, &completed_queries, &total_query_time]()
                 {
                   auto start_time = std::chrono::steady_clock::now();
@@ -590,9 +590,9 @@ bm_database_concurrent_transactions(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const transactions_per_thread = state.range(1);
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("transaction_worker");
-  pool.distribute_across_cpus();
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("transaction_worker"));
+  pool.distribute_workers();
 
   simulated_database db;
 
@@ -617,7 +617,7 @@ bm_database_concurrent_transactions(benchmark::State& state)
       // Submit transaction tasks
       for (size_t t = 0; t < num_threads; ++t)
         {
-          pool.submit(
+          pool.submit_or_throw(
               [&db, transactions_per_thread, num_threads, &successful_transactions, &failed_transactions,
                &rollback_count]()
                 {
@@ -648,7 +648,7 @@ bm_database_concurrent_transactions(benchmark::State& state)
       state.counters["work_steal_ratio"]
           = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
       state.counters["avg_task_time_ms"]
-          = benchmark::Counter(static_cast<double>(stats.avg_task_time.count()) / 1000.0);
+          = benchmark::Counter(static_cast<double>(stats.average_task_time.count()) / 1000.0);
 
       benchmark::DoNotOptimize(successful_transactions.load());
     }
@@ -664,9 +664,9 @@ bm_database_mixed_workload(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const total_operations = state.range(1);
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("mixed_worker");
-  pool.distribute_across_cpus();
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("mixed_worker"));
+  pool.distribute_workers();
 
   simulated_database db;
 
@@ -702,7 +702,7 @@ bm_database_mixed_workload(benchmark::State& state)
 
           if (workload_type == 0) // CRUD
             {
-              pool.submit(
+              pool.submit_or_throw(
                   [&db, &crud_operations, &total_latency_ms, start_time]()
                     {
                       database_workloads::perform_crud_operations(db, 1);
@@ -716,7 +716,7 @@ bm_database_mixed_workload(benchmark::State& state)
             }
           else if (workload_type == 1) // Analytics
             {
-              pool.submit(
+              pool.submit_or_throw(
                   [&db, &analytical_queries, &total_latency_ms, start_time]()
                     {
                       database_workloads::perform_analytical_queries(db, 1);
@@ -730,7 +730,7 @@ bm_database_mixed_workload(benchmark::State& state)
             }
           else // Transactions
             {
-              pool.submit(
+              pool.submit_or_throw(
                   [&db, &transactions, &total_latency_ms, start_time]()
                     {
                       database_workloads::perform_concurrent_transactions(db, 1);
@@ -755,7 +755,7 @@ bm_database_mixed_workload(benchmark::State& state)
       state.counters["work_steal_ratio"]
           = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
       state.counters["operations_per_second"]
-          = benchmark::Counter(total_operations / (stats.avg_task_time.count() / 1e9));
+          = benchmark::Counter(total_operations / (stats.average_task_time.count() / 1e9));
 
       benchmark::DoNotOptimize(crud_operations.load());
     }

@@ -5,15 +5,15 @@
 #include <chrono>
 #include <iostream>
 #include <thread>
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/thread_registry.hpp>
 
 int
 main()
 {
   threadschedule::thread_registry registry;
-  threadschedule::use_global_registry(&registry);
-  appinj_libA::set_registry(&registry);
-  appinj_libB::set_registry(&registry);
+  threadschedule::global_registry_binding binding(registry);
+  appinj_libA::bind_registry(registry);
+  appinj_libB::bind_registry(registry);
 
   appinj_libA::start_worker("inj-a1");
   appinj_libA::start_worker("inj-a2");
@@ -41,10 +41,8 @@ main()
   appinj_libB::wait_for_threads();
   bool const empty = registry.empty();
 
-  appinj_libA::set_registry(nullptr);
-  appinj_libB::set_registry(nullptr);
-  threadschedule::use_global_registry(nullptr);
-
+  appinj_libA::unbind_registry();
+  appinj_libB::unbind_registry();
   std::cout << "registered=" << snapshot->size() << ", empty=" << empty << '\n';
   return valid && empty ? 0 : 2;
 }

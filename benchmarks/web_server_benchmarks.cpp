@@ -8,9 +8,9 @@
 #include <sstream>
 #include <string>
 #include <thread>
-#include <threadschedule/advanced/native_thread.hpp>
-#include <threadschedule/advanced/pools.hpp>
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/advanced/work_stealing_pool.hpp>
+#include <threadschedule/thread_config.hpp>
+#include <threadschedule/worker_count.hpp>
 #include <unordered_map>
 #include <vector>
 
@@ -396,9 +396,9 @@ bm_web_server_json_api_processing(benchmark::State& state)
   size_t const requests_per_batch = state.range(1);
   size_t const concurrent_users = state.range(2);
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("web_worker");
-  pool.distribute_across_cpus();
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("web_worker"));
+  pool.distribute_workers();
 
   session_store sessions;
   request_queue request_queue;
@@ -429,7 +429,7 @@ bm_web_server_json_api_processing(benchmark::State& state)
           request.body = { { "limit", 50 }, { "offset", i * 10 }, { "period", "30d" } };
           request.timestamp = std::chrono::steady_clock::now();
 
-          pool.submit(
+          pool.submit_or_throw(
               [&sessions, &processed_requests, &errors, request]()
                 {
                   try
@@ -461,7 +461,7 @@ bm_web_server_json_api_processing(benchmark::State& state)
       state.counters["work_steal_ratio"]
           = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
       state.counters["avg_task_time_ms"]
-          = benchmark::Counter(static_cast<double>(stats.avg_task_time.count()) / 1000.0);
+          = benchmark::Counter(static_cast<double>(stats.average_task_time.count()) / 1000.0);
 
       benchmark::DoNotOptimize(processed_requests.load());
     }
@@ -478,9 +478,9 @@ bm_web_server_file_upload_processing(benchmark::State& state)
   size_t const uploads_per_batch = state.range(1);
   size_t const file_size_kb = state.range(2);
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("upload_worker");
-  pool.distribute_across_cpus();
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("upload_worker"));
+  pool.distribute_workers();
 
   for (auto _ : state)
     {
@@ -508,7 +508,7 @@ bm_web_server_file_upload_processing(benchmark::State& state)
 
           request.headers["content-type"] = (i % 3 == 0) ? "text/plain" : "image/jpeg";
 
-          pool.submit(
+          pool.submit_or_throw(
               [&processed_uploads, &total_bytes, request]()
                 {
                   auto response = web_server_workloads::process_file_upload(request);
@@ -526,7 +526,7 @@ bm_web_server_file_upload_processing(benchmark::State& state)
       state.counters["processed_uploads"] = benchmark::Counter(processed_uploads.load());
       state.counters["total_bytes_mb"] = benchmark::Counter(total_bytes.load() / (1024.0 * 1024.0));
       state.counters["throughput_mbps"]
-          = benchmark::Counter((total_bytes.load() / (1024.0 * 1024.0)) / (stats.avg_task_time.count() / 1e9));
+          = benchmark::Counter((total_bytes.load() / (1024.0 * 1024.0)) / (stats.average_task_time.count() / 1e9));
       state.counters["work_steal_ratio"]
           = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
 
@@ -545,9 +545,9 @@ bm_web_server_real_time_streaming(benchmark::State& state)
   size_t const messages_per_second = state.range(1);
   size_t const duration_seconds = 3;
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("streaming_worker");
-  pool.distribute_across_cpus();
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("streaming_worker"));
+  pool.distribute_workers();
 
   for (auto _ : state)
     {
@@ -577,7 +577,7 @@ bm_web_server_real_time_streaming(benchmark::State& state)
 
           request.body = { { "stream_id", "stream_001" }, { "metrics", metrics }, { "batch_size", 10 } };
 
-          pool.submit(
+          pool.submit_or_throw(
               [&processed_messages, &avg_latency_ms, &message_count, &request, submit_time]()
                 {
                   auto response = web_server_workloads::process_websocket_message(request);

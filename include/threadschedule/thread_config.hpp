@@ -63,17 +63,17 @@ public:
   }
 
   [[nodiscard]] auto
-  name() const noexcept -> std::optional<std::string> const&
+  get_name() const noexcept -> std::optional<std::string> const&
   {
     return name_;
   }
   [[nodiscard]] auto
-  scheduling() const noexcept -> std::optional<scheduling_config> const&
+  get_scheduling() const noexcept -> std::optional<scheduling_config> const&
   {
     return scheduling_;
   }
   [[nodiscard]] auto
-  affinity() const noexcept -> std::optional<thread_affinity> const&
+  get_affinity() const noexcept -> std::optional<thread_affinity> const&
   {
     return affinity_;
   }

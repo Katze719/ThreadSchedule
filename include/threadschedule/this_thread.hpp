@@ -38,6 +38,12 @@ get_priority() -> result<priority_level>
   return detail::portable_thread_control::get_priority(detail::read_nice_value(detail::current_native_thread_id()));
 }
 
+[[nodiscard]] inline auto
+get_nice() -> result<nice_value>
+{
+  return detail::portable_thread_control::get_nice(detail::read_nice_value(detail::current_native_thread_id()));
+}
+
 inline auto
 set_name(std::string const& name) -> result<void>
 {

@@ -1,235 +1,123 @@
 #pragma once
 
-/**
- * @file thread_profile.hpp
- * @brief High-level thread configuration profiles and helpers.
- *
- * Provides simple presets (e.g. realtime, low_latency, throughput, background)
- * and utility functions to apply them to single threads, thread pools, or
- * registry-managed threads. Profiles abstract low-level flags like policy,
- * priority, and optional CPU affinity into a single intent.
- */
+#include "../result.hpp"
+#include "../scheduling.hpp"
+#include "../thread_affinity.hpp"
+#include "../thread_config.hpp"
+#include "polling_pool.hpp"
+#include "raw_thread_pool.hpp"
+#include "work_stealing_pool.hpp"
 
-#include "native_thread.hpp"
-#include "pools.hpp"
 #include <optional>
 #include <string>
+#include <system_error>
+#include <utility>
 #include <vector>
 
 namespace threadschedule::advanced
 {
 
-namespace implementation = ::threadschedule::detail;
-using native_priority_model = implementation::native_priority_model;
-using native_scheduling_config = implementation::native_scheduling_config;
-using native_scheduling_intent = implementation::native_scheduling_intent;
-using native_scheduling_policy = implementation::native_scheduling_policy;
-using native_thread_affinity = implementation::native_thread_affinity;
-using native_thread_config = implementation::native_thread_config;
-using native_thread_id = implementation::native_thread_id;
-using native_thread_priority = implementation::native_thread_priority;
-
-/**
- * @brief Declarative profile bundling scheduling intent for a thread.
- *
- * Value type (copyable). Combines a human-readable name, a scheduling
- * policy, a priority level, and an optional CPU affinity mask into a
- * single object that can be passed to the apply_profile() overloads.
- *
- * @see profiles::realtime, profiles::low_latency, profiles::throughput,
- *      profiles::background
- * @see apply_profile()
- */
 struct thread_profile
 {
   std::string name;
-  native_scheduling_policy policy;
-  native_thread_priority priority;
-  std::optional<native_thread_affinity> affinity;
-  native_priority_model priority_model{ native_priority_model::platform_native };
+  scheduling_config scheduling;
+  std::optional<thread_affinity> affinity;
 };
 
 namespace profiles
 {
-/**
- * @brief Highest priority profile. Uses FIFO on Linux (if permitted),
- *        falls back to OTHER on Windows.
- */
-inline auto
+[[nodiscard]] inline auto
 realtime() -> thread_profile
 {
-  return thread_profile{ "realtime",
-#ifdef _WIN32
-                         native_scheduling_policy::other,
-#else
-                         native_scheduling_policy::fifo,
-#endif
-#ifdef _WIN32
-                         native_thread_priority::highest(),
-#else
-                         native_thread_priority::realtime_highest(),
-#endif
-                         std::nullopt };
+  return { "realtime", schedule::realtime_fifo(realtime_priority{ 99 }), std::nullopt };
 }
 
-/**
- * @brief Low-latency interactive profile that avoids real-time privileges.
- */
-inline auto
+[[nodiscard]] inline auto
 low_latency() -> thread_profile
 {
-  auto const config = implementation::native_schedule::low_latency();
-  auto const scheduling = implementation::resolve_scheduling_config(config);
-  return thread_profile{ "low_latency", scheduling.policy, scheduling.priority, std::nullopt, scheduling.model };
+  return { "low_latency", schedule::low_latency(), std::nullopt };
 }
 
-/**
- * @brief Throughput-oriented profile favoring batch scheduling.
- */
-inline auto
+[[nodiscard]] inline auto
 throughput() -> thread_profile
 {
-  return thread_profile{ "throughput", native_scheduling_policy::batch,
-#ifdef _WIN32
-                         native_thread_priority{ 5 }, std::nullopt };
-#else
-                         native_thread_priority::normal(), std::nullopt };
-#endif
+  return { "throughput", schedule::normal(), std::nullopt };
 }
 
-/**
- * @brief Background profile for very low priority work.
- */
-inline auto
+[[nodiscard]] inline auto
 background() -> thread_profile
 {
-  return thread_profile{ "background", native_scheduling_policy::idle, native_thread_priority::lowest(), std::nullopt };
+  return { "background", schedule::background(), std::nullopt };
 }
 } // namespace profiles
 
-namespace detail
+namespace profile_detail
 {
-
 [[nodiscard]] inline auto
-scheduling_from_profile(thread_profile const& p) -> native_scheduling_config
+make_config(thread_profile const& profile, std::string name) -> thread_config
 {
-  return { native_scheduling_intent::normal, p.policy, p.priority, p.priority_model };
+  thread_config config;
+  config.set_name(std::move(name)).set_scheduling(profile.scheduling);
+  if (profile.affinity)
+    config.set_affinity(*profile.affinity);
+  return config;
 }
 
-/**
- * @brief Apply policy + optional affinity to any type exposing
- *        configure() and set_affinity().
- */
-template <typename T>
-inline auto
-apply_profile_to(T& t, thread_profile const& p) -> expected<void, std::error_code>
+template <typename ThreadLike>
+auto
+apply_to_thread(ThreadLike& value, thread_profile const& profile) -> result<void>
 {
-  auto scheduled = t.configure(scheduling_from_profile(p));
-  if (!scheduled)
-    return unexpected(scheduled.error());
-  if (p.affinity.has_value())
-    return t.set_affinity(*p.affinity);
-  return {};
+  return value.configure(make_config(profile, profile.name));
 }
 
-/**
- * @brief Apply configure_threads + optional affinity to any pool type.
- */
-template <typename PoolType>
-inline auto
-apply_profile_to_pool(PoolType& pool, std::string const& name_prefix, thread_profile const& p)
-    -> expected<void, std::error_code>
+template <typename Pool>
+auto
+apply_to_pool(Pool& pool, std::string name, thread_profile const& profile) -> result<void>
 {
-  native_thread_config config;
-  config.name = name_prefix;
-  config.scheduling = scheduling_from_profile(p);
-  auto configured = pool.configure_threads(config);
-  if (!configured)
-    return unexpected(configured.error());
-  if (p.affinity.has_value())
-    return pool.set_affinity(*p.affinity);
-  return {};
+  return pool.configure_workers(make_config(profile, std::move(name)));
+}
+} // namespace profile_detail
+
+template <typename ThreadLike>
+auto
+apply_profile(ThreadLike& value, thread_profile const& profile) -> result<void>
+{
+  return profile_detail::apply_to_thread(value, profile);
 }
 
-template <typename T>
 inline auto
-apply_profile_detailed_to(T& t, thread_profile const& p) -> std::vector<std::error_code>
+apply_profile(raw_thread_pool& pool, thread_profile const& profile) -> result<void>
 {
-  std::vector<std::error_code> results;
-  auto scheduling_result = t.configure(scheduling_from_profile(p));
-  results.push_back(scheduling_result.has_value() ? std::error_code{} : scheduling_result.error());
-  if (p.affinity.has_value())
+  return profile_detail::apply_to_pool(pool, "pool", profile);
+}
+
+inline auto
+apply_profile(polling_pool& pool, thread_profile const& profile) -> result<void>
+{
+  return profile_detail::apply_to_pool(pool, "polling", profile);
+}
+
+inline auto
+apply_profile(work_stealing_pool& pool, thread_profile const& profile) -> result<void>
+{
+  return profile_detail::apply_to_pool(pool, "work_stealing", profile);
+}
+
+template <typename ThreadLike>
+auto
+apply_profile_detailed(ThreadLike& value, thread_profile const& profile) -> std::vector<std::error_code>
+{
+  std::vector<std::error_code> errors;
+  thread_config scheduling;
+  scheduling.set_name(profile.name).set_scheduling(profile.scheduling);
+  auto configured = value.configure(scheduling);
+  errors.push_back(configured ? std::error_code{} : configured.error());
+  if (profile.affinity)
     {
-      auto affinity_result = t.set_affinity(*p.affinity);
-      results.push_back(affinity_result.has_value() ? std::error_code{} : affinity_result.error());
+      auto affinity = value.set_affinity(*profile.affinity);
+      errors.push_back(affinity ? std::error_code{} : affinity.error());
     }
-  return results;
-}
-
-} // namespace detail
-
-/**
- * @brief Apply a profile to a thread wrapper or view.
- *
- * @tparam ThreadLike A type satisfying the is_thread_like trait.
- * @param t   Thread wrapper or view to configure.
- * @param p   Profile to apply.
- * @return    Empty expected on success, or @c operation_not_permitted.
- */
-template <typename ThreadLike>
-inline auto
-apply_profile(ThreadLike& t, thread_profile const& p) -> expected<void, std::error_code>
-{
-  return detail::apply_profile_to(t, p);
-}
-
-/**
- * @brief Apply a profile to every worker in a raw thread pool.
- */
-inline auto
-apply_profile(raw_thread_pool& pool, thread_profile const& p) -> expected<void, std::error_code>
-{
-  return detail::apply_profile_to_pool(pool, "pool", p);
-}
-
-/**
- * @brief Apply a profile to every worker in a polling pool.
- */
-inline auto
-apply_profile(polling_pool& pool, thread_profile const& p) -> expected<void, std::error_code>
-{
-  return detail::apply_profile_to_pool(pool, "fast", p);
-}
-
-/**
- * @brief Apply a profile to every worker in a work-stealing pool.
- */
-inline auto
-apply_profile(work_stealing_pool& pool, thread_profile const& p) -> expected<void, std::error_code>
-{
-  return detail::apply_profile_to_pool(pool, "hp", p);
-}
-
-/**
- * @brief Apply a profile and return per-step error codes.
- *
- * Unlike @ref apply_profile (which aggregates into a single
- * @c operation_not_permitted), this function returns a vector with one
- * entry per configuration step. Successful steps have a default
- * (zero) error code; failed steps carry the specific OS error.
- *
- * The steps are, in order:
- *  0 - configure scheduling
- *  1 - set_affinity (only present when @c p.affinity has a value)
- *
- * @tparam ThreadLike A type satisfying the is_thread_like trait.
- * @return Vector of error codes, one per step attempted.
- */
-template <typename ThreadLike>
-inline auto
-apply_profile_detailed(ThreadLike& t, thread_profile const& p) -> std::vector<std::error_code>
-{
-  return detail::apply_profile_detailed_to(t, p);
+  return errors;
 }
 
 } // namespace threadschedule::advanced

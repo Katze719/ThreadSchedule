@@ -26,9 +26,13 @@ Include the complete advanced surface explicitly:
 | `scheduled_polling_pool` | Scheduler backed by polling workers |
 | `scheduled_lightweight_pool` | Scheduler backed by lightweight workers |
 
-Advanced pools retain backend-specific tuning and statistics. Their task
-submission APIs are lower-level and may include explicitly throwing operations;
-the canonical `thread_pool` remains the recommended default.
+Advanced pools are facades over specialized backends; no backend type or
+constructor leaks into their public API. They use `worker_count`,
+`worker_registration`, `thread_config`, `shutdown_policy`, and `result<T>` just
+like the core pools. Throwing operations are explicitly named
+`submit_or_throw`, `post_or_throw`, and `submit_batch_or_throw`. Common
+statistics use the public `pool_statistics` value type. The canonical
+`thread_pool` remains the recommended default.
 
 ## Native scheduling
 
@@ -36,31 +40,21 @@ the canonical `thread_pool` remains the recommended default.
 platform-native handle escape hatch. The portable core types intentionally do
 not expose toolchain-specific handle types as member functions.
 
-`native_thread_priority`, `native_scheduling_policy`, and
-`scheduler_parameters` expose POSIX and Windows scheduling details. Realtime
-configuration may require `CAP_SYS_NICE`, root privileges, or an elevated
-Windows process.
-
-`threadschedule::thread` deliberately exposes portable scheduling intent
-through `thread_config::scheduling`, `schedule::*`, `priority_level`, and the
-direct `set_priority` / `set_nice` operations. Native values differ between
-POSIX and Windows and should be used only where an advanced API explicitly
-accepts them. `advanced::native_schedule::posix_nice()` applies a real
-per-thread nice value on Linux and the documented safe Win32 mapping on
-Windows. Exact native realtime priority remains separate.
-
-On Windows, `advanced::native_schedule::native_windows_priority()` accepts a
-Win32 thread-priority constant and applies that constant without passing it
-through the portable nice mapping. Unsupported integer values fail with
-`invalid_argument`.
+Scheduling intent remains portable even in advanced profiles: use
+`thread_config`, `schedule::*`, `priority_level`, `nice_value`, and
+`realtime_priority`. ThreadSchedule does not publish a second native scheduling
+type system. Code that truly needs a POSIX or Win32-only policy uses
+`advanced::native_handle(...)` and calls the platform API directly. Raw OS
+thread IDs exist only as `advanced::native_thread_id`, for APIs such as Linux
+cgroup attachment.
 
 Normal Windows priority configuration does not alter the process priority
 class and does not select `THREAD_PRIORITY_TIME_CRITICAL`. Under MinGW-w64,
 the implementation obtains the Win32 `HANDLE` with `pthread_gethandle()`; a
 `pthread_t` is never reinterpreted as a handle or thread ID.
 
-Windows affinity IDs use `processor_group * 64 + processor_index`.
-`native_thread_affinity` represents one processor group at a time, matching
+Windows `cpu_id` values use `processor_group * 64 + processor_index`.
+`thread_affinity` represents one processor group at a time, matching
 `SetThreadGroupAffinity`. On Windows versions where a default thread may run
 in more than one group, `get_affinity()` reports the primary group exposed by
 `GetThreadGroupAffinity`; it does not claim to represent the all-group default.
@@ -90,7 +84,7 @@ facilities:
 
 - future combinators: `when_all`, `when_any`, and `when_all_settled`
 - scoped backend work through `task_group<Pool>`
-- native scheduling presets through `thread_profile`, `profiles::*`, and
+- portable scheduling presets through `thread_profile`, `profiles::*`, and
   `apply_profile`
 - hardware discovery through `cpu_topology`, `read_topology`, and the NUMA
   affinity helpers
@@ -100,8 +94,8 @@ facilities:
 
 These names live in `threadschedule::advanced`. Their backing implementation
 types are not an additional canonical core API. `task_group` is intended for
-advanced pool backends whose `submit` operation directly returns a
-`std::future`.
+advanced pool facades. Their `submit` operation follows the common
+`result<std::future<T>>` contract.
 
 Advanced APIs use the same C++17 public type policy as the core API. Feature
 detection may optimize implementation details but must not change a public

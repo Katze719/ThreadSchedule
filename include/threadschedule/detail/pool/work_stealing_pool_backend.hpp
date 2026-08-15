@@ -166,6 +166,12 @@ public:
       }
   }
 
+  template <typename Bool, std::enable_if_t<std::is_same_v<std::decay_t<Bool>, bool>, int> = 0>
+  work_stealing_pool_backend(size_t num_threads, Bool register_workers)
+      : work_stealing_pool_backend(num_threads, work_stealing_deque<queued_task>::default_capacity, register_workers)
+  {
+  }
+
   work_stealing_pool_backend(work_stealing_pool_backend const&) = delete;
   auto operator=(work_stealing_pool_backend const&) -> work_stealing_pool_backend& = delete;
 

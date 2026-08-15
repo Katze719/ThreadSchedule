@@ -16,7 +16,6 @@ struct thread_id_access;
 class thread_id
 {
 public:
-  thread_id() noexcept = default;
   constexpr explicit thread_id(std::int64_t value) : value_(checked(value)) {}
 
   [[nodiscard]] static auto
@@ -25,12 +24,6 @@ public:
     if (value <= 0)
       return unexpected(std::make_error_code(std::errc::invalid_argument));
     return thread_id(unchecked_tag{}, static_cast<std::uint64_t>(value));
-  }
-
-  [[nodiscard]] constexpr auto
-  valid() const noexcept -> bool
-  {
-    return value_ != 0;
   }
 
   friend constexpr auto
@@ -65,7 +58,7 @@ private:
     return static_cast<std::uint64_t>(value);
   }
 
-  std::uint64_t value_{ 0 };
+  std::uint64_t value_;
 };
 
 namespace detail
@@ -73,8 +66,10 @@ namespace detail
 struct thread_id_access
 {
   [[nodiscard]] static constexpr auto
-  make(std::uint64_t value) noexcept -> thread_id
+  make(std::uint64_t value) -> thread_id
   {
+    if (value == 0)
+      throw std::invalid_argument("thread_id must be positive");
     return thread_id(thread_id::unchecked_tag{}, value);
   }
   [[nodiscard]] static constexpr auto

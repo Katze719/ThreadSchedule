@@ -1,5 +1,5 @@
 #pragma once
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/thread_registry.hpp>
 
 #if defined(_WIN32) && defined(BUILD_COMPOSITE_LIBB_SHARED)
 #  define COMPOSITE_LIBB_API __declspec(dllexport)

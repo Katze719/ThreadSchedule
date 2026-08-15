@@ -5,7 +5,8 @@
  * @brief Composite registry support for advanced multi-registry scenarios.
  */
 
-#include "../core.hpp"
+#include "../detail/try_result.hpp"
+#include "../thread_registry.hpp"
 
 #include <mutex>
 #include <vector>

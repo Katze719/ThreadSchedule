@@ -21,6 +21,7 @@ endfunction()
 file(GLOB foundation_files
     "${include_root}/cpu_id.hpp"
     "${include_root}/nice_value.hpp"
+    "${include_root}/pool_statistics.hpp"
     "${include_root}/realtime_priority.hpp"
     "${include_root}/result.hpp"
     "${include_root}/scheduling.hpp"
@@ -58,3 +59,14 @@ check_layer("registry" "detail/(pool|scheduled)/|(thread_pool|scheduled_pool|sch
 file(GLOB pool_files "${include_root}/detail/pool/*.hpp")
 list(APPEND pool_files "${include_root}/thread_pool.hpp")
 check_layer("pool" "detail/scheduled/|scheduled_(pool|task)\\.hpp" ${pool_files})
+
+# Umbrellas are consumer conveniences. Individual library headers must name
+# their direct dependencies so include relationships remain reviewable.
+file(GLOB_RECURSE focused_public_headers "${include_root}/*.hpp")
+list(REMOVE_ITEM focused_public_headers
+    "${include_root}/advanced.hpp"
+    "${include_root}/core.hpp"
+    "${include_root}/threadschedule.hpp"
+    "${include_root}/advanced/pools.hpp"
+)
+check_layer("focused public header" "[/\"](advanced|core|pools|threadschedule)\\.hpp" ${focused_public_headers})

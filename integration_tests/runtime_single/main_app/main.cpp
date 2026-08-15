@@ -5,7 +5,7 @@
 #include <chrono>
 #include <iostream>
 #include <thread>
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/thread_registry.hpp>
 
 int
 main()

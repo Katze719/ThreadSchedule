@@ -21,7 +21,7 @@ Focused consumers can include a single self-contained contract instead:
 | Runtime mode | `<threadschedule/runtime.hpp>` |
 
 Every header above is tested in a fresh translation unit without a preceding
-umbrella include. `core.hpp` is the compatibility core umbrella and
+umbrella include. `core.hpp` is the focused core umbrella and
 `threadschedule.hpp` is the recommended complete core include.
 
 The core public surface is C++17. When the standard library exposes
@@ -112,7 +112,9 @@ assignment can therefore block until the currently owned thread exits. `join`,
 `detach`, and `configure` return `result<void>`; `join_or_throw` and
 `detach_or_throw` are the explicit throwing forms. Joining or detaching a
 non-joinable thread returns `std::errc::invalid_argument`. `thread_view`
-configures an existing `std::thread` without taking ownership.
+configures an existing `std::thread` or `threadschedule::thread` without taking
+ownership. Under C++20 it also accepts `std::jthread` and
+`threadschedule::jthread`.
 
 ### Thread configuration
 
@@ -152,6 +154,12 @@ configuration fails, the callable is not started. Configuration operations
 preserve the specific error from the first failed name, scheduling, or
 affinity step.
 
+Configuration objects use matching `set_*` and `get_*` names. A
+`thread_config` patch exposes `get_name`, `get_scheduling`, and `get_affinity`;
+pool configs expose `get_worker_count`, `get_registration`,
+`get_worker_config`, `get_shutdown_policy`, and `get_error_callback` (plus
+`get_scheduler_config` for scheduled pools).
+
 ### Calling-thread configuration
 
 The `this_thread` namespace applies the same portable settings to the calling
@@ -178,7 +186,7 @@ if (auto result = threadschedule::this_thread::set_priority(
 ```
 
 `this_thread` provides `configure`, `set_priority`, `set_nice`,
-`get_priority`, `set_name`, `get_name`, `set_affinity`, and `get_affinity`.
+`get_priority`, `get_nice`, `set_name`, `get_name`, `set_affinity`, and `get_affinity`.
 All operations return `result<T>` and use the same validation and exact
 affinity readback as `thread`.
 
@@ -221,6 +229,8 @@ if (auto waited = pool.wait(); !waited)
 `submit` returns `result<std::future<T>>`; `post` returns `result<void>`.
 Destruction uses the configured shutdown policy. `drain` completes accepted
 work, while `drop_pending` discards work that has not started.
+Calling `shutdown()` uses that same configured policy; the
+`shutdown(shutdown_policy)` overload explicitly overrides it for that call.
 After a move, the source pool has size zero. Submission, waiting, and worker
 configuration return `operation_canceled`; shutdown remains an idempotent
 success.
@@ -294,8 +304,12 @@ else
 ```
 
 `registered_thread` is a lowercase value snapshot without native control-block
-ownership. `global_registry()` returns the active process registry.
-`use_global_registry(pointer)` injects an application-owned registry.
+ownership. Its `id` is the OS-backed `thread_id` used by registry operations;
+its `std_id` is the separate `std::thread::id`. `global_registry()` returns the
+active process registry. A scoped `global_registry_binding` installs an
+application-owned registry, keeps its backend alive, and restores the previous
+registry when the binding is destroyed. Bindings must be destroyed in reverse
+installation order.
 Header-only builds have one instance per linked image; the optional runtime
 supplies one instance to compatible DSOs that link it.
 
@@ -320,12 +334,12 @@ the parallel `create(...)` factories return `result<T>`.
 On Windows, normal priorities map to `IDLE`, `BELOW_NORMAL`, `NORMAL`,
 `ABOVE_NORMAL`, or `HIGHEST`. Exact nice values use the same safe mapping and
 never select `TIME_CRITICAL`. Portable realtime requests map only to
-`ABOVE_NORMAL` or `HIGHEST`; `TIME_CRITICAL` remains available solely through
-the explicit advanced native-Windows priority API. MinGW-w64 uses the same
+`ABOVE_NORMAL` or `HIGHEST`. Code requiring other native behavior can call the
+platform API through `advanced::native_handle(...)`. MinGW-w64 uses the same
 Win32 behavior through its pthread-to-`HANDLE` adapter.
 
 `thread`, C++20 `jthread`, and `thread_view` provide `set_priority`,
-`set_nice`, `get_priority`, and error-preserving `get_affinity` operations. A
+`set_nice`, `get_priority`, `get_nice`, and error-preserving `get_affinity` operations. A
 Linux `thread_view` over an external
 `std::thread` has no portable identity for nice control, so nice operations
 report `operation_not_supported`. Native identity-based control is available
@@ -335,5 +349,5 @@ workers use the same settings through `thread_config`.
 
 Increasing priority with a negative nice value usually requires privileges on
 Linux. Applying realtime policies can likewise fail with `permission_denied`
-or `operation_not_permitted`. Platform-native policies and priority values are
-advanced APIs.
+or `operation_not_permitted`. Platform-native policy manipulation is done
+directly through the operating-system API and an advanced native handle.

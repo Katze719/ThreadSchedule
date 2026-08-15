@@ -42,7 +42,7 @@ TEST(CallableTest, FunctionRefWrapsLambdaReference)
 TEST(CallableTest, PublicCallbackAliasesAcceptLambdas)
 {
   task_start_callback on_start = [](std::chrono::steady_clock::time_point, std::thread::id) {};
-  threadschedule::advanced::error_callback on_error = [](threadschedule::advanced::task_error const&) {};
+  threadschedule::error_callback on_error = [](threadschedule::task_error const&) {};
 
   EXPECT_TRUE(static_cast<bool>(on_start));
   EXPECT_TRUE(static_cast<bool>(on_error));

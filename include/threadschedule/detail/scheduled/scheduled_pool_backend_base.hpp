@@ -215,7 +215,7 @@ public:
     start_scheduler();
   }
 
-  template <typename T = PoolType, std::enable_if_t<std::is_same_v<T, thread_pool_backend>, int> = 0>
+  template <typename T = PoolType, std::enable_if_t<std::is_constructible_v<T, size_t, bool>, int> = 0>
   scheduled_pool_backend_base(size_t worker_threads, bool register_workers)
       : pool_(worker_threads, register_workers), stop_(false), next_task_id_(1)
   {

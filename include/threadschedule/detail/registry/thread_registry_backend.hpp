@@ -558,14 +558,13 @@ private:
 /**
  * @name Global registry access
  *
- * These free functions provide access to a process-wide @ref
- * thread_registry_backend singleton and allow injecting a custom instance.
+ * These internal free functions provide access to a process-wide @ref
+ * thread_registry_backend singleton and allow installing a custom instance.
  *
  * @par Header-only mode (default)
- * Both registry() and set_external_registry() are @c inline functions that
- * use function-local statics (Meyer's singleton pattern).  registry()
- * returns the externally set registry if one was provided via
- * set_external_registry(), otherwise a function-local static instance.
+ * The runtime registry functions are inline and use function-local statics.
+ * runtime_registry() returns the installed backend when one exists, otherwise
+ * a function-local default instance.
  *
  * @par Runtime / shared-library mode (@c THREADSCHEDULE_RUNTIME defined)
  * The functions are declared here but **defined** in
@@ -579,6 +578,7 @@ private:
 #if defined(THREADSCHEDULE_RUNTIME)
 THREADSCHEDULE_API auto runtime_registry() -> thread_registry_backend&;
 THREADSCHEDULE_API void runtime_set_external_registry(thread_registry_backend* reg);
+THREADSCHEDULE_API auto runtime_exchange_external_registry(thread_registry_backend* reg) -> thread_registry_backend*;
 #else
 /** @cond INTERNAL */
 inline auto
@@ -603,6 +603,14 @@ inline void
 runtime_set_external_registry(thread_registry_backend* reg)
 {
   registry_storage() = reg;
+}
+
+inline auto
+runtime_exchange_external_registry(thread_registry_backend* reg) -> thread_registry_backend*
+{
+  auto* const previous = registry_storage();
+  registry_storage() = reg;
+  return previous;
 }
 #endif
 

@@ -19,6 +19,7 @@ set(THREADSCHEDULE_SELF_CONTAINED_HEADERS
     threadschedule/result.hpp
     threadschedule/cpu_id.hpp
     threadschedule/nice_value.hpp
+    threadschedule/pool_statistics.hpp
     threadschedule/realtime_priority.hpp
     threadschedule/thread_id.hpp
     threadschedule/worker_count.hpp
@@ -79,6 +80,7 @@ set(THREADSCHEDULE_SELF_CONTAINED_HEADERS
     threadschedule/detail/registry/thread_registry_backend.hpp
     threadschedule/detail/pool/backend.hpp
     threadschedule/detail/pool/callbacks.hpp
+    threadschedule/detail/pool/facade.hpp
     threadschedule/detail/pool/global_pool_backend.hpp
     threadschedule/detail/pool/indefinite_wait.hpp
     threadschedule/detail/pool/inline_pool_backend.hpp
@@ -92,6 +94,7 @@ set(THREADSCHEDULE_SELF_CONTAINED_HEADERS
     threadschedule/detail/pool/worker_count.hpp
     threadschedule/detail/pool/worker_context_guard.hpp
     threadschedule/detail/scheduled/backend.hpp
+    threadschedule/detail/scheduled/facade.hpp
     threadschedule/detail/scheduled/scheduled_cancellation_state.hpp
     threadschedule/detail/scheduled/scheduled_pool_backend_base.hpp
     threadschedule/detail/scheduled/scheduled_task_backend.hpp

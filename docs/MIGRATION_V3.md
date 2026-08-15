@@ -42,7 +42,7 @@ The following 2.4 root headers moved or were replaced:
 | `futures.hpp` | `advanced/futures.hpp` |
 | `task_group.hpp` | `advanced/task_group.hpp` |
 | `error_handler.hpp` | `task_error.hpp` for core callbacks, or `advanced/error_handler.hpp` |
-| `inline_pool.hpp` | `advanced/pools.hpp` |
+| `inline_pool.hpp` | `advanced/inline_pool.hpp` |
 | `registered_threads.hpp` | No replacement header; register explicitly |
 | `pthread_wrapper.hpp` | No replacement header; use `thread` or the platform API directly |
 | `abi.hpp`, `task.hpp`, `generator.hpp`, `reflection.hpp`, `concepts.hpp`, `callable.hpp` | Removed |
@@ -60,9 +60,9 @@ The lowercase 3.0 types are new implementations, not aliases or subclasses of th
 | `JThreadWrapper` | `jthread` when C++20 `std::jthread` is available |
 | `ThreadWrapperView` | `thread_view` for configuration only |
 | `ThreadAffinity` | `thread_affinity` containing `cpu_id` values |
-| `ThreadPriority` | `priority_level`, `nice_value`, `realtime_priority`, or an advanced native type |
-| `SchedulingPolicy` | `schedule::*` or `advanced::native_scheduling_policy` |
-| `SchedulerParams` | `advanced::scheduler_parameters` |
+| `ThreadPriority` | `priority_level`, `nice_value`, or `realtime_priority` |
+| `SchedulingPolicy` | `schedule::*` |
+| `SchedulerParams` | No public replacement; use portable scheduling or the platform API |
 | `Tid` | `thread_id` for registry operations; `advanced::native_thread_id` only for native code |
 | `ThreadRegistry` | `thread_registry` |
 | `RegisteredThreadInfo` | `registered_thread` |
@@ -72,9 +72,10 @@ The lowercase 3.0 types are new implementations, not aliases or subclasses of th
 | `TaskError` used by a core pool | `task_error` |
 | `BuildMode` / `build_mode()` | `build_mode` / `current_build_mode()` |
 | `registry()` | `global_registry()` |
-| `set_external_registry(...)` | `use_global_registry(...)` |
+| `set_external_registry(...)` | scoped `global_registry_binding` |
 
-There is no 3.0 public replacement for `JThreadWrapperView`, `PThreadWrapper`, `PThreadAttributes`, `PThreadMutex`,
+`thread_view` also replaces `JThreadWrapperView` when C++20 is enabled. There is no 3.0 public replacement for
+`PThreadWrapper`, `PThreadAttributes`, `PThreadMutex`,
 `ThreadByNameView`, or the public `ThreadControlBlock`. Use the original `std::thread`/`std::jthread`, the platform API, the
 calling-thread API, or a registry snapshot according to the ownership model.
 
@@ -158,7 +159,8 @@ else if (auto joined = worker->join(); !joined)
 `std::thread`. Platform-native handle access is no longer a core member; use
 `threadschedule::advanced::native_handle(worker)` only when a native API is genuinely required.
 
-`thread_view` is deliberately control-only. Keep using the original `std::thread` for `join`, `detach`, and direct access:
+`thread_view` is deliberately control-only. It accepts `std::thread` and `thread`, plus `std::jthread` and `jthread` under
+C++20. Keep using the original owning object for `join`, `detach`, cancellation, and direct access:
 
 ```cpp
 std::thread native([] { run(); });
@@ -204,9 +206,11 @@ Affinity changes are now all-or-error: an unrepresentable mask is rejected, succ
 and the implementation attempts rollback after a partial native change. On Windows, logical CPU IDs are flattened as
 `processor_group * 64 + processor_index`; one mask cannot span processor groups.
 
-For native policies and values, include `<threadschedule/advanced/native_thread.hpp>` and use
-`native_thread_priority`, `native_scheduling_policy`, `native_thread_affinity`, `native_thread_config`, and
-`scheduler_parameters` from `threadschedule::advanced`.
+There is no second public native scheduling model in 3.0. Use
+`advanced::native_handle(...)` and the platform API when portable
+`thread_config` and `schedule::*` cannot express the required operation. Raw
+OS IDs remain available as `advanced::native_thread_id` for native APIs such as
+Linux cgroup attachment.
 
 ## Pools
 
@@ -251,6 +255,11 @@ depends on those lower-level operations, select the corresponding supported adva
 
 `ThreadPoolBase`, `PollingWait`, `LightweightPoolT`, `GlobalPool`, and `ScheduledThreadPoolT` are no longer public extension
 points. Choose a named advanced pool instead of instantiating the generic implementation machinery.
+
+Advanced pool constructors also require `worker_count`; raw `size_t` worker
+counts are not accepted. Their non-throwing `submit`, `post`, batch, wait,
+configuration, and shutdown paths return `result<T>`. Use the explicitly named
+`*_or_throw` variants where exception-based flow is desired.
 
 `PoolWithErrors`, `ThreadPoolWithErrors`, `FastThreadPoolWithErrors`, and `HighPerformancePoolWithErrors` were removed. Set
 `thread_pool_config::set_error_callback` or `scheduled_pool_config::set_error_callback`. The independent lower-level `ErrorHandler`
@@ -320,6 +329,18 @@ if (!changed)
 
 Stale, exited, unregistered, or replaced registrations report `no_such_process`. `registered_thread` is only a portable value
 snapshot; it does not expose a native handle or own a control block.
+
+Replace manual external-registry installation and `nullptr` reset calls with a
+scope:
+
+```cpp
+threadschedule::thread_registry application_registry;
+threadschedule::global_registry_binding binding(application_registry);
+// global_registry() now resolves to application_registry until binding dies.
+```
+
+The binding keeps the backend alive and restores the previously active
+registry. Nested bindings must follow ordinary stack order.
 
 Replace the automatically registering `ThreadWrapperReg`, `JThreadWrapperReg`, and `PThreadWrapperReg` by placing an
 `auto_register_current_thread` guard in the callable, or select
@@ -391,7 +412,7 @@ header-only.
 
 The 3.0 runtime ABI is incompatible with 2.4. The public C ABI and the exported C++ `registry()` /
 `set_external_registry()` entry points are gone. The runtime exports private registry-storage hooks used by
-`global_registry()` and `use_global_registry()`, plus runtime mode inspection through `current_build_mode()`.
+`global_registry()` and scoped `global_registry_binding`, plus runtime mode inspection through `current_build_mode()`.
 
 After upgrading:
 

@@ -66,25 +66,44 @@ TEST(V3Api, ThreadConfigurationIsAnExplicitPatch)
   EXPECT_TRUE(config.empty());
 
   config.set_name("");
-  ASSERT_TRUE(config.name().has_value());
-  EXPECT_TRUE(config.name()->empty());
-  EXPECT_FALSE(config.scheduling().has_value());
-  EXPECT_FALSE(config.affinity().has_value());
+  ASSERT_TRUE(config.get_name().has_value());
+  EXPECT_TRUE(config.get_name()->empty());
+  EXPECT_FALSE(config.get_scheduling().has_value());
+  EXPECT_FALSE(config.get_affinity().has_value());
 
   config.clear_name();
   EXPECT_TRUE(config.empty());
   config.set_scheduling(threadschedule::schedule::background());
-  EXPECT_FALSE(config.name().has_value());
-  EXPECT_TRUE(config.scheduling().has_value());
-  EXPECT_FALSE(config.affinity().has_value());
+  EXPECT_FALSE(config.get_name().has_value());
+  EXPECT_TRUE(config.get_scheduling().has_value());
+  EXPECT_FALSE(config.get_affinity().has_value());
 }
 
 TEST(V3Api, ClosedConfigurationTypesAreNotAggregates)
 {
+  static_assert(!std::is_default_constructible_v<threadschedule::thread_id>);
+  static_assert(!std::is_default_constructible_v<threadschedule::scheduling_config>);
   static_assert(!std::is_aggregate_v<threadschedule::scheduling_config>);
   static_assert(!std::is_aggregate_v<threadschedule::thread_config>);
   static_assert(!std::is_aggregate_v<threadschedule::thread_pool_config>);
   static_assert(!std::is_aggregate_v<threadschedule::scheduled_pool_config>);
+}
+
+TEST(V3Api, ConfigurationAccessorsUseMatchingNames)
+{
+  threadschedule::thread_pool_config pool;
+  pool.set_worker_count(threadschedule::worker_count{ 3 })
+      .set_registration(threadschedule::worker_registration::global_registry)
+      .set_shutdown_policy(threadschedule::shutdown_policy::drop_pending);
+  EXPECT_EQ(pool.get_worker_count().resolve(), 3u);
+  EXPECT_EQ(pool.get_registration(), threadschedule::worker_registration::global_registry);
+  EXPECT_EQ(pool.get_shutdown_policy(), threadschedule::shutdown_policy::drop_pending);
+  EXPECT_TRUE(pool.get_worker_config().empty());
+  EXPECT_FALSE(pool.get_error_callback());
+
+  threadschedule::scheduled_pool_config scheduled;
+  EXPECT_TRUE(scheduled.get_worker_config().empty());
+  EXPECT_TRUE(scheduled.get_scheduler_config().empty());
 }
 
 TEST(V3Api, PortablePriorityFactoriesExposeLevelsAndNiceValues)
@@ -106,14 +125,57 @@ TEST(V3Api, ThreadSetsAndReadsPortablePriority)
 
   auto set = worker.set_priority(threadschedule::priority_level::low);
   auto priority = worker.get_priority();
+  auto nice = worker.get_nice();
   release.set_value();
   auto joined = worker.join();
 
   ASSERT_TRUE(set.has_value()) << set.error().message();
   ASSERT_TRUE(priority.has_value()) << priority.error().message();
   EXPECT_EQ(priority.value(), threadschedule::priority_level::low);
+  ASSERT_TRUE(nice.has_value()) << nice.error().message();
+  EXPECT_EQ(nice->value(), static_cast<int>(threadschedule::priority_level::low));
   EXPECT_TRUE(joined.has_value());
 }
+
+TEST(V3Api, ThreadViewAcceptsLibraryOwningThread)
+{
+  std::promise<void> release;
+  auto ready = release.get_future().share();
+  threadschedule::thread worker([ready] { ready.wait(); });
+  threadschedule::thread_view view(worker);
+  EXPECT_TRUE(view.joinable());
+  EXPECT_EQ(view.get_id(), worker.get_id());
+  release.set_value();
+  EXPECT_TRUE(worker.join().has_value());
+}
+
+#if defined(__cpp_lib_jthread) && __cpp_lib_jthread >= 201911L
+TEST(V3Api, ThreadViewAcceptsBothJthreadForms)
+{
+  std::jthread standard(
+      [](std::stop_token stop)
+        {
+          while (!stop.stop_requested())
+            std::this_thread::yield();
+        });
+  threadschedule::thread_view standard_view(standard);
+  EXPECT_EQ(standard_view.get_id(), standard.get_id());
+  standard.request_stop();
+  standard.join();
+
+  threadschedule::jthread owned(
+      [](std::stop_token stop)
+        {
+          while (!stop.stop_requested())
+            std::this_thread::yield();
+        });
+  threadschedule::thread_view owned_view(owned);
+  EXPECT_EQ(owned_view.get_id(), owned.get_id());
+  EXPECT_EQ(threadschedule::jthread::hardware_concurrency(), std::thread::hardware_concurrency());
+  EXPECT_TRUE(owned.request_stop());
+  EXPECT_TRUE(owned.join().has_value());
+}
+#endif
 
 TEST(V3Api, ThisThreadReadsAndReappliesAffinity)
 {
@@ -451,6 +513,36 @@ TEST(V3Api, PoolMoveAssignmentUsesDestinationShutdownPolicy)
   EXPECT_EQ(queued_runs.load(), 0);
 }
 
+TEST(V3Api, PoolShutdownUsesConfiguredPolicyByDefault)
+{
+  threadschedule::thread_pool_config config;
+  config.set_worker_count(threadschedule::worker_count{ 1 })
+      .set_shutdown_policy(threadschedule::shutdown_policy::drop_pending);
+  threadschedule::thread_pool pool(config);
+
+  std::promise<void> entered;
+  auto entered_ready = entered.get_future();
+  std::promise<void> release;
+  auto release_ready = release.get_future().share();
+  ASSERT_TRUE(pool.post(
+                      [&]
+                        {
+                          entered.set_value();
+                          release_ready.wait();
+                        })
+                  .has_value());
+  ASSERT_EQ(entered_ready.wait_for(2s), std::future_status::ready);
+
+  std::atomic<int> queued_runs{ 0 };
+  ASSERT_TRUE(pool.post([&] { ++queued_runs; }).has_value());
+  auto shutdown = std::async(std::launch::async, [&] { return pool.shutdown(); });
+  EXPECT_EQ(shutdown.wait_for(20ms), std::future_status::timeout);
+  release.set_value();
+  ASSERT_EQ(shutdown.wait_for(2s), std::future_status::ready);
+  EXPECT_TRUE(shutdown.get().has_value());
+  EXPECT_EQ(queued_runs.load(), 0);
+}
+
 #ifndef _WIN32
 TEST(V3Api, PoolWorkerNamesReserveSpaceForGeneratedSuffix)
 {
@@ -630,9 +722,19 @@ TEST(V3Api, SubmissionErrorsUseExpectedByDefault)
 
 TEST(V3Api, AdvancedPoolsRemainAvailable)
 {
-  static_assert(std::is_constructible_v<threadschedule::advanced::work_stealing_pool, std::size_t>);
+  static_assert(!std::is_constructible_v<threadschedule::advanced::work_stealing_pool, std::size_t>);
+  static_assert(std::is_constructible_v<threadschedule::advanced::work_stealing_pool, threadschedule::worker_count>);
+  static_assert(!std::is_base_of_v<threadschedule::detail::work_stealing_pool_backend,
+                                   threadschedule::advanced::work_stealing_pool>);
   threadschedule::advanced::inline_pool pool;
-  EXPECT_EQ(pool.submit([] { return 7; }).get(), 7);
+  EXPECT_EQ(pool.submit_or_throw([] { return 7; }).get(), 7);
+}
+
+TEST(V3Api, TaskErrorsDistinguishStandardAndRegistryIds)
+{
+  static_assert(std::is_same_v<decltype(threadschedule::task_error::std_id), std::thread::id>);
+  static_assert(std::is_same_v<decltype(threadschedule::registered_thread::id), threadschedule::thread_id>);
+  static_assert(std::is_same_v<decltype(threadschedule::registered_thread::std_id), std::thread::id>);
 }
 
 TEST(V3Api, NativeHandleIsAnAdvancedEscapeHatch)
@@ -782,10 +884,9 @@ TEST(V3Api, MoveAssigningInjectedRegistryRetargetsGlobalRegistry)
   threadschedule::thread_registry replacement;
   ASSERT_TRUE(replacement.register_current_thread("replacement", "v3").has_value());
 
-  threadschedule::use_global_registry(&injected);
+  threadschedule::global_registry_binding binding(injected);
   injected = std::move(replacement);
   auto snapshot = threadschedule::global_registry().snapshot();
-  threadschedule::use_global_registry(nullptr);
 
   ASSERT_TRUE(snapshot.has_value());
   ASSERT_EQ(snapshot->size(), 1u);
@@ -796,7 +897,6 @@ TEST(V3Api, MoveAssigningInjectedRegistryRetargetsGlobalRegistry)
 
 TEST(V3Api, MoveAssigningGlobalRegistryPreservesGlobalFacade)
 {
-  threadschedule::use_global_registry(nullptr);
   (void)threadschedule::global_registry().unregister_current_thread();
 
   threadschedule::thread_registry local;
@@ -811,15 +911,13 @@ TEST(V3Api, MoveAssigningGlobalRegistryPreservesGlobalFacade)
     EXPECT_EQ(threadschedule::global_registry().count(), 1u);
     EXPECT_EQ(threadschedule::global_registry().count(), 1u);
   }
-
-  threadschedule::use_global_registry(nullptr);
 }
 
 TEST(V3Api, DestroyingInjectedRegistryRestoresDefaultRegistry)
 {
   {
     threadschedule::thread_registry injected;
-    threadschedule::use_global_registry(&injected);
+    threadschedule::global_registry_binding binding(injected);
     ASSERT_TRUE(threadschedule::global_registry().register_current_thread("injected", "v3").has_value());
   }
 
@@ -828,10 +926,25 @@ TEST(V3Api, DestroyingInjectedRegistryRestoresDefaultRegistry)
   EXPECT_TRUE(threadschedule::global_registry().unregister_current_thread().has_value());
 }
 
+TEST(V3Api, GlobalRegistryBindingOwnsTheInstalledBackend)
+{
+  auto injected = std::make_unique<threadschedule::thread_registry>();
+  auto binding = std::make_unique<threadschedule::global_registry_binding>(*injected);
+  injected.reset();
+
+  ASSERT_TRUE(threadschedule::global_registry().register_current_thread("owned", "v3").has_value());
+  EXPECT_EQ(threadschedule::global_registry().count(), 1u);
+  ASSERT_TRUE(threadschedule::global_registry().unregister_current_thread().has_value());
+
+  binding.reset();
+  ASSERT_TRUE(threadschedule::global_registry().register_current_thread("default", "v3").has_value());
+  EXPECT_TRUE(threadschedule::global_registry().unregister_current_thread().has_value());
+}
+
 TEST(V3Api, MovingInjectedRegistryPreservesActiveGuardBackend)
 {
   threadschedule::thread_registry injected;
-  threadschedule::use_global_registry(&injected);
+  threadschedule::global_registry_binding binding(injected);
   std::promise<void> registered;
   std::promise<void> release;
   auto release_ready = release.get_future().share();
@@ -850,7 +963,6 @@ TEST(V3Api, MovingInjectedRegistryPreservesActiveGuardBackend)
   worker.join();
 
   auto snapshot = threadschedule::global_registry().snapshot();
-  threadschedule::use_global_registry(nullptr);
   ASSERT_TRUE(snapshot.has_value());
   EXPECT_TRUE(snapshot->empty());
 }
@@ -858,7 +970,7 @@ TEST(V3Api, MovingInjectedRegistryPreservesActiveGuardBackend)
 TEST(V3Api, MovingEmptyInjectedRegistryPreservesActiveGuardBackend)
 {
   threadschedule::thread_registry injected;
-  threadschedule::use_global_registry(&injected);
+  threadschedule::global_registry_binding binding(injected);
   {
     threadschedule::auto_register_current_thread guard("moving-empty", "v3");
     ASSERT_TRUE(threadschedule::global_registry().unregister_current_thread().has_value());
@@ -869,7 +981,6 @@ TEST(V3Api, MovingEmptyInjectedRegistryPreservesActiveGuardBackend)
   }
 
   auto snapshot = threadschedule::global_registry().snapshot();
-  threadschedule::use_global_registry(nullptr);
   ASSERT_TRUE(snapshot.has_value());
   EXPECT_TRUE(snapshot->empty());
 }

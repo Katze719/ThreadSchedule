@@ -22,6 +22,14 @@ runtime_set_external_registry(thread_registry_backend* value)
   external_registry = value;
 }
 
+THREADSCHEDULE_API auto
+runtime_exchange_external_registry(thread_registry_backend* value) -> thread_registry_backend*
+{
+  auto* const previous = external_registry;
+  external_registry = value;
+  return previous;
+}
+
 } // namespace threadschedule::detail
 
 namespace threadschedule

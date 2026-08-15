@@ -10,6 +10,8 @@
  * propagation deterministic.
  */
 
+#include "../result.hpp"
+
 #include <exception>
 #include <future>
 #include <mutex>
@@ -24,7 +26,7 @@ namespace threadschedule::advanced
  *
  * @par Usage
  * @code
- * raw_thread_pool pool(4);
+ * raw_thread_pool pool(worker_count{4});
  * {
  *     task_group group(pool);
  *     group.submit([]{ do_work_a(); });
@@ -71,14 +73,30 @@ public:
    * store it yourself.
    */
   template <typename F>
-  void
+  auto
   submit(F&& f)
   {
-    auto future = pool_.submit(std::forward<F>(f));
-    std::lock_guard<std::mutex> lock(mutex_);
-    futures_.push_back(std::move(future));
+    return track(pool_.submit(std::forward<F>(f)));
   }
 
+private:
+  auto
+  track(std::future<void> future) -> result<void>
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    futures_.push_back(std::move(future));
+    return {};
+  }
+
+  auto
+  track(result<std::future<void>> submitted) -> result<void>
+  {
+    if (!submitted)
+      return unexpected(submitted.error());
+    return track(std::move(*submitted));
+  }
+
+public:
   /**
    * @brief Block until all submitted tasks complete.
    *

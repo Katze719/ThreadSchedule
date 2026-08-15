@@ -2,7 +2,9 @@
 #include <benchmark/benchmark.h>
 #include <numeric>
 #include <random>
-#include <threadschedule/advanced.hpp>
+#include <threadschedule/advanced/work_stealing_pool.hpp>
+#include <threadschedule/thread_config.hpp>
+#include <threadschedule/worker_count.hpp>
 #include <vector>
 
 using namespace threadschedule;
@@ -16,10 +18,9 @@ bm_hp_pool_throughput(benchmark::State& state)
 {
   auto const num_tasks = static_cast<size_t>(state.range(0));
 
-  advanced::work_stealing_pool pool(std::thread::hardware_concurrency());
-  pool.configure_threads("bench", advanced::native_scheduling_policy::other,
-                         advanced::native_thread_priority::normal());
-  pool.distribute_across_cpus();
+  advanced::work_stealing_pool pool(worker_count{ std::thread::hardware_concurrency() });
+  pool.configure_workers(thread_config{}.set_name("bench"));
+  pool.distribute_workers();
 
   std::atomic<size_t> completed{ 0 };
 
@@ -30,7 +31,7 @@ bm_hp_pool_throughput(benchmark::State& state)
       futures.reserve(num_tasks);
 
       for (size_t i = 0; i < num_tasks; ++i)
-        futures.push_back(pool.submit([&completed]() { completed.fetch_add(1, std::memory_order_relaxed); }));
+        futures.push_back(pool.submit_or_throw([&completed]() { completed.fetch_add(1, std::memory_order_relaxed); }));
 
       for (auto& f : futures)
         f.wait();
@@ -54,10 +55,9 @@ bm_hp_pool_batch(benchmark::State& state)
 {
   auto const batch_size = static_cast<size_t>(state.range(0));
 
-  advanced::work_stealing_pool pool(std::thread::hardware_concurrency());
-  pool.configure_threads("bench", advanced::native_scheduling_policy::other,
-                         advanced::native_thread_priority::normal());
-  pool.distribute_across_cpus();
+  advanced::work_stealing_pool pool(worker_count{ std::thread::hardware_concurrency() });
+  pool.configure_workers(thread_config{}.set_name("bench"));
+  pool.distribute_workers();
 
   std::atomic<size_t> counter{ 0 };
   std::vector<std::function<void()>> tasks;
@@ -67,7 +67,7 @@ bm_hp_pool_batch(benchmark::State& state)
 
   for (auto _ : state)
     {
-      auto futures = pool.submit_batch(tasks.begin(), tasks.end());
+      auto futures = pool.submit_batch_or_throw(tasks.begin(), tasks.end());
       for (auto& f : futures)
         f.wait();
     }
@@ -86,10 +86,9 @@ bm_hp_pool_variable_workload(benchmark::State& state)
 {
   auto const num_tasks = static_cast<size_t>(state.range(0));
 
-  advanced::work_stealing_pool pool(std::thread::hardware_concurrency());
-  pool.configure_threads("bench", advanced::native_scheduling_policy::other,
-                         advanced::native_thread_priority::normal());
-  pool.distribute_across_cpus();
+  advanced::work_stealing_pool pool(worker_count{ std::thread::hardware_concurrency() });
+  pool.configure_workers(thread_config{}.set_name("bench"));
+  pool.distribute_workers();
 
   std::mt19937 gen(42);
   std::uniform_int_distribution<int> work_dist(10, 200);
@@ -105,7 +104,7 @@ bm_hp_pool_variable_workload(benchmark::State& state)
       for (size_t i = 0; i < num_tasks; ++i)
         {
           int const amount = work_amounts[i];
-          futures.push_back(pool.submit(
+          futures.push_back(pool.submit_or_throw(
               [amount]()
                 {
                   int x = 0;
@@ -133,10 +132,9 @@ bm_hp_pool_parallel_for_each(benchmark::State& state)
 {
   auto const data_size = static_cast<size_t>(state.range(0));
 
-  advanced::work_stealing_pool pool(std::thread::hardware_concurrency());
-  pool.configure_threads("bench", advanced::native_scheduling_policy::other,
-                         advanced::native_thread_priority::normal());
-  pool.distribute_across_cpus();
+  advanced::work_stealing_pool pool(worker_count{ std::thread::hardware_concurrency() });
+  pool.configure_workers(thread_config{}.set_name("bench"));
+  pool.distribute_workers();
 
   std::vector<int> data(data_size);
   std::iota(data.begin(), data.end(), 1);

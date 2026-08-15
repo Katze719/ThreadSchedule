@@ -8,6 +8,7 @@
 #include "cpu_id.hpp"
 #include "jthread.hpp"
 #include "nice_value.hpp"
+#include "pool_statistics.hpp"
 #include "realtime_priority.hpp"
 #include "runtime.hpp"
 #include "scheduled_pool.hpp"

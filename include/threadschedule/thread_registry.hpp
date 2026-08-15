@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -30,19 +31,14 @@ struct registered_thread
 
 class thread_registry;
 class auto_register_current_thread;
+class global_registry_binding;
 
 [[nodiscard]] auto global_registry() -> thread_registry&;
 
 class thread_registry
 {
 public:
-  thread_registry() : owned_(std::make_unique<detail::thread_registry_backend>()) {}
-
-  ~thread_registry()
-  {
-    if (owned_ != nullptr && &detail::runtime_registry() == owned_.get())
-      detail::runtime_set_external_registry(nullptr);
-  }
+  thread_registry() : owned_(std::make_shared<detail::thread_registry_backend>()) {}
 
   thread_registry(thread_registry&&) noexcept = default;
   auto
@@ -197,6 +193,20 @@ public:
           });
   }
 
+  [[nodiscard]] auto
+  get_nice(thread_id id) const -> result<nice_value>
+  {
+    if (!has_native())
+      return unexpected(std::make_error_code(std::errc::operation_canceled));
+    return detail::try_result(
+        [&]() -> result<nice_value>
+          {
+            auto value
+                = native().get_nice_value(static_cast<detail::native_thread_id>(detail::thread_id_access::value(id)));
+            return detail::portable_thread_control::get_nice(std::move(value));
+          });
+  }
+
 private:
   struct global_tag
   {
@@ -222,12 +232,12 @@ private:
     return global_ ? detail::runtime_registry() : *owned_;
   }
 
-  std::unique_ptr<detail::thread_registry_backend> owned_;
-  std::vector<std::unique_ptr<detail::thread_registry_backend>> retired_;
+  std::shared_ptr<detail::thread_registry_backend> owned_;
+  std::vector<std::shared_ptr<detail::thread_registry_backend>> retired_;
   bool global_{ false };
 
   friend auto global_registry() -> thread_registry&;
-  friend void use_global_registry(thread_registry* value);
+  friend class global_registry_binding;
   friend class auto_register_current_thread;
   friend class advanced::composite_thread_registry;
 };
@@ -239,11 +249,60 @@ global_registry() -> thread_registry&
   return value;
 }
 
-inline void
-use_global_registry(thread_registry* value)
+class global_registry_binding
 {
-  detail::runtime_set_external_registry(value != nullptr && value->has_native() ? &value->native() : nullptr);
-}
+public:
+  explicit global_registry_binding(thread_registry& registry)
+  {
+    if (registry.global_ || registry.owned_ == nullptr)
+      throw std::invalid_argument("global registry facade cannot be bound as an external registry");
+    owner_ = registry.owned_;
+    installed_ = owner_.get();
+    previous_ = detail::runtime_exchange_external_registry(installed_);
+  }
+
+  ~global_registry_binding()
+  {
+    reset();
+  }
+
+  global_registry_binding(global_registry_binding const&) = delete;
+  auto operator=(global_registry_binding const&) -> global_registry_binding& = delete;
+
+  global_registry_binding(global_registry_binding&& other) noexcept
+      : owner_(std::move(other.owner_)), installed_(std::exchange(other.installed_, nullptr)),
+        previous_(std::exchange(other.previous_, nullptr))
+  {
+  }
+
+  auto
+  operator=(global_registry_binding&& other) noexcept -> global_registry_binding&
+  {
+    if (this != &other)
+      {
+        reset();
+        owner_ = std::move(other.owner_);
+        installed_ = std::exchange(other.installed_, nullptr);
+        previous_ = std::exchange(other.previous_, nullptr);
+      }
+    return *this;
+  }
+
+private:
+  void
+  reset() noexcept
+  {
+    if (installed_ != nullptr)
+      detail::runtime_set_external_registry(previous_);
+    owner_.reset();
+    installed_ = nullptr;
+    previous_ = nullptr;
+  }
+
+  std::shared_ptr<detail::thread_registry_backend> owner_;
+  detail::thread_registry_backend* installed_{ nullptr };
+  detail::thread_registry_backend* previous_{ nullptr };
+};
 
 /** @brief RAII registration of the calling thread in a portable registry. */
 class auto_register_current_thread

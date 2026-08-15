@@ -462,6 +462,18 @@ class thread_backend : public basic_thread_backend<std::thread, detail::owning_t
 public:
   thread_backend() = default;
 
+  [[nodiscard]] auto
+  get() noexcept -> std::thread&
+  {
+    return this->underlying();
+  }
+
+  [[nodiscard]] auto
+  get() const noexcept -> std::thread const&
+  {
+    return this->underlying();
+  }
+
   // Construct by taking ownership of an existing std::thread (move)
   thread_backend(std::thread&& t) noexcept
   {

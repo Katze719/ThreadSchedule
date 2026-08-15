@@ -1,7 +1,10 @@
 #include <appinj_libB/libB.hpp>
 
+#include <threadschedule/thread.hpp>
+
 #include <chrono>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -12,12 +15,19 @@ namespace
 {
 std::mutex threads_mutex;
 std::vector<threadschedule::thread> threads;
+std::optional<threadschedule::global_registry_binding> registry_binding;
 } // namespace
 
 void
-set_registry(threadschedule::thread_registry* registry)
+bind_registry(threadschedule::thread_registry& registry)
 {
-  threadschedule::use_global_registry(registry);
+  registry_binding.emplace(registry);
+}
+
+void
+unbind_registry()
+{
+  registry_binding.reset();
 }
 
 void
