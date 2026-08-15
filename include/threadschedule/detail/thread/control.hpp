@@ -83,13 +83,9 @@ to_native(scheduling_config config) noexcept -> native_scheduling_config
     case scheduling_intent::low_latency:
       return native_schedule::low_latency();
     case scheduling_intent::realtime_fifo:
-      {
-        return native_schedule::realtime_fifo(config.priority_value());
-      }
+      return native_schedule::realtime_fifo(config.priority_value());
     case scheduling_intent::realtime_round_robin:
-      {
-        return native_schedule::realtime_rr(config.priority_value());
-      }
+      return native_schedule::realtime_rr(config.priority_value());
     case scheduling_intent::nice:
       return native_schedule::posix_nice(config.priority_value());
     case scheduling_intent::normal:

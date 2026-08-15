@@ -76,7 +76,7 @@ jobs:
         #include <threadschedule/threadschedule.hpp>
         #include <iostream>
         int main() {
-            threadschedule::thread_pool pool(2);
+            threadschedule::thread_pool pool(threadschedule::worker_count{ 2 });
             auto future = pool.submit([]() { return 42; });
             if (!future) return 1;
             std::cout << "Result: " << future->get() << std::endl;

@@ -66,7 +66,7 @@ TEST(FoundationTest, ScopeExitRunsExactlyOnceUnlessReleased)
 
 TEST(FoundationTest, MoveOnlyFunctionSupportsEmptySmallLargeAndOverAlignedTargets)
 {
-  using function_type = threadschedule::detail::move_only_function<int(int), 32>;
+  using function_type = threadschedule::detail::move_only_function<int(int)>;
   static_assert(!std::is_copy_constructible_v<function_type>);
   static_assert(std::is_nothrow_move_constructible_v<function_type>);
 
@@ -74,21 +74,22 @@ TEST(FoundationTest, MoveOnlyFunctionSupportsEmptySmallLargeAndOverAlignedTarget
   EXPECT_FALSE(empty);
   EXPECT_THROW((void)empty(1), std::bad_function_call);
 
-  function_type small = [value = std::make_unique<int>(40)](int increment) { return *value + increment; };
+  auto small_callable = [value = std::make_unique<int>(40)](int increment) { return *value + increment; };
+  function_type small(std::move(small_callable));
   EXPECT_EQ(small(2), 42);
 
   function_type large = large_callable{};
   EXPECT_EQ(large(1), 43);
 
-  threadschedule::detail::move_only_function<int(), 1> tiny_storage = [] { return 42; };
+  auto tiny_storage = threadschedule::detail::make_move_only_function<int(), 1>([]() { return 42; });
   EXPECT_EQ(tiny_storage(), 42);
 
   int calls = 0;
-  threadschedule::detail::move_only_function<void(), 128> over_aligned = over_aligned_callable{ &calls };
+  auto over_aligned = threadschedule::detail::make_move_only_function<void(), 128>(over_aligned_callable{ &calls });
   over_aligned();
   EXPECT_EQ(calls, 1);
 
-  function_type moved = std::move(small);
+  function_type moved(std::move(small));
   // The empty moved-from state is part of move_only_function's contract.
   // NOLINTNEXTLINE(bugprone-use-after-move)
   EXPECT_FALSE(small);
