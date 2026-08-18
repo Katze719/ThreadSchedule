@@ -75,8 +75,8 @@ TEST(FoundationTest, MoveOnlyFunctionSupportsEmptySmallLargeAndOverAlignedTarget
   EXPECT_THROW((void)empty(1), std::bad_function_call);
 
   auto small_callable = [value = std::make_unique<int>(40)](int increment) { return *value + increment; };
-  function_type small(std::move(small_callable));
-  EXPECT_EQ(small(2), 42);
+  function_type small_function(std::move(small_callable));
+  EXPECT_EQ(small_function(2), 42);
 
   function_type large = large_callable{};
   EXPECT_EQ(large(1), 43);
@@ -89,10 +89,10 @@ TEST(FoundationTest, MoveOnlyFunctionSupportsEmptySmallLargeAndOverAlignedTarget
   over_aligned();
   EXPECT_EQ(calls, 1);
 
-  function_type moved(std::move(small));
+  function_type moved(std::move(small_function));
   // The empty moved-from state is part of move_only_function's contract.
   // NOLINTNEXTLINE(bugprone-use-after-move)
-  EXPECT_FALSE(small);
+  EXPECT_FALSE(small_function);
   EXPECT_EQ(moved(3), 43);
 }
 
