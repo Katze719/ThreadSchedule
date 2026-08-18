@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file scheduler_policy.hpp
+ * @file native.hpp
  * @brief Scheduling policies, thread priority, and CPU affinity types.
  */
 
