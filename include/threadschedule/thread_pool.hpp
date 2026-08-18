@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file thread_pool.hpp
+ * @brief Fixed-size worker pool for asynchronous task execution.
+ */
+
 #include "detail/pool/backend.hpp"
 #include "detail/pool/shutdown.hpp"
 #include "detail/thread/control.hpp"
@@ -19,33 +24,44 @@
 
 namespace threadschedule
 {
+/**
+ * @brief Builder-style configuration for @ref thread_pool.
+ */
 class thread_pool_config
 {
 public:
+  /** @brief Set number of worker threads. */
   auto
   set_worker_count(worker_count value) noexcept -> thread_pool_config&
   {
     worker_count_ = value;
     return *this;
   }
+  /** @brief Configure registry registration behavior for workers. */
   auto
   set_registration(worker_registration value) noexcept -> thread_pool_config&
   {
     registration_ = value;
     return *this;
   }
+  /** @brief Set startup configuration applied to worker threads. */
   auto
   set_worker_config(thread_config value) -> thread_pool_config&
   {
     workers_ = std::move(value);
     return *this;
   }
+  /** @brief Set shutdown behavior used by @ref thread_pool::shutdown and destructor. */
   auto
   set_shutdown_policy(shutdown_policy value) noexcept -> thread_pool_config&
   {
     shutdown_ = value;
     return *this;
   }
+  /**
+   * @brief Set callback invoked when posted/submitted work throws.
+   * @param value Error callback receiving captured @ref task_error.
+   */
   auto
   set_error_callback(error_callback value) -> thread_pool_config&
   {
@@ -53,26 +69,31 @@ public:
     return *this;
   }
 
+  /** @brief Return configured worker count. */
   [[nodiscard]] auto
   get_worker_count() const noexcept -> worker_count
   {
     return worker_count_;
   }
+  /** @brief Return configured worker registration mode. */
   [[nodiscard]] auto
   get_registration() const noexcept -> worker_registration
   {
     return registration_;
   }
+  /** @brief Return worker thread configuration. */
   [[nodiscard]] auto
   get_worker_config() const noexcept -> thread_config const&
   {
     return workers_;
   }
+  /** @brief Return configured shutdown policy. */
   [[nodiscard]] auto
   get_shutdown_policy() const noexcept -> shutdown_policy
   {
     return shutdown_;
   }
+  /** @brief Return configured asynchronous task error callback. */
   [[nodiscard]] auto
   get_error_callback() const noexcept -> error_callback const&
   {
@@ -87,13 +108,26 @@ private:
   error_callback on_task_error_;
 };
 
+/**
+ * @brief Fixed-size thread pool for queued asynchronous work.
+ */
 class thread_pool
 {
 public:
+  /** @brief Construct a pool with default configuration. */
   thread_pool() : thread_pool(thread_pool_config{}) {}
 
+  /**
+   * @brief Construct a pool with explicit worker count.
+   * @param count Number of workers or automatic resolution mode.
+   */
   explicit thread_pool(worker_count count) : thread_pool(thread_pool_config{}.set_worker_count(count)) {}
 
+  /**
+   * @brief Construct a pool from full configuration.
+   * @param config Pool configuration.
+   * @throws std::system_error if worker configuration cannot be applied.
+   */
   explicit thread_pool(thread_pool_config config)
       : config_(std::move(config)),
         impl_(std::make_unique<detail::thread_pool_backend>(
@@ -131,12 +165,22 @@ public:
   thread_pool(thread_pool const&) = delete;
   auto operator=(thread_pool const&) -> thread_pool& = delete;
 
+  /**
+   * @brief Create a pool without throwing.
+   * @param config Pool configuration.
+   * @return A ready-to-use pool or a translated error code.
+   */
   static auto
   create(thread_pool_config config = {}) -> result<thread_pool>
   {
     return detail::try_result([&config]() -> result<thread_pool> { return thread_pool(std::move(config)); });
   }
 
+  /**
+   * @brief Shutdown the pool according to configured policy.
+   *
+   * Destructor never throws and will attempt best-effort shutdown.
+   */
   ~thread_pool()
   {
     if (!impl_)
@@ -150,6 +194,12 @@ public:
       }
   }
 
+  /**
+   * @brief Submit work and receive a future for its result.
+   * @param function Callable to execute on a worker.
+   * @param args Arguments forwarded to the callable.
+   * @return A future on success, or an error (for example canceled/queue rejection).
+   */
   template <typename F, typename... Args>
   auto
   submit(F&& function, Args&&... args) -> result<std::future<std::invoke_result_t<F, Args...>>>
@@ -196,6 +246,10 @@ public:
           });
   }
 
+  /**
+   * @brief Throwing counterpart to @ref submit.
+   * @throws std::system_error if submission fails.
+   */
   template <typename F, typename... Args>
   auto
   submit_or_throw(F&& function, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>
@@ -206,6 +260,12 @@ public:
     return std::move(*submitted);
   }
 
+  /**
+   * @brief Post fire-and-forget work to the pool.
+   * @param function Callable to execute.
+   * @param args Arguments forwarded to the callable.
+   * @return Success or error code.
+   */
   template <typename F, typename... Args>
   auto
   post(F&& function, Args&&... args) -> result<void>
@@ -241,6 +301,10 @@ public:
           });
   }
 
+  /**
+   * @brief Throwing counterpart to @ref post.
+   * @throws std::system_error if posting fails.
+   */
   template <typename F, typename... Args>
   void
   post_or_throw(F&& function, Args&&... args)
@@ -250,6 +314,9 @@ public:
       throw std::system_error(posted.error(), "thread_pool::post");
   }
 
+  /**
+   * @brief Wait until all queued/running tasks are finished.
+   */
   auto
   wait() -> result<void>
   {
@@ -263,6 +330,9 @@ public:
           });
   }
 
+  /**
+   * @brief Throwing counterpart to @ref wait.
+   */
   void
   wait_or_throw()
   {
@@ -271,6 +341,10 @@ public:
     impl_->wait_for_tasks();
   }
 
+  /**
+   * @brief Apply thread configuration to all workers.
+   * @param config Portable configuration to apply.
+   */
   auto
   configure_workers(thread_config const& config) -> result<void>
   {
@@ -279,12 +353,19 @@ public:
     return detail::try_result([&]() -> result<void> { return impl_->configure_threads(detail::to_native(config)); });
   }
 
+  /**
+   * @brief Shutdown using configured policy.
+   */
   auto
   shutdown() -> result<void>
   {
     return shutdown(config_.get_shutdown_policy());
   }
 
+  /**
+   * @brief Shutdown with explicit policy.
+   * @param policy Drain/cancel behavior used for pending tasks.
+   */
   auto
   shutdown(shutdown_policy policy) -> result<void>
   {
@@ -298,6 +379,7 @@ public:
           });
   }
 
+  /** @brief Return current worker count (0 if moved-from/shutdown backend). */
   [[nodiscard]] auto
   size() const noexcept -> std::size_t
   {

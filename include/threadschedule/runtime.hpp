@@ -15,7 +15,9 @@ namespace threadschedule
 /** @brief Describes whether ThreadSchedule uses inline storage or its shared runtime. */
 enum class build_mode : std::uint8_t
 {
+  /** @brief Header-only mode: implementation is compiled into each translation unit. */
   header_only,
+  /** @brief Runtime mode: implementation is provided by the shared runtime library. */
   runtime
 };
 

@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file jthread.hpp
+ * @brief Owning std::jthread wrapper with portable configuration helpers.
+ */
+
 #include "detail/scope_exit.hpp"
 #include "detail/thread/control.hpp"
 #include "detail/thread_backend.hpp"
@@ -18,11 +23,21 @@ namespace threadschedule
 #if defined(__cpp_lib_jthread) && __cpp_lib_jthread >= 201911L
 class thread_view;
 
+/**
+ * @brief Owning jthread wrapper with stop-token support and result-based APIs.
+ */
 class jthread
 {
 public:
+  /** @brief Construct an empty, non-joinable jthread wrapper. */
   jthread() noexcept = default;
+  /** @brief Take ownership of an existing std::jthread. */
   explicit jthread(std::jthread&& value) noexcept : impl_(std::move(value)) {}
+  /**
+   * @brief Start jthread from callable and arguments.
+   * @param function Callable entry point.
+   * @param args Arguments forwarded to @p function.
+   */
   template <
       typename F, typename... Args,
       std::enable_if_t<!std::is_same_v<std::decay_t<F>, jthread> && !std::is_same_v<std::decay_t<F>, thread_config>
@@ -33,6 +48,12 @@ public:
   {
   }
 
+  /**
+   * @brief Start jthread and apply @ref thread_config before user code runs.
+   * @param config Portable thread configuration.
+   * @param function Callable entry point.
+   * @param args Arguments forwarded to @p function.
+   */
   template <typename F, typename... Args>
   jthread(thread_config const& config, F&& function, Args&&... args)
       : impl_(make_configured_impl(config, native_id_, std::forward<F>(function), std::forward<Args>(args)...))
@@ -44,6 +65,11 @@ public:
   jthread(jthread const&) = delete;
   auto operator=(jthread const&) -> jthread& = delete;
 
+  /**
+   * @brief Create jthread without throwing.
+   * @param function Callable entry point.
+   * @param args Arguments forwarded to @p function.
+   */
   template <typename F, typename... Args>
   static auto
   create(F&& function, Args&&... args)
@@ -53,6 +79,12 @@ public:
                                 { return jthread(std::forward<F>(function), std::forward<Args>(args)...); });
   }
 
+  /**
+   * @brief Create configured jthread without throwing.
+   * @param config Portable thread configuration.
+   * @param function Callable entry point.
+   * @param args Arguments forwarded to @p function.
+   */
   template <typename F, typename... Args>
   static auto
   create(thread_config const& config, F&& function, Args&&... args) -> result<jthread>
@@ -61,72 +93,84 @@ public:
                                 { return jthread(config, std::forward<F>(function), std::forward<Args>(args)...); });
   }
 
+  /** @brief Join the thread. */
   auto
   join() -> result<void>
   {
     return detail::thread_lifecycle::join(impl_);
   }
 
+  /** @brief Throwing counterpart to @ref join. */
   void
   join_or_throw()
   {
     detail::thread_lifecycle::join_or_throw(impl_, "jthread::join");
   }
 
+  /** @brief Detach the thread. */
   auto
   detach() -> result<void>
   {
     return detail::thread_lifecycle::detach(impl_);
   }
 
+  /** @brief Throwing counterpart to @ref detach. */
   void
   detach_or_throw()
   {
     detail::thread_lifecycle::detach_or_throw(impl_, "jthread::detach");
   }
 
+  /** @brief Return whether the wrapped jthread is joinable. */
   [[nodiscard]] auto
   joinable() const noexcept -> bool
   {
     return impl_.joinable();
   }
 
+  /** @brief Return std::jthread id. */
   [[nodiscard]] auto
   get_id() const noexcept -> std::jthread::id
   {
     return impl_.get_id();
   }
 
+  /** @brief Forward std::thread::hardware_concurrency(). */
   [[nodiscard]] static auto
   hardware_concurrency() noexcept -> unsigned
   {
     return std::thread::hardware_concurrency();
   }
 
+  /** @brief Request cooperative stop for the wrapped jthread. */
   [[nodiscard]] auto
   request_stop() noexcept -> bool
   {
     return impl_.request_stop();
   }
 
+  /** @brief Return whether stop has been requested. */
   [[nodiscard]] auto
   stop_requested() const noexcept -> bool
   {
     return impl_.get_stop_token().stop_requested();
   }
 
+  /** @brief Return stop token associated with this jthread. */
   [[nodiscard]] auto
   get_stop_token() const noexcept -> std::stop_token
   {
     return impl_.get_stop_token();
   }
 
+  /** @brief Return stop source associated with this jthread. */
   [[nodiscard]] auto
   get_stop_source() noexcept -> std::stop_source
   {
     return impl_.get_stop_source();
   }
 
+  /** @brief Apply full portable thread configuration. */
   auto
   configure(thread_config const& config) -> result<void>
   {
@@ -134,6 +178,7 @@ public:
     return detail::portable_thread_control::configure(view, config);
   }
 
+  /** @brief Set portable priority preset. */
   auto
   set_priority(priority_level level) -> result<void>
   {
@@ -141,6 +186,7 @@ public:
     return detail::portable_thread_control::set_priority(view, level);
   }
 
+  /** @brief Set explicit nice value. */
   auto
   set_nice(nice_value value) -> result<void>
   {
@@ -148,6 +194,7 @@ public:
     return detail::portable_thread_control::set_nice(view, value);
   }
 
+  /** @brief Query portable priority preset. */
   [[nodiscard]] auto
   get_priority() const -> result<priority_level>
   {
@@ -155,6 +202,7 @@ public:
     return detail::portable_thread_control::get_priority(view.get_nice_value());
   }
 
+  /** @brief Query nice value. */
   [[nodiscard]] auto
   get_nice() const -> result<nice_value>
   {
@@ -162,6 +210,7 @@ public:
     return detail::portable_thread_control::get_nice(view.get_nice_value());
   }
 
+  /** @brief Set thread name. */
   auto
   set_name(std::string const& name) -> result<void>
   {
@@ -169,6 +218,7 @@ public:
     return view.set_name(name);
   }
 
+  /** @brief Query thread name. */
   [[nodiscard]] auto
   get_name() const -> result<std::string>
   {
@@ -176,6 +226,7 @@ public:
     return view.get_name();
   }
 
+  /** @brief Set CPU affinity. */
   auto
   set_affinity(thread_affinity const& affinity) -> result<void>
   {
@@ -183,6 +234,7 @@ public:
     return detail::portable_thread_control::set_affinity(view, affinity);
   }
 
+  /** @brief Query CPU affinity. */
   [[nodiscard]] auto
   get_affinity() const -> result<thread_affinity>
   {
@@ -190,6 +242,7 @@ public:
     return detail::portable_thread_control::get_affinity(view.get_affinity());
   }
 
+  /** @brief Release ownership and return underlying std::jthread. */
   [[nodiscard]] auto
   release() noexcept -> std::jthread
   {

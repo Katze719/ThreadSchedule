@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file thread_id.hpp
+ * @brief Strongly-typed registry thread identifier.
+ */
+
 #include "result.hpp"
 
 #include <cstdint>
@@ -16,8 +21,18 @@ struct thread_id_access;
 class thread_id
 {
 public:
+  /**
+   * @brief Construct and validate a thread id.
+   * @param value Positive numeric thread id.
+   * @throws std::invalid_argument if @p value is not positive.
+   */
   constexpr explicit thread_id(std::int64_t value) : value_(checked(value)) {}
 
+  /**
+   * @brief Construct a thread id without exceptions.
+   * @param value Positive numeric thread id.
+   * @return A valid @ref thread_id or @c errc::invalid_argument.
+   */
   [[nodiscard]] static auto
   create(std::int64_t value) noexcept -> result<thread_id>
   {

@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file cpu_id.hpp
+ * @brief Strongly-typed CPU index used by affinity-related APIs.
+ */
+
 #include "result.hpp"
 
 #include <cstdint>
@@ -8,11 +13,27 @@
 namespace threadschedule
 {
 
+/**
+ * @brief Validated CPU identifier.
+ *
+ * This type guarantees a non-negative CPU index and is used by
+ * @ref thread_affinity to avoid accidental mixing with unrelated integers.
+ */
 class cpu_id
 {
 public:
+  /**
+   * @brief Construct a CPU id and throw on invalid input.
+   * @param value CPU index, must be >= 0.
+   * @throws std::invalid_argument if @p value is negative.
+   */
   constexpr explicit cpu_id(int value) : value_(checked(value)) {}
 
+  /**
+   * @brief Construct a CPU id without exceptions.
+   * @param value CPU index, must be >= 0.
+   * @return A valid @ref cpu_id or @c errc::invalid_argument.
+   */
   [[nodiscard]] static auto
   create(int value) noexcept -> result<cpu_id>
   {
@@ -21,6 +42,7 @@ public:
     return cpu_id(unchecked_tag{}, static_cast<std::uint32_t>(value));
   }
 
+  /** @brief Return the underlying CPU index. */
   [[nodiscard]] constexpr auto
   value() const noexcept -> std::uint32_t
   {

@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file thread_registry.hpp
+ * @brief Portable thread registry and RAII registration helpers.
+ */
+
 #include "detail/registry/backend.hpp"
 #include "detail/thread/control.hpp"
 #include "thread_config.hpp"
@@ -20,12 +25,20 @@ namespace advanced
 class composite_thread_registry;
 }
 
+/**
+ * @brief Snapshot entry returned by @ref thread_registry::snapshot.
+ */
 struct registered_thread
 {
+  /** @brief Stable logical thread id inside the registry. */
   thread_id id;
+  /** @brief Native std::thread identifier. */
   std::thread::id std_id;
+  /** @brief User-visible thread name if known. */
   std::string name;
+  /** @brief Optional logical component/group label. */
   std::string component;
+  /** @brief Whether thread is currently alive according to the registry. */
   bool alive{ false };
 };
 
@@ -35,9 +48,17 @@ class global_registry_binding;
 
 [[nodiscard]] auto global_registry() -> thread_registry&;
 
+/**
+ * @brief Registry for named/configurable threads.
+ *
+ * The global facade returned by @ref global_registry is backed by runtime
+ * storage and can optionally be rebound to another registry via
+ * @ref global_registry_binding.
+ */
 class thread_registry
 {
 public:
+  /** @brief Construct an owning registry instance. */
   thread_registry() : owned_(std::make_shared<detail::thread_registry_backend>()) {}
 
   thread_registry(thread_registry&&) noexcept = default;
@@ -80,12 +101,18 @@ public:
   thread_registry(thread_registry const&) = delete;
   auto operator=(thread_registry const&) -> thread_registry& = delete;
 
+  /** @brief Create an owning registry without throwing. */
   static auto
   create() -> result<thread_registry>
   {
     return detail::try_result([]() -> result<thread_registry> { return thread_registry{}; });
   }
 
+  /**
+   * @brief Register the calling thread.
+   * @param name Optional thread name.
+   * @param component Optional component label.
+   */
   auto
   register_current_thread(std::string name = {}, std::string component = {}) -> result<void>
   {
@@ -100,6 +127,7 @@ public:
           });
   }
 
+  /** @brief Unregister the calling thread. */
   auto
   unregister_current_thread() -> result<void>
   {
@@ -113,18 +141,24 @@ public:
           });
   }
 
+  /** @brief Return number of tracked entries. */
   [[nodiscard]] auto
   count() const -> std::size_t
   {
     return has_native() ? native().count() : 0;
   }
 
+  /** @brief Return whether registry has no tracked entries. */
   [[nodiscard]] auto
   empty() const -> bool
   {
     return !has_native() || native().empty();
   }
 
+  /**
+   * @brief Take a snapshot of all registry entries.
+   * @return Vector of @ref registered_thread records.
+   */
   [[nodiscard]] auto
   snapshot() const -> result<std::vector<registered_thread>>
   {
@@ -145,6 +179,11 @@ public:
           });
   }
 
+  /**
+   * @brief Apply configuration to a registered thread.
+   * @param id Registry thread id.
+   * @param config Portable configuration to apply.
+   */
   auto
   configure(thread_id id, thread_config const& config) -> result<void>
   {
@@ -158,12 +197,14 @@ public:
           });
   }
 
+  /** @brief Set portable priority preset for a registered thread. */
   auto
   set_priority(thread_id id, priority_level level) -> result<void>
   {
     return set_nice(id, nice_value{ static_cast<int>(level) });
   }
 
+  /** @brief Set explicit nice value for a registered thread. */
   auto
   set_nice(thread_id id, nice_value value) -> result<void>
   {
@@ -177,6 +218,7 @@ public:
           });
   }
 
+  /** @brief Query portable priority preset for a registered thread. */
   [[nodiscard]] auto
   get_priority(thread_id id) const -> result<priority_level>
   {
@@ -193,6 +235,7 @@ public:
           });
   }
 
+  /** @brief Query nice value for a registered thread. */
   [[nodiscard]] auto
   get_nice(thread_id id) const -> result<nice_value>
   {
@@ -249,9 +292,19 @@ global_registry() -> thread_registry&
   return value;
 }
 
+/**
+ * @brief Temporarily bind an owning registry as the global external registry.
+ *
+ * Restores the previous binding on destruction.
+ */
 class global_registry_binding
 {
 public:
+  /**
+   * @brief Install external binding.
+   * @param registry Owning registry instance.
+   * @throws std::invalid_argument if @p registry is itself the global facade.
+   */
   explicit global_registry_binding(thread_registry& registry)
   {
     if (registry.global_ || registry.owned_ == nullptr)

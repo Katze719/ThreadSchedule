@@ -15,13 +15,24 @@
 namespace threadschedule
 {
 
+/**
+ * @brief Captured information about a task failure.
+ */
 struct task_error
 {
+  /** @brief Original exception object captured from the task. */
   std::exception_ptr exception;
+  /** @brief Optional textual description of the failing task. */
   std::string task_description;
+  /** @brief std::thread id where the failure occurred. */
   std::thread::id std_id;
+  /** @brief Capture timestamp using @c steady_clock. */
   std::chrono::steady_clock::time_point timestamp;
 
+  /**
+   * @brief Capture failure context for the current exception state.
+   * @param description Optional task description string.
+   */
   [[nodiscard]] static auto
   capture(std::string description = {}) -> task_error
   {
@@ -29,6 +40,10 @@ struct task_error
              std::chrono::steady_clock::now() };
   }
 
+  /**
+   * @brief Return a printable error message if exception derives from std::exception.
+   * @return Exception message, "Unknown exception", or "No exception".
+   */
   [[nodiscard]] auto
   what() const -> std::string
   {
@@ -48,6 +63,9 @@ struct task_error
     return "No exception";
   }
 
+  /**
+   * @brief Rethrow captured exception if present.
+   */
   void
   rethrow() const
   {
@@ -56,6 +74,7 @@ struct task_error
   }
 };
 
+/** @brief Callback signature for asynchronous task error reporting. */
 using error_callback = std::function<void(task_error const&)>;
 
 } // namespace threadschedule

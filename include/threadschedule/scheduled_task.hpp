@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file scheduled_task.hpp
+ * @brief Cancellable handle returned by scheduled task APIs.
+ */
+
 #include "detail/scheduled/backend.hpp"
 
 #include <cstdint>
@@ -20,18 +25,30 @@ public:
   auto operator=(scheduled_task const&) -> scheduled_task& = default;
   auto operator=(scheduled_task&&) noexcept -> scheduled_task& = default;
 
+  /**
+   * @brief Request cancellation of the scheduled task.
+   *
+   * Cancellation is best-effort and may be ignored if the task is already
+   * running or has completed.
+   */
   void
   cancel()
   {
     impl_.cancel();
   }
 
+  /**
+   * @brief Return whether cancellation has been requested/observed.
+   */
   [[nodiscard]] auto
   is_cancelled() const noexcept -> bool
   {
     return impl_.is_cancelled();
   }
 
+  /**
+   * @brief Return the backend-assigned task identifier.
+   */
   [[nodiscard]] auto
   id() const noexcept -> std::uint64_t
   {

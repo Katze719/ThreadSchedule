@@ -11,6 +11,9 @@ namespace threadschedule
 /** @brief Portable configuration operations for the calling thread. */
 namespace this_thread
 {
+/**
+ * @brief Apply full portable configuration to the calling thread.
+ */
 inline auto
 configure(thread_config const& config) -> result<void>
 {
@@ -18,6 +21,7 @@ configure(thread_config const& config) -> result<void>
   return detail::portable_thread_control::configure(current, config);
 }
 
+/** @brief Set portable priority preset for the calling thread. */
 inline auto
 set_priority(priority_level level) -> result<void>
 {
@@ -25,6 +29,7 @@ set_priority(priority_level level) -> result<void>
   return detail::portable_thread_control::set_priority(current, level);
 }
 
+/** @brief Set explicit nice value for the calling thread. */
 inline auto
 set_nice(nice_value value) -> result<void>
 {
@@ -32,30 +37,35 @@ set_nice(nice_value value) -> result<void>
   return detail::portable_thread_control::set_nice(current, value);
 }
 
+/** @brief Query current portable priority preset of the calling thread. */
 [[nodiscard]] inline auto
 get_priority() -> result<priority_level>
 {
   return detail::portable_thread_control::get_priority(detail::read_nice_value(detail::current_native_thread_id()));
 }
 
+/** @brief Query current nice value of the calling thread. */
 [[nodiscard]] inline auto
 get_nice() -> result<nice_value>
 {
   return detail::portable_thread_control::get_nice(detail::read_nice_value(detail::current_native_thread_id()));
 }
 
+/** @brief Set the calling thread name. */
 inline auto
 set_name(std::string const& name) -> result<void>
 {
   return detail::thread_info().set_name(name);
 }
 
+/** @brief Query the calling thread name. */
 [[nodiscard]] inline auto
 get_name() -> result<std::string>
 {
   return detail::thread_info().get_name();
 }
 
+/** @brief Set CPU affinity for the calling thread. */
 inline auto
 set_affinity(thread_affinity const& affinity) -> result<void>
 {
@@ -63,6 +73,7 @@ set_affinity(thread_affinity const& affinity) -> result<void>
   return detail::portable_thread_control::set_affinity(current, affinity);
 }
 
+/** @brief Query CPU affinity of the calling thread. */
 [[nodiscard]] inline auto
 get_affinity() -> result<thread_affinity>
 {
