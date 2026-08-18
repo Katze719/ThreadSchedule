@@ -3,9 +3,9 @@
 #include <benchmark/benchmark.h>
 #include <memory>
 #include <thread>
-#include <threadschedule/advanced/native_thread.hpp>
-#include <threadschedule/advanced/pools.hpp>
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/advanced/raw_thread_pool.hpp>
+#include <threadschedule/advanced/work_stealing_pool.hpp>
+#include <threadschedule/worker_count.hpp>
 
 using namespace threadschedule;
 using namespace threadschedule::advanced;
@@ -17,9 +17,9 @@ template <typename Pool>
 void
 wait_for_posts(Pool& pool)
 {
-  if constexpr (requires { pool.wait_for_tasks(); })
+  if constexpr (requires { pool.wait(); })
     {
-      pool.wait_for_tasks();
+      (void)pool.wait();
     }
 }
 
@@ -27,7 +27,7 @@ template <typename Pool, typename SubmitFn>
 void
 run_post_benchmark(benchmark::State& state, SubmitFn&& submit)
 {
-  Pool pool(static_cast<size_t>(state.range(0)));
+  Pool pool(worker_count{ static_cast<size_t>(state.range(0)) });
   std::atomic<size_t> completed{ 0 };
   size_t const task_count = static_cast<size_t>(state.range(1));
 
@@ -55,7 +55,7 @@ BM_ThreadPool_PostSmallCapture(benchmark::State& state)
 {
   run_post_benchmark<raw_thread_pool>(
       state, [](raw_thread_pool& pool, std::atomic<size_t>& completed)
-        { pool.post([&completed]() { completed.fetch_add(1, std::memory_order_relaxed); }); });
+        { pool.post_or_throw([&completed]() { completed.fetch_add(1, std::memory_order_relaxed); }); });
 }
 
 static void
@@ -67,8 +67,8 @@ BM_ThreadPool_PostLargeCapture(benchmark::State& state)
         {
           std::array<int, 32> payload{};
           payload[0] = 7;
-          pool.post([payload, &completed]()
-                      { completed.fetch_add(payload[0] == 7 ? 1u : 0u, std::memory_order_relaxed); });
+          pool.post_or_throw([payload, &completed]()
+                               { completed.fetch_add(payload[0] == 7 ? 1u : 0u, std::memory_order_relaxed); });
         });
 }
 
@@ -77,7 +77,7 @@ BM_HighPerformancePool_PostSmallCapture(benchmark::State& state)
 {
   run_post_benchmark<work_stealing_pool>(
       state, [](work_stealing_pool& pool, std::atomic<size_t>& completed)
-        { pool.post([&completed]() { completed.fetch_add(1, std::memory_order_relaxed); }); });
+        { pool.post_or_throw([&completed]() { completed.fetch_add(1, std::memory_order_relaxed); }); });
 }
 
 static void
@@ -89,8 +89,8 @@ BM_HighPerformancePool_PostLargeCapture(benchmark::State& state)
         {
           std::array<int, 32> payload{};
           payload[0] = 11;
-          pool.post([payload, &completed]()
-                      { completed.fetch_add(payload[0] == 11 ? 1u : 0u, std::memory_order_relaxed); });
+          pool.post_or_throw([payload, &completed]()
+                               { completed.fetch_add(payload[0] == 11 ? 1u : 0u, std::memory_order_relaxed); });
         });
 }
 
@@ -102,7 +102,7 @@ BM_ThreadPool_PostMoveOnlyCapture(benchmark::State& state)
                                       [](raw_thread_pool& pool, std::atomic<size_t>& completed)
                                         {
                                           auto payload = std::make_unique<int>(123);
-                                          pool.post(
+                                          pool.post_or_throw(
                                               [payload = std::move(payload), &completed]() mutable
                                                 {
                                                   benchmark::DoNotOptimize(*payload);
@@ -118,7 +118,7 @@ BM_HighPerformancePool_PostMoveOnlyCapture(benchmark::State& state)
                                          [](work_stealing_pool& pool, std::atomic<size_t>& completed)
                                            {
                                              auto payload = std::make_unique<int>(456);
-                                             pool.post(
+                                             pool.post_or_throw(
                                                  [payload = std::move(payload), &completed]() mutable
                                                    {
                                                      benchmark::DoNotOptimize(*payload);

@@ -4,7 +4,8 @@
 #include <mutex>
 #include <string>
 #include <thread>
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/thread.hpp>
+#include <threadschedule/thread_registry.hpp>
 #include <vector>
 
 namespace runtime_libB

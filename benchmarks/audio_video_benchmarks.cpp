@@ -5,9 +5,9 @@
 #include <memory>
 #include <random>
 #include <thread>
-#include <threadschedule/advanced/native_thread.hpp>
-#include <threadschedule/advanced/pools.hpp>
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/advanced/work_stealing_pool.hpp>
+#include <threadschedule/thread_config.hpp>
+#include <threadschedule/worker_count.hpp>
 #include <vector>
 
 using namespace threadschedule;
@@ -570,9 +570,9 @@ bm_audio_encoding(benchmark::State& state)
   size_t const sample_rate = 44100;
   size_t const duration_ms = 1000; // 1 second per frame
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("audio_encoder");
-  pool.distribute_across_cpus();
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("audio_encoder"));
+  pool.distribute_workers();
 
   for (auto _ : state)
     {
@@ -598,7 +598,7 @@ bm_audio_encoding(benchmark::State& state)
               frame.samples_right[j] = 0.5f * std::sin(2.0 * pi * 440.0 * t);
             }
 
-          pool.submit(
+          pool.submit_or_throw(
               [&frame, &encoded_frames, &total_bytes]()
                 {
                   auto encoded = audio_workloads::encode_audio(frame, "AAC", 128);
@@ -618,7 +618,7 @@ bm_audio_encoding(benchmark::State& state)
       state.counters["work_steal_ratio"]
           = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
       state.counters["avg_task_time_ms"]
-          = benchmark::Counter(static_cast<double>(stats.avg_task_time.count()) / 1000.0);
+          = benchmark::Counter(static_cast<double>(stats.average_task_time.count()) / 1000.0);
 
       benchmark::DoNotOptimize(encoded_frames.load());
     }
@@ -635,9 +635,9 @@ bm_video_encoding(benchmark::State& state)
   size_t const width = 1920;
   size_t const height = 1080;
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("video_encoder");
-  pool.distribute_across_cpus();
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("video_encoder"));
+  pool.distribute_workers();
 
   for (auto _ : state)
     {
@@ -678,7 +678,7 @@ bm_video_encoding(benchmark::State& state)
                 }
             }
 
-          pool.submit(
+          pool.submit_or_throw(
               [&frame, &encoded_frames, &total_bytes]()
                 {
                   auto encoded = video_workloads::encode_video_frame(frame, "H264", 5000);
@@ -698,7 +698,7 @@ bm_video_encoding(benchmark::State& state)
       state.counters["work_steal_ratio"]
           = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
       state.counters["avg_task_time_ms"]
-          = benchmark::Counter(static_cast<double>(stats.avg_task_time.count()) / 1000.0);
+          = benchmark::Counter(static_cast<double>(stats.average_task_time.count()) / 1000.0);
 
       benchmark::DoNotOptimize(encoded_frames.load());
     }
@@ -714,9 +714,9 @@ bm_audio_video_pipeline_processing(benchmark::State& state)
   size_t const num_threads = state.range(0);
   size_t const frames_to_process = state.range(1);
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("pipeline_worker");
-  pool.distribute_across_cpus();
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("pipeline_worker"));
+  pool.distribute_workers();
 
   frame_queue<audio_frame> audio_queue;
   frame_queue<video_frame> video_queue;
@@ -730,7 +730,7 @@ bm_audio_video_pipeline_processing(benchmark::State& state)
       for (size_t i = 0; i < frames_to_process; ++i)
         {
           // Audio processing task
-          pool.submit(
+          pool.submit_or_throw(
               [&audio_queue, &video_queue, &processed_queue, &processed_frames]()
                 {
                   audio_frame audio_frame;
@@ -752,7 +752,7 @@ bm_audio_video_pipeline_processing(benchmark::State& state)
                 });
 
           // Video processing task
-          pool.submit(
+          pool.submit_or_throw(
               [&video_queue, &audio_queue, &processed_queue, &processed_frames]()
                 {
                   video_frame video_frame;
@@ -804,7 +804,7 @@ bm_audio_video_pipeline_processing(benchmark::State& state)
       state.counters["work_steal_ratio"]
           = benchmark::Counter(100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1)));
       state.counters["avg_task_time_ms"]
-          = benchmark::Counter(static_cast<double>(stats.avg_task_time.count()) / 1000.0);
+          = benchmark::Counter(static_cast<double>(stats.average_task_time.count()) / 1000.0);
 
       benchmark::DoNotOptimize(processed_frames.load());
     }
@@ -820,9 +820,9 @@ bm_real_time_streaming_processing(benchmark::State& state)
   size_t const stream_duration_seconds = 5;
   size_t const fps = 30;
 
-  work_stealing_pool pool(num_threads);
-  pool.configure_threads("streaming_worker");
-  pool.distribute_across_cpus();
+  work_stealing_pool pool(worker_count{ num_threads });
+  pool.configure_workers(thread_config{}.set_name("streaming_worker"));
+  pool.distribute_workers();
 
   frame_queue<video_frame> input_queue;
   frame_queue<video_frame> output_queue;
@@ -869,7 +869,7 @@ bm_real_time_streaming_processing(benchmark::State& state)
       // Processing tasks
       for (size_t i = 0; i < fps * stream_duration_seconds; ++i)
         {
-          pool.submit(
+          pool.submit_or_throw(
               [&input_queue, &output_queue, &processed_frames, &total_latency_ms]()
                 {
                   auto submit_time = std::chrono::steady_clock::now();

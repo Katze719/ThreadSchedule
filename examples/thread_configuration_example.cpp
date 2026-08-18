@@ -1,4 +1,5 @@
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/this_thread.hpp>
+#include <threadschedule/thread.hpp>
 
 #include <iostream>
 
@@ -18,9 +19,9 @@ main()
     }
 
   threadschedule::thread_config config;
-  config.name = "metrics";
-  config.scheduling = threadschedule::schedule::priority(threadschedule::priority_level::low);
-  config.affinity = threadschedule::thread_affinity({ allowed->cpus().front() });
+  config.set_name("metrics")
+      .set_scheduling(threadschedule::schedule::priority(threadschedule::priority_level::low))
+      .set_affinity(threadschedule::thread_affinity({ allowed->cpus().front() }));
 
   if (auto worker = threadschedule::thread::create(config,
                                                    []

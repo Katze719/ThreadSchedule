@@ -11,8 +11,8 @@ standard-library ABI, architecture, runtime-library mode, and v3 headers.
 
 ## `app_injection`
 
-An application-owned `thread_registry` is installed with
-`use_global_registry()` before worker threads start. This is appropriate when
+An application-owned `thread_registry` is installed with a scoped
+`global_registry_binding` before worker threads start. This is appropriate when
 the application controls every linked image and their C++ ABI is compatible.
 
 ## `composite_merge`

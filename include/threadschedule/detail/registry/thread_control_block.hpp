@@ -4,6 +4,30 @@
  *  @brief Native thread metadata and lifecycle-safe control blocks.
  */
 
+#include "../../expected.hpp"
+#include "../callable/copyable_function.hpp"
+#include "../scheduling/native.hpp"
+#include "../thread_backend.hpp"
+
+#ifdef _WIN32
+#  include "../unique_handle.hpp"
+#endif
+
+#include <algorithm>
+#include <cstdint>
+#include <fstream>
+#include <memory>
+#include <optional>
+#include <shared_mutex>
+#include <sstream>
+#include <string>
+#include <system_error>
+#include <thread>
+#include <vector>
+
+namespace threadschedule::detail
+{
+
 class thread_registry_backend;
 class registration_guard_backend;
 
@@ -53,7 +77,7 @@ struct registered_thread_info_backend
   std::shared_ptr<class thread_control_block> control;
 };
 
-using registry_callback = detail::copyable_callable<void(registered_thread_info_backend const&)>;
+using registry_callback = detail::copyable_function<void(registered_thread_info_backend const&)>;
 
 /**
  * @brief Per-thread control handle for OS-level scheduling operations.
@@ -104,16 +128,7 @@ public:
   thread_control_block(thread_control_block&&) = delete;
   auto operator=(thread_control_block&&) -> thread_control_block& = delete;
 
-  ~thread_control_block()
-  {
-#ifdef _WIN32
-    if (handle_)
-      {
-        CloseHandle(handle_);
-        handle_ = nullptr;
-      }
-#endif
-  }
+  ~thread_control_block() = default;
 
   [[nodiscard]] auto
   tid() const noexcept -> native_thread_id
@@ -131,7 +146,7 @@ private:
   native_handle() const
   {
 #ifdef _WIN32
-    return handle_;
+    return handle_.get();
 #else
     return pthread_handle_;
 #endif
@@ -242,7 +257,7 @@ public:
                         THREAD_SET_INFORMATION | THREAD_QUERY_INFORMATION, FALSE, 0)
         == 0)
       throw std::system_error(detail::last_win32_error(), "DuplicateHandle");
-    block->handle_ = realHandle;
+    block->handle_.reset(realHandle);
 #else
     block->pthread_handle_ = pthread_self();
     block->start_time_ = read_start_time(block->tid_);
@@ -292,7 +307,7 @@ private:
     if (!active_)
       return false;
 #ifdef _WIN32
-    return handle_ != nullptr;
+    return static_cast<bool>(handle_);
 #else
     // Without a generation value a recycled TID cannot be distinguished
     // safely from the original target. Fail closed instead of risking that
@@ -349,9 +364,11 @@ private:
   native_thread_id tid_{};
   std::thread::id std_id_;
 #ifdef _WIN32
-  HANDLE handle_ = nullptr;
+  detail::unique_handle handle_;
 #else
   pthread_t pthread_handle_{};
   std::optional<std::uint64_t> start_time_;
 #endif
 };
+
+} // namespace threadschedule::detail

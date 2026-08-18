@@ -4,9 +4,20 @@
  * @file detail/pool/global_pool_backend.hpp
  * @brief Process-wide pool facades and global parallel helpers.
  *
- * Internal implementation fragment included by backend.hpp inside
- * threadschedule::detail.
+ * Self-contained internal implementation header.
  */
+
+#include "thread_pool_backend_base.hpp"
+#include "work_stealing_pool_backend.hpp"
+#include "worker_count.hpp"
+
+#include <cstddef>
+#include <mutex>
+#include <thread>
+#include <utility>
+
+namespace threadschedule::detail
+{
 
 // ---------------------------------------------------------------------------
 // global_pool_backend
@@ -131,7 +142,7 @@ private:
   static auto
   thread_count() -> size_t&
   {
-    static size_t count = std::thread::hardware_concurrency();
+    static size_t count = default_worker_count();
     return count;
   }
 };
@@ -175,3 +186,5 @@ parallel_for_each(Container& container, F&& func)
 {
   global_thread_pool_backend::parallel_for_each(container.begin(), container.end(), std::forward<F>(func));
 }
+
+} // namespace threadschedule::detail

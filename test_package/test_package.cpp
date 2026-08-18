@@ -5,7 +5,7 @@
 int
 main()
 {
-  threadschedule::thread_pool pool(1);
+  threadschedule::thread_pool pool(threadschedule::worker_count{ 1 });
   auto result = pool.submit([] { return 42; });
   if (!result)
     {

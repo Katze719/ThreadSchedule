@@ -302,7 +302,7 @@ TEST(ThreadRegistryTest, RegisteredThreadBackendMoveAssign)
 
 TEST(ThreadRegistryTest, RegisteredThreadBackendAcceptsPackagedTask)
 {
-  std::packaged_task<int()> task([] { return 42; });
+  std::packaged_task<int()> task([]() { return 42; });
   auto result = task.get_future();
 
   detail::registered_thread_backend t("packaged", "move-only", std::move(task));

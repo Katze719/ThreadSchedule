@@ -1,4 +1,4 @@
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/jthread.hpp>
 
 #include <iostream>
 #include <stop_token>

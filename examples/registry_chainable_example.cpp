@@ -1,4 +1,5 @@
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/thread.hpp>
+#include <threadschedule/thread_registry.hpp>
 
 #include <algorithm>
 #include <chrono>

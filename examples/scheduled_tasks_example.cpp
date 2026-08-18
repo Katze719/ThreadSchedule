@@ -1,4 +1,4 @@
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/scheduled_pool.hpp>
 
 #include <chrono>
 #include <future>
@@ -9,7 +9,7 @@ using namespace std::chrono_literals;
 int
 main()
 {
-  threadschedule::scheduled_pool scheduler(2);
+  threadschedule::scheduled_pool scheduler(threadschedule::worker_count{ 2 });
 
   std::promise<void> finished;
   auto done = finished.get_future();

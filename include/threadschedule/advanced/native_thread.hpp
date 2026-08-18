@@ -2,10 +2,16 @@
 
 /**
  * @file advanced/native_thread.hpp
- * @brief Native thread scheduling controls and platform escape hatches.
+ * @brief Native thread identity and handle escape hatches.
  */
 
-#include "../core.hpp"
+#include "../jthread.hpp"
+#include "../thread.hpp"
+#include "../thread_id.hpp"
+
+#ifndef _WIN32
+#  include <sys/types.h>
+#endif
 
 namespace threadschedule::detail
 {
@@ -46,13 +52,16 @@ native_handle(jthread& value) -> std::jthread::native_handle_type
 }
 #endif
 
-using native_thread_id = ::threadschedule::detail::native_thread_id;
-using native_thread_priority = ::threadschedule::detail::native_thread_priority;
-using native_thread_affinity = ::threadschedule::detail::native_thread_affinity;
-using native_scheduling_policy = ::threadschedule::detail::native_scheduling_policy;
-using native_scheduling_config = ::threadschedule::detail::native_scheduling_config;
-using native_thread_config = ::threadschedule::detail::native_thread_config;
-using scheduler_parameters = ::threadschedule::detail::scheduler_parameters;
-namespace native_schedule = ::threadschedule::detail::native_schedule;
+#ifdef _WIN32
+using native_thread_id = unsigned long;
+#else
+using native_thread_id = pid_t;
+#endif
+
+[[nodiscard]] constexpr auto
+native_id(thread_id id) noexcept -> native_thread_id
+{
+  return static_cast<native_thread_id>(::threadschedule::detail::thread_id_access::value(id));
+}
 
 } // namespace threadschedule::advanced

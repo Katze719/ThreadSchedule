@@ -4,6 +4,17 @@
  *  @brief Snapshot query facade shared by registry implementations.
  */
 
+#include "thread_control_block.hpp"
+
+#include <cstddef>
+#include <optional>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+namespace threadschedule::detail
+{
+
 /**
  * @brief CRTP mixin that provides functional-style query facade methods.
  *
@@ -106,3 +117,5 @@ public:
     return self().query().skip(n);
   }
 };
+
+} // namespace threadschedule::detail

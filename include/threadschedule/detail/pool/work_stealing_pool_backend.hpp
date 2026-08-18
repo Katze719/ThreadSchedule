@@ -4,13 +4,38 @@
  * @file detail/pool/work_stealing_pool_backend.hpp
  * @brief Work-stealing deque and pool implementation.
  *
- * Internal implementation fragment included by backend.hpp inside
- * threadschedule::detail.
+ * Self-contained internal implementation header.
  */
 
-#include "work_stealing_deque.hpp"
-
+#include "../callable/bind.hpp"
+#include "../callable/move_only_function.hpp"
+#include "callbacks.hpp"
 #include "shutdown_policy_backend.hpp"
+#include "work_stealing_deque.hpp"
+#include "worker_context_guard.hpp"
+#include "worker_count.hpp"
+
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <future>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <queue>
+#include <random>
+#include <shared_mutex>
+#include <string>
+#include <system_error>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+namespace threadschedule::detail
+{
 
 /**
  * @brief High-performance thread pool optimized for high-frequency task
@@ -97,7 +122,7 @@ class work_stealing_pool_backend
 {
 public:
   using task_type = std::function<void()>;
-  using queued_task = detail::move_callable<void()>;
+  using queued_task = detail::move_only_function<void()>;
 
   struct statistics
   {
@@ -110,10 +135,10 @@ public:
     std::chrono::microseconds avg_task_time;
   };
 
-  explicit work_stealing_pool_backend(size_t num_threads = std::thread::hardware_concurrency(),
+  explicit work_stealing_pool_backend(size_t num_threads = default_worker_count(),
                                       size_t deque_capacity = work_stealing_deque<queued_task>::default_capacity,
                                       bool register_workers = false)
-      : num_threads_(num_threads == 0 ? 1 : num_threads), register_workers_(register_workers), stop_(false),
+      : num_threads_(checked_worker_count(num_threads)), register_workers_(register_workers), stop_(false),
         next_victim_(0), start_time_(std::chrono::steady_clock::now())
   {
     worker_queues_.resize(num_threads_);
@@ -139,6 +164,12 @@ public:
             worker.join();
         throw;
       }
+  }
+
+  template <typename Bool, std::enable_if_t<std::is_same_v<std::decay_t<Bool>, bool>, int> = 0>
+  work_stealing_pool_backend(size_t num_threads, Bool register_workers)
+      : work_stealing_pool_backend(num_threads, work_stealing_deque<queued_task>::default_capacity, register_workers)
+  {
   }
 
   work_stealing_pool_backend(work_stealing_pool_backend const&) = delete;
@@ -325,7 +356,7 @@ public:
   try_post(F&& f, Args&&... args) -> expected<void, std::error_code>
   {
     queued_task bound(
-        detail::make_move_callable<void()>(detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...)));
+        detail::make_move_only_function<void()>(detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...)));
 
     std::shared_lock<std::shared_mutex> submission_lock(submission_mutex_);
 
@@ -623,7 +654,7 @@ public:
     static_assert(std::is_invocable_r_v<void, Callback&, std::chrono::steady_clock::time_point, std::thread::id>,
                   "Task start callback must accept (time_point, std::thread::id)");
     std::lock_guard<std::mutex> lock(trace_mutex_);
-    on_task_start_ = detail::make_copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id)>(
+    on_task_start_ = detail::make_copyable_function<void(std::chrono::steady_clock::time_point, std::thread::id)>(
         std::forward<Callback>(cb));
   }
 
@@ -649,7 +680,7 @@ public:
                   "Task end callback must accept (time_point, std::thread::id, "
                   "std::chrono::microseconds)");
     std::lock_guard<std::mutex> lock(trace_mutex_);
-    on_task_end_ = detail::make_copyable_callable<void(std::chrono::steady_clock::time_point, std::thread::id,
+    on_task_end_ = detail::make_copyable_function<void(std::chrono::steady_clock::time_point, std::thread::id,
                                                        std::chrono::microseconds)>(std::forward<Callback>(cb));
   }
 
@@ -878,3 +909,5 @@ private:
       }
   }
 };
+
+} // namespace threadschedule::detail

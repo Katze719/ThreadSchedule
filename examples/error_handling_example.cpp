@@ -1,4 +1,4 @@
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/thread_pool.hpp>
 
 #include <iostream>
 #include <stdexcept>
@@ -6,7 +6,7 @@
 int
 main()
 {
-  threadschedule::thread_pool pool(2);
+  threadschedule::thread_pool pool(threadschedule::worker_count{ 2 });
 
   auto submitted = pool.submit([]() -> int { throw std::runtime_error("task failed"); });
   if (!submitted)

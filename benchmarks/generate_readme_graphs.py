@@ -31,7 +31,7 @@ WORKLOAD_ORDER = ("tiny", "medium", "heavy", "imbalanced")
 
 CXX_COLORS = {"C++17": "#94a3b8", "C++20": "#2a7fff", "C++23": "#16a34a", "C++26": "#db2777"}
 CALLABLE_BATCH = 256  # kBatch in callable_std_benchmarks.cpp
-CALLABLE_CAPTURES = (("Small", "small (8 B)"), ("Medium", "medium (48 B)"), ("Large", "large (128 B)"))
+CALLABLE_CAPTURES = (("small", "small (8 B)"), ("medium", "medium (48 B)"), ("large", "large (128 B)"))
 
 INK = "#122033"
 MUTED = "#5b6b82"
@@ -382,17 +382,16 @@ def build_callable_charts(std_medians: dict[str, dict[str, float]], out_dir: Pat
     group_labels = [label for _, label in CALLABLE_CAPTURES]
     paths: list[Path] = []
 
-    # Chart A: move_callable cost across standards (std::function vs move_only_function).
+    # Chart A: the library-owned move-only representation across standards.
     series_a: list[tuple[str, list[float], str]] = []
     for std in std_order:
-        vals = [std_medians[std].get(f"BM_MoveCallable_{key}", 0.0) for key, _ in CALLABLE_CAPTURES]
+        vals = [std_medians[std].get(f"bm_move_only_function_{key}", 0.0) for key, _ in CALLABLE_CAPTURES]
         if any(v > 0 for v in vals):
             series_a.append((std, vals, CXX_COLORS[std]))
     if series_a:
         svg = grouped_bar_chart(
-            "Does replacing std::function help? (thread_pool_backend task storage)",
-            "Build + invoke cost per task for detail::move_callable "
-            "(std::function on C++17/20, std::move_only_function on C++23+); lower is better",
+            "move_only_function cost across language modes",
+            "Build + invoke cost per task for the fixed library-owned representation; lower is better",
             group_labels,
             series_a,
             "ns per task",
@@ -401,17 +400,16 @@ def build_callable_charts(std_medians: dict[str, dict[str, float]], out_dir: Pat
         path.write_text(svg, encoding="utf-8")
         paths.append(path)
 
-    # Chart B: copyable_callable cost across standards (std::function vs copyable_function).
+    # Chart B: std::function-backed copyable callback storage across standards.
     series_b: list[tuple[str, list[float], str]] = []
     for std in std_order:
-        vals = [std_medians[std].get(f"BM_CopyableCallable_{key}", 0.0) for key, _ in CALLABLE_CAPTURES]
+        vals = [std_medians[std].get(f"bm_copyable_function_{key}", 0.0) for key, _ in CALLABLE_CAPTURES]
         if any(v > 0 for v in vals):
             series_b.append((std, vals, CXX_COLORS[std]))
     if series_b:
         svg = grouped_bar_chart(
-            "Do C++26 copyable callbacks help?",
-            "Build + invoke cost per task for detail::copyable_callable "
-            "(std::function before C++26, std::copyable_function on C++26); lower is better",
+            "copyable_function cost across language modes",
+            "Build + invoke cost per task for the std::function-backed callback representation; lower is better",
             group_labels,
             series_b,
             "ns per task",
@@ -420,20 +418,20 @@ def build_callable_charts(std_medians: dict[str, dict[str, float]], out_dir: Pat
         path.write_text(svg, encoding="utf-8")
         paths.append(path)
 
-    # Chart C: SBO callable vs std-library callable at the newest available standard.
+    # Chart C: default vs enlarged inline capacity at the newest available standard.
     newest = std_order[-1]
     medians = std_medians[newest]
-    move_vals = [medians.get(f"BM_MoveCallable_{key}", 0.0) for key, _ in CALLABLE_CAPTURES]
-    sbo_vals = [medians.get(f"BM_Sbo_{key}", 0.0) for key, _ in CALLABLE_CAPTURES]
+    move_vals = [medians.get(f"bm_move_only_function_{key}", 0.0) for key, _ in CALLABLE_CAPTURES]
+    sbo_vals = [medians.get(f"bm_large_inline_{key}", 0.0) for key, _ in CALLABLE_CAPTURES]
     if any(v > 0 for v in move_vals) and any(v > 0 for v in sbo_vals):
         series_c = [
-            ("move_callable (thread_pool_backend / std lib)", move_vals, "#2a7fff"),
-            ("sbo_callable (lightweight_pool_backend)", sbo_vals, "#db2777"),
+            ("move_only_function (default inline size)", move_vals, "#2a7fff"),
+            ("move_only_function (56 B inline size)", sbo_vals, "#db2777"),
         ]
         svg = grouped_bar_chart(
-            f"Do the SBO callables help? ({newest})",
-            "Per-task cost; the 48 B capture fits the SBO buffer but spills the std-library "
-            "callable to the heap (lower is better)",
+            f"Does a larger inline capacity help? ({newest})",
+            "Per-task cost; the 48 B capture fits the 56 B buffer but spills the default buffer "
+            "to the heap (lower is better)",
             group_labels,
             series_c,
             "ns per task",

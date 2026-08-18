@@ -1,4 +1,5 @@
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/thread.hpp>
+#include <threadschedule/thread_registry.hpp>
 
 #include <chrono>
 #include <thread>
@@ -7,7 +8,7 @@ int
 main()
 {
   threadschedule::thread_registry registry;
-  threadschedule::use_global_registry(&registry);
+  threadschedule::global_registry_binding binding(registry);
 
   threadschedule::thread worker(
       []
@@ -21,6 +22,5 @@ main()
   std::this_thread::sleep_for(std::chrono::milliseconds(20));
   auto entries = registry.snapshot();
   auto joined = worker.join();
-  threadschedule::use_global_registry(nullptr);
   return entries && entries->size() == 1 && joined ? 0 : 3;
 }

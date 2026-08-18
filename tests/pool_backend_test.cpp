@@ -5,9 +5,10 @@
 #include <memory>
 #include <mutex>
 #include <numeric>
-#include <threadschedule/advanced/chaos_controller.hpp>
+#include <stdexcept>
 #include <threadschedule/advanced/pools.hpp>
 #include <threadschedule/advanced/task_group.hpp>
+#include <threadschedule/advanced/testing/chaos_controller.hpp>
 #include <threadschedule/threadschedule.hpp>
 #include <vector>
 
@@ -85,6 +86,14 @@ shutdown_for_stops_new_submissions() -> bool
 } // namespace
 
 // ==================== Backend try_submit / try_post ====================
+
+TEST(PoolBackendTest, BackendWorkerCountsRejectZeroInsteadOfUsingASentinel)
+{
+  EXPECT_THROW((void)thread_pool_backend{ 0 }, std::invalid_argument);
+  EXPECT_THROW((void)work_stealing_pool_backend{ 0 }, std::invalid_argument);
+  EXPECT_THROW((void)lightweight_pool_backend{ 0 }, std::invalid_argument);
+  EXPECT_THROW((void)scheduled_pool_backend{ 0 }, std::invalid_argument);
+}
 
 TEST(PoolBackendTest, TrySubmitReturnsExpected)
 {
@@ -996,11 +1005,13 @@ TEST(PoolBackendTest, ChaosControllerThreadCanBeConfigured)
   chaos_config cfg;
   cfg.interval = std::chrono::milliseconds(10);
   cfg.shuffle_affinity = false;
-  cfg.priority_jitter = 0;
+  cfg.nice_jitter = 0;
 
   chaos_controller chaos(cfg, [](registered_thread const&) { return false; });
 
-  ASSERT_TRUE(chaos.configure_thread("chaos_cfg").has_value());
+  threadschedule::thread_config config;
+  config.set_name("chaos_cfg");
+  ASSERT_TRUE(chaos.configure_thread(config).has_value());
 
   auto info = chaos.thread_info();
   ASSERT_TRUE(info.has_value());

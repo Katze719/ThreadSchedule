@@ -6,8 +6,9 @@
  * and error_handled_task.
  */
 
-#include "../detail/callable/move_callable.hpp"
-#include <chrono>
+#include "../detail/callable/copyable_function.hpp"
+#include "../detail/callable/move_only_function.hpp"
+#include "../task_error.hpp"
 #include <exception>
 #include <functional>
 #include <future>
@@ -15,122 +16,17 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <type_traits>
 #include <vector>
 
 namespace threadschedule::advanced
 {
 
-namespace implementation = ::threadschedule::detail;
-
-/**
- * @brief Holds diagnostic information captured from a failed task.
- *
- * task_error is a value type (copyable and movable) that bundles the
- * original exception together with context about where and when the failure
- * occurred.
- *
- * Instances are typically created by error_handled_task and forwarded to
- * registered error_callback functions through an
- * error_handler.
- */
-struct task_error
+namespace error_handler_detail
 {
-  /** @brief The captured exception. Never null when produced by the library.
-   */
-  std::exception_ptr exception;
-
-  /** @brief Optional human-readable label supplied when the task was
-   * submitted. */
-  std::string task_description;
-
-  /** @brief Id of the thread on which the exception was thrown. */
-  std::thread::id thread_id;
-
-  /** @brief Monotonic timestamp recorded immediately after the exception was
-   * caught. */
-  std::chrono::steady_clock::time_point timestamp;
-
-  /**
-   * @brief Capture the current in-flight exception into a task_error.
-   *
-   * Must be called inside a @c catch block. Fills exception, thread_id,
-   * and timestamp; optionally sets task_description.
-   */
-  static auto
-  capture(std::string description = {}) -> task_error
-  {
-    task_error err;
-    err.exception = std::current_exception();
-    err.task_description = std::move(description);
-    err.thread_id = std::this_thread::get_id();
-    err.timestamp = std::chrono::steady_clock::now();
-    return err;
-  }
-
-  /**
-   * @brief Extract the message string from the stored exception.
-   *
-   * Internally re-throws the exception and catches it as @c std::exception
-   * to call @c what().  This is safe but incurs the overhead of a throw /
-   * catch round-trip; avoid calling in tight loops.
-   *
-   * @return The exception message, @c "Unknown exception" if the stored
-   *         exception is not derived from @c std::exception, or
-   *         @c "No exception" if the pointer is empty.
-   */
-  [[nodiscard]] auto
-  what() const -> std::string
-  {
-    try
-      {
-        if (exception)
-          {
-            std::rethrow_exception(exception);
-          }
-      }
-    catch (std::exception const& e)
-      {
-        return e.what();
-      }
-    catch (...)
-      {
-        return "Unknown exception";
-      }
-    return "No exception";
-  }
-
-  /**
-   * @brief Re-throw the original exception.
-   *
-   * If the stored @c exception pointer is non-null the exception is
-   * re-thrown via @c std::rethrow_exception.  This will terminate the
-   * program if called outside a try / catch block.
-   *
-   * @throws The original exception stored in @ref exception.
-   */
-  void
-  rethrow() const
-  {
-    if (exception)
-      {
-        std::rethrow_exception(exception);
-      }
-  }
-};
-
-/**
- * @brief Signature for error-handling callbacks registered with
- * error_handler.
- *
- * Callbacks receive a const reference to the task_error describing the
- * failure.
- */
-using error_callback = implementation::copyable_callable<void(task_error const&)>;
-
-using error_callback_storage = error_callback;
-using future_error_callback = implementation::move_callable<void(std::exception_ptr)>;
+using error_callback_storage = ::threadschedule::detail::copyable_function<void(task_error const&)>;
+using future_error_callback = ::threadschedule::detail::move_only_function<void(std::exception_ptr)>;
+} // namespace error_handler_detail
 
 /**
  * @brief Central registry and dispatcher for task-error callbacks.
@@ -168,18 +64,19 @@ public:
   auto
   add_callback(error_callback callback) -> size_t
   {
-    return emplace_callback(error_callback_storage(std::move(callback)));
+    return emplace_callback(error_handler_detail::error_callback_storage(std::move(callback)));
   }
 
   template <typename Callback,
-            std::enable_if_t<!std::is_same_v<implementation::remove_cvref_t<Callback>, error_callback>, int> = 0>
+            std::enable_if_t<!std::is_same_v<::threadschedule::detail::remove_cvref_t<Callback>, error_callback>, int>
+            = 0>
   auto
   add_callback(Callback&& callback) -> size_t
   {
     static_assert(std::is_invocable_r_v<void, Callback&, task_error const&>,
                   "Error callback must be invocable with task_error const&");
     return emplace_callback(
-        implementation::make_copyable_callable<void(task_error const&)>(std::forward<Callback>(callback)));
+        ::threadschedule::detail::make_copyable_function<void(task_error const&)>(std::forward<Callback>(callback)));
   }
 
   /**
@@ -230,7 +127,7 @@ public:
   void
   handle_error(task_error const& error)
   {
-    std::vector<error_callback_storage> snapshot;
+    std::vector<error_handler_detail::error_callback_storage> snapshot;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       error_count_++;
@@ -278,7 +175,7 @@ public:
 
 private:
   auto
-  emplace_callback(error_callback_storage callback) -> size_t
+  emplace_callback(error_handler_detail::error_callback_storage callback) -> size_t
   {
     std::lock_guard<std::mutex> lock(mutex_);
     size_t const id = next_callback_id_++;
@@ -287,7 +184,7 @@ private:
   }
 
   mutable std::mutex mutex_;
-  std::map<size_t, error_callback_storage> callbacks_;
+  std::map<size_t, error_handler_detail::error_callback_storage> callbacks_;
   size_t next_callback_id_{ 0 };
   size_t error_count_{ 0 };
 };
@@ -411,21 +308,21 @@ public:
   auto
   on_error(std::function<void(std::exception_ptr)> callback) -> future_with_error_handler&
   {
-    error_callback_ = future_error_callback(std::move(callback));
+    error_callback_ = error_handler_detail::future_error_callback(std::move(callback));
     has_callback_ = true;
     return *this;
   }
 
-  template <typename Callback,
-            std::enable_if_t<
-                !std::is_same_v<implementation::remove_cvref_t<Callback>, std::function<void(std::exception_ptr)>>, int>
-            = 0>
+  template <typename Callback, std::enable_if_t<!std::is_same_v<::threadschedule::detail::remove_cvref_t<Callback>,
+                                                                std::function<void(std::exception_ptr)>>,
+                                                int> = 0>
   auto
   on_error(Callback&& callback) -> future_with_error_handler&
   {
     static_assert(std::is_invocable_r_v<void, Callback&, std::exception_ptr>,
                   "Error callback must be invocable with std::exception_ptr");
-    error_callback_ = implementation::make_move_callable<void(std::exception_ptr)>(std::forward<Callback>(callback));
+    error_callback_
+        = ::threadschedule::detail::make_move_only_function<void(std::exception_ptr)>(std::forward<Callback>(callback));
     has_callback_ = true;
     return *this;
   }
@@ -511,7 +408,7 @@ public:
 
 private:
   std::future<T> future_;
-  future_error_callback error_callback_;
+  error_handler_detail::future_error_callback error_callback_;
   bool has_callback_{ false };
 };
 

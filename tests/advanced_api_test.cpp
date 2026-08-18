@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <future>
 #include <memory>
 #include <type_traits>
@@ -56,10 +57,11 @@ TEST(AdvancedApi, NegativeNumaThreadIndexWrapsWithinNode)
   advanced::cpu_topology topology;
   topology.cpu_count = 3;
   topology.numa_nodes = 1;
-  topology.node_to_cpus = { { 2, 4, 6 } };
+  topology.node_to_cpus = { { threadschedule::cpu_id{ 2 }, threadschedule::cpu_id{ 4 }, threadschedule::cpu_id{ 6 } } };
 
   auto affinity = advanced::affinity_for_node(topology, 0, -1, 2);
-  EXPECT_EQ(affinity.get_cpus(), (std::vector<int>{ 2, 6 }));
+  EXPECT_EQ(affinity.cpus(),
+            (std::vector<threadschedule::cpu_id>{ threadschedule::cpu_id{ 2 }, threadschedule::cpu_id{ 6 } }));
 }
 
 TEST(AdvancedApi, ErrorHandledTaskAcceptsLvalueCallable)
@@ -78,8 +80,8 @@ template <typename Pool>
 void
 exercise_submitting_pool()
 {
-  Pool pool(1);
-  auto future = pool.submit([] { return 42; });
+  Pool pool(threadschedule::worker_count{ 1 });
+  auto future = pool.submit_or_throw([] { return 42; });
   EXPECT_EQ(future.get(), 42);
   pool.shutdown();
 }
@@ -90,30 +92,33 @@ TEST(AdvancedApi, SpecializedPoolsSubmitAndShutdown)
   exercise_submitting_pool<advanced::work_stealing_pool>();
   exercise_submitting_pool<advanced::polling_pool>();
 
-  advanced::lightweight_pool lightweight(1);
+  advanced::lightweight_pool lightweight(threadschedule::worker_count{ 1 });
   std::atomic<int> value{ 0 };
   lightweight.post([&value] { value.store(7, std::memory_order_release); });
   lightweight.shutdown();
   EXPECT_EQ(value.load(std::memory_order_acquire), 7);
 
   advanced::inline_pool inline_pool;
-  EXPECT_EQ(inline_pool.submit([] { return 9; }).get(), 9);
+  EXPECT_EQ(inline_pool.submit_or_throw([] { return 9; }).get(), 9);
+  std::vector<std::function<void()>> inline_tasks{ [] {}, [] {} };
+  EXPECT_EQ(inline_pool.submit_batch_or_throw(inline_tasks.begin(), inline_tasks.end()).size(), 2u);
   inline_pool.shutdown();
 
-  EXPECT_EQ(advanced::global_thread_pool::submit([] { return 11; }).get(), 11);
-  EXPECT_EQ(advanced::global_work_stealing_pool::submit([] { return 13; }).get(), 13);
+  EXPECT_EQ(advanced::global_thread_pool::submit_or_throw([] { return 11; }).get(), 11);
+  EXPECT_EQ(advanced::global_work_stealing_pool::submit_or_throw([] { return 13; }).get(), 13);
 }
 
 template <typename Pool>
 void
 exercise_scheduled_pool()
 {
-  Pool pool(1);
+  Pool pool(threadschedule::worker_count{ 1 });
   std::promise<void> ran;
   auto ready = ran.get_future();
   auto task = pool.schedule_after(0ms, [&ran] { ran.set_value(); });
   ASSERT_EQ(ready.wait_for(2s), std::future_status::ready);
-  task.cancel();
+  ASSERT_TRUE(task.has_value());
+  task->cancel();
   pool.shutdown();
 }
 
@@ -125,17 +130,11 @@ TEST(AdvancedApi, SpecializedScheduledPoolsDispatchCancelAndShutdown)
   exercise_scheduled_pool<advanced::scheduled_lightweight_pool>();
 }
 
-#ifdef _WIN32
-TEST(AdvancedApi, WindowsProfilesUseSafeDocumentedPriorities)
+TEST(AdvancedApi, ProfilesUsePortableSchedulingIntents)
 {
   auto const realtime = advanced::profiles::realtime();
-  auto realtime_params = advanced::scheduler_parameters::create_for_policy(realtime.policy, realtime.priority);
-  ASSERT_TRUE(realtime_params.has_value());
-  EXPECT_EQ(realtime_params->sched_priority, THREAD_PRIORITY_HIGHEST);
+  EXPECT_EQ(realtime.scheduling.intent(), threadschedule::scheduling_intent::realtime_fifo);
 
   auto const throughput = advanced::profiles::throughput();
-  auto throughput_params = advanced::scheduler_parameters::create_for_policy(throughput.policy, throughput.priority);
-  ASSERT_TRUE(throughput_params.has_value());
-  EXPECT_EQ(throughput_params->sched_priority, THREAD_PRIORITY_BELOW_NORMAL);
+  EXPECT_EQ(throughput.scheduling.intent(), threadschedule::scheduling_intent::normal);
 }
-#endif

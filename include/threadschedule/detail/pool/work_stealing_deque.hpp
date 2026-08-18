@@ -4,6 +4,16 @@
  *  @brief Bounded owner/thief queue used by the work-stealing pool.
  */
 
+#include <atomic>
+#include <cstddef>
+#include <memory>
+#include <mutex>
+#include <type_traits>
+#include <utility>
+
+namespace threadschedule::detail
+{
+
 template <typename T>
 class work_stealing_deque
 {
@@ -122,3 +132,5 @@ public:
     return count;
   }
 };
+
+} // namespace threadschedule::detail

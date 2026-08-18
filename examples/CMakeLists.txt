@@ -2,7 +2,10 @@
 
 # Basic v3 pool example
 add_executable(basic_example basic_example.cpp)
-target_link_libraries(basic_example ThreadSchedule::ThreadSchedule) 
+target_link_libraries(basic_example ThreadSchedule::ThreadSchedule)
+
+add_executable(getting_started_example getting_started/main.cpp)
+target_link_libraries(getting_started_example ThreadSchedule::ThreadSchedule)
 
 # Performance benchmark for advanced::work_stealing_pool (requires Google Benchmark)
 if(TARGET benchmark::benchmark)

@@ -5,7 +5,7 @@
  * @brief Non-owning callable reference used by internal synchronous paths.
  */
 
-#include "move_callable.hpp"
+#include "move_only_function.hpp"
 
 #include <functional>
 #include <memory>

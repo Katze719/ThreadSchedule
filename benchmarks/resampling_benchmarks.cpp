@@ -7,9 +7,11 @@
 #include <queue>
 #include <random>
 #include <thread>
-#include <threadschedule/advanced/native_thread.hpp>
-#include <threadschedule/advanced/pools.hpp>
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/advanced/polling_pool.hpp>
+#include <threadschedule/advanced/raw_thread_pool.hpp>
+#include <threadschedule/advanced/work_stealing_pool.hpp>
+#include <threadschedule/thread_config.hpp>
+#include <threadschedule/worker_count.hpp>
 #include <vector>
 
 using namespace threadschedule;
@@ -172,9 +174,9 @@ BM_Resampling_HighPerformancePool_4Core(benchmark::State& state)
 
   // 4 cores: 1 producer + 3 workers (your scenario)
   size_t const num_workers = 3;
-  work_stealing_pool pool(num_workers);
-  pool.configure_threads("resampling_worker", native_scheduling_policy::other, native_thread_priority::normal());
-  pool.distribute_across_cpus();
+  work_stealing_pool pool(worker_count{ num_workers });
+  pool.configure_workers(thread_config{}.set_name("resampling_worker"));
+  pool.distribute_workers();
 
   for (auto _ : state)
     {
@@ -208,7 +210,7 @@ BM_Resampling_HighPerformancePool_4Core(benchmark::State& state)
 
           if (input_queue.pop(input_image, std::chrono::milliseconds(10)))
             {
-              futures.push_back(pool.submit(
+              futures.push_back(pool.submit_or_throw(
                   [&output_queue, &processed_images, input_image]()
                     {
                       // Heavy resampling computation (your actual workload)
@@ -231,7 +233,7 @@ BM_Resampling_HighPerformancePool_4Core(benchmark::State& state)
 
       auto stats = pool.get_statistics();
       state.counters["work_steal_ratio"] = 100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1));
-      state.counters["avg_task_time_ms"] = static_cast<double>(stats.avg_task_time.count()) / 1000.0;
+      state.counters["avg_task_time_ms"] = static_cast<double>(stats.average_task_time.count()) / 1000.0;
 
       benchmark::DoNotOptimize(processed_images.load());
     }
@@ -249,8 +251,8 @@ BM_Resampling_FastThreadPool_4Core(benchmark::State& state)
   size_t const num_images = state.range(2);
 
   size_t const num_workers = 3;
-  polling_pool pool(num_workers);
-  pool.configure_threads("fast_resampling_worker");
+  polling_pool pool(worker_count{ num_workers });
+  pool.configure_workers(thread_config{}.set_name("fast_resampling_worker"));
 
   for (auto _ : state)
     {
@@ -279,7 +281,7 @@ BM_Resampling_FastThreadPool_4Core(benchmark::State& state)
 
           if (input_queue.pop(input_image, std::chrono::milliseconds(10)))
             {
-              futures.push_back(pool.submit(
+              futures.push_back(pool.submit_or_throw(
                   [&output_queue, &processed_images, input_image]()
                     {
                       auto resampled = std::make_shared<ResampledImage>(ImageResampler::resample_bilinear(
@@ -299,7 +301,7 @@ BM_Resampling_FastThreadPool_4Core(benchmark::State& state)
       producer.join();
 
       auto stats = pool.get_statistics();
-      state.counters["avg_task_time_ms"] = static_cast<double>(stats.avg_task_time.count()) / 1000.0;
+      state.counters["avg_task_time_ms"] = static_cast<double>(stats.average_task_time.count()) / 1000.0;
 
       benchmark::DoNotOptimize(processed_images.load());
     }
@@ -320,9 +322,9 @@ BM_Resampling_RealTimeVideo(benchmark::State& state)
   size_t const duration_seconds = 3; // Shorter for benchmark
   size_t const num_workers = 3;
 
-  work_stealing_pool pool(num_workers);
-  pool.configure_threads("video_worker", native_scheduling_policy::other, native_thread_priority::normal());
-  pool.distribute_across_cpus();
+  work_stealing_pool pool(worker_count{ num_workers });
+  pool.configure_workers(thread_config{}.set_name("video_worker"));
+  pool.distribute_workers();
 
   // Standard video resolution
   size_t const image_width = 1280;
@@ -376,7 +378,7 @@ BM_Resampling_RealTimeVideo(benchmark::State& state)
 
           if (input_queue.pop(input_image, std::chrono::milliseconds(5)))
             {
-              futures.push_back(pool.submit(
+              futures.push_back(pool.submit_or_throw(
                   [&output_queue, &frames_processed, input_image]()
                     {
                       // Heavy resampling computation (downscale to half
@@ -442,19 +444,19 @@ BM_Resampling_PoolComparison(benchmark::State& state)
 
       if (pool_type == 0)
         {
-          simple_pool = std::make_unique<raw_thread_pool>(num_workers);
-          simple_pool->configure_threads("resampling");
+          simple_pool = std::make_unique<raw_thread_pool>(worker_count{ num_workers });
+          simple_pool->configure_workers(thread_config{}.set_name("resampling"));
         }
       else if (pool_type == 1)
         {
-          fast_pool = std::make_unique<polling_pool>(num_workers);
-          fast_pool->configure_threads("resampling");
+          fast_pool = std::make_unique<polling_pool>(worker_count{ num_workers });
+          fast_pool->configure_workers(thread_config{}.set_name("resampling"));
         }
       else
         {
-          hp_pool = std::make_unique<work_stealing_pool>(num_workers);
-          hp_pool->configure_threads("resampling", native_scheduling_policy::other, native_thread_priority::normal());
-          hp_pool->distribute_across_cpus();
+          hp_pool = std::make_unique<work_stealing_pool>(worker_count{ num_workers });
+          hp_pool->configure_workers(thread_config{}.set_name("resampling"));
+          hp_pool->distribute_workers();
         }
 
       // Producer thread
@@ -483,7 +485,7 @@ BM_Resampling_PoolComparison(benchmark::State& state)
 
               if (pool_type == 0)
                 {
-                  futures.push_back(simple_pool->submit(
+                  futures.push_back(simple_pool->submit_or_throw(
                       [&output_queue, &processed_images, &total_pixels_processed, pixels, input_image]()
                         {
                           auto resampled = std::make_shared<ResampledImage>(ImageResampler::resample_bilinear(
@@ -495,7 +497,7 @@ BM_Resampling_PoolComparison(benchmark::State& state)
                 }
               else if (pool_type == 1)
                 {
-                  futures.push_back(fast_pool->submit(
+                  futures.push_back(fast_pool->submit_or_throw(
                       [&output_queue, &processed_images, &total_pixels_processed, pixels, input_image]()
                         {
                           auto resampled = std::make_shared<ResampledImage>(ImageResampler::resample_bilinear(
@@ -507,7 +509,7 @@ BM_Resampling_PoolComparison(benchmark::State& state)
                 }
               else
                 {
-                  futures.push_back(hp_pool->submit(
+                  futures.push_back(hp_pool->submit_or_throw(
                       [&output_queue, &processed_images, &total_pixels_processed, pixels, input_image]()
                         {
                           auto resampled = std::make_shared<ResampledImage>(ImageResampler::resample_bilinear(
@@ -533,7 +535,7 @@ BM_Resampling_PoolComparison(benchmark::State& state)
         {
           auto stats = hp_pool->get_statistics();
           state.counters["work_steal_ratio"] = 100.0 * stats.stolen_tasks / std::max(stats.completed_tasks, size_t(1));
-          state.counters["avg_task_time_ms"] = static_cast<double>(stats.avg_task_time.count()) / 1000.0;
+          state.counters["avg_task_time_ms"] = static_cast<double>(stats.average_task_time.count()) / 1000.0;
         }
 
       state.counters["total_pixels"] = static_cast<double>(total_pixels_processed.load());
@@ -559,8 +561,8 @@ BM_Resampling_QueueDepthImpact(benchmark::State& state)
   size_t const num_images = 50;
   size_t const num_workers = 3;
 
-  work_stealing_pool pool(num_workers);
-  pool.configure_threads("queue_depth_worker");
+  work_stealing_pool pool(worker_count{ num_workers });
+  pool.configure_workers(thread_config{}.set_name("queue_depth_worker"));
 
   for (auto _ : state)
     {
@@ -598,7 +600,7 @@ BM_Resampling_QueueDepthImpact(benchmark::State& state)
 
           if (input_queue.pop(input_image, std::chrono::milliseconds(10)))
             {
-              futures.push_back(pool.submit(
+              futures.push_back(pool.submit_or_throw(
                   [&output_queue, &processed_images, input_image]()
                     {
                       auto resampled

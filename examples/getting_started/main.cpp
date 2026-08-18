@@ -1,11 +1,12 @@
-#include <threadschedule/threadschedule.hpp>
+#include <threadschedule/thread_pool.hpp>
+#include <threadschedule/worker_count.hpp>
 
 #include <iostream>
 
 int
 main()
 {
-  threadschedule::thread_pool pool(2);
+  threadschedule::thread_pool pool(threadschedule::worker_count{ 2 });
   auto answer = pool.submit([] { return 42; });
   if (!answer)
     {

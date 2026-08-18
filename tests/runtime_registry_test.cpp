@@ -30,7 +30,7 @@ TEST(RuntimeRegistry, RegistryAndInjectionWork)
 TEST(RuntimeRegistry, SetExternalRegistry)
 {
   thread_registry custom;
-  use_global_registry(&custom);
+  global_registry_binding binding(custom);
 
   std::thread t(
       []
@@ -44,9 +44,6 @@ TEST(RuntimeRegistry, SetExternalRegistry)
   EXPECT_GE(custom.count(), 0u);
 
   t.join();
-
-  // reset
-  use_global_registry(nullptr);
 }
 
 #endif

@@ -6,6 +6,12 @@
 
 #include "scheduled_cancellation_state.hpp"
 
+#include <cstdint>
+#include <memory>
+
+namespace threadschedule::detail
+{
+
 /**
  * @brief Copyable handle for a cancellable scheduled task.
  *
@@ -77,3 +83,5 @@ private:
     return cancellation_;
   }
 };
+
+} // namespace threadschedule::detail

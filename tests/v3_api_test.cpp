@@ -37,12 +37,12 @@ TEST(V3Api, CoreObjectsConstructDirectly)
   ASSERT_TRUE(worker.join().has_value());
   EXPECT_TRUE(ran.load());
 
-  threadschedule::thread_pool pool(2);
+  threadschedule::thread_pool pool(threadschedule::worker_count{ 2 });
   auto submitted = pool.submit([] { return 42; });
   ASSERT_TRUE(submitted.has_value());
   EXPECT_EQ(submitted->get(), 42);
 
-  threadschedule::scheduled_pool scheduler(1);
+  threadschedule::scheduled_pool scheduler(threadschedule::worker_count{ 1 });
   EXPECT_EQ(scheduler.scheduled_count(), 0u);
 
   threadschedule::thread_registry registry;
@@ -52,7 +52,7 @@ TEST(V3Api, CoreObjectsConstructDirectly)
 TEST(V3Api, ThreadConfigurationConstructor)
 {
   threadschedule::thread_config config;
-  config.name = "v3-direct";
+  config.set_name("v3-direct");
 
   std::atomic<bool> ran{ false };
   threadschedule::thread worker(config, [&ran] { ran.store(true); });
@@ -60,15 +60,61 @@ TEST(V3Api, ThreadConfigurationConstructor)
   EXPECT_TRUE(ran.load());
 }
 
+TEST(V3Api, ThreadConfigurationIsAnExplicitPatch)
+{
+  threadschedule::thread_config config;
+  EXPECT_TRUE(config.empty());
+
+  config.set_name("");
+  ASSERT_TRUE(config.get_name().has_value());
+  EXPECT_TRUE(config.get_name()->empty());
+  EXPECT_FALSE(config.get_scheduling().has_value());
+  EXPECT_FALSE(config.get_affinity().has_value());
+
+  config.clear_name();
+  EXPECT_TRUE(config.empty());
+  config.set_scheduling(threadschedule::schedule::background());
+  EXPECT_FALSE(config.get_name().has_value());
+  EXPECT_TRUE(config.get_scheduling().has_value());
+  EXPECT_FALSE(config.get_affinity().has_value());
+}
+
+TEST(V3Api, ClosedConfigurationTypesAreNotAggregates)
+{
+  static_assert(!std::is_default_constructible_v<threadschedule::thread_id>);
+  static_assert(!std::is_default_constructible_v<threadschedule::scheduling_config>);
+  static_assert(!std::is_aggregate_v<threadschedule::scheduling_config>);
+  static_assert(!std::is_aggregate_v<threadschedule::thread_config>);
+  static_assert(!std::is_aggregate_v<threadschedule::thread_pool_config>);
+  static_assert(!std::is_aggregate_v<threadschedule::scheduled_pool_config>);
+}
+
+TEST(V3Api, ConfigurationAccessorsUseMatchingNames)
+{
+  threadschedule::thread_pool_config pool;
+  pool.set_worker_count(threadschedule::worker_count{ 3 })
+      .set_registration(threadschedule::worker_registration::global_registry)
+      .set_shutdown_policy(threadschedule::shutdown_policy::drop_pending);
+  EXPECT_EQ(pool.get_worker_count().resolve(), 3u);
+  EXPECT_EQ(pool.get_registration(), threadschedule::worker_registration::global_registry);
+  EXPECT_EQ(pool.get_shutdown_policy(), threadschedule::shutdown_policy::drop_pending);
+  EXPECT_TRUE(pool.get_worker_config().empty());
+  EXPECT_FALSE(pool.get_error_callback());
+
+  threadschedule::scheduled_pool_config scheduled;
+  EXPECT_TRUE(scheduled.get_worker_config().empty());
+  EXPECT_TRUE(scheduled.get_scheduler_config().empty());
+}
+
 TEST(V3Api, PortablePriorityFactoriesExposeLevelsAndNiceValues)
 {
   constexpr auto high = threadschedule::schedule::priority(threadschedule::priority_level::high);
-  constexpr auto nice = threadschedule::schedule::nice(10);
+  constexpr auto nice = threadschedule::schedule::nice(threadschedule::nice_value{ 10 });
 
-  static_assert(high.intent == threadschedule::scheduling_intent::nice);
-  static_assert(high.priority == -5);
-  static_assert(nice.intent == threadschedule::scheduling_intent::nice);
-  static_assert(nice.priority == 10);
+  static_assert(high.intent() == threadschedule::scheduling_intent::nice);
+  static_assert(high.priority_value() == -5);
+  static_assert(nice.intent() == threadschedule::scheduling_intent::nice);
+  static_assert(nice.priority_value() == 10);
 }
 
 TEST(V3Api, ThreadSetsAndReadsPortablePriority)
@@ -79,14 +125,57 @@ TEST(V3Api, ThreadSetsAndReadsPortablePriority)
 
   auto set = worker.set_priority(threadschedule::priority_level::low);
   auto priority = worker.get_priority();
+  auto nice = worker.get_nice();
   release.set_value();
   auto joined = worker.join();
 
   ASSERT_TRUE(set.has_value()) << set.error().message();
   ASSERT_TRUE(priority.has_value()) << priority.error().message();
   EXPECT_EQ(priority.value(), threadschedule::priority_level::low);
+  ASSERT_TRUE(nice.has_value()) << nice.error().message();
+  EXPECT_EQ(nice->value(), static_cast<int>(threadschedule::priority_level::low));
   EXPECT_TRUE(joined.has_value());
 }
+
+TEST(V3Api, ThreadViewAcceptsLibraryOwningThread)
+{
+  std::promise<void> release;
+  auto ready = release.get_future().share();
+  threadschedule::thread worker([ready] { ready.wait(); });
+  threadschedule::thread_view view(worker);
+  EXPECT_TRUE(view.joinable());
+  EXPECT_EQ(view.get_id(), worker.get_id());
+  release.set_value();
+  EXPECT_TRUE(worker.join().has_value());
+}
+
+#if defined(__cpp_lib_jthread) && __cpp_lib_jthread >= 201911L
+TEST(V3Api, ThreadViewAcceptsBothJthreadForms)
+{
+  std::jthread standard(
+      [](std::stop_token stop)
+        {
+          while (!stop.stop_requested())
+            std::this_thread::yield();
+        });
+  threadschedule::thread_view standard_view(standard);
+  EXPECT_EQ(standard_view.get_id(), standard.get_id());
+  standard.request_stop();
+  standard.join();
+
+  threadschedule::jthread owned(
+      [](std::stop_token stop)
+        {
+          while (!stop.stop_requested())
+            std::this_thread::yield();
+        });
+  threadschedule::thread_view owned_view(owned);
+  EXPECT_EQ(owned_view.get_id(), owned.get_id());
+  EXPECT_EQ(threadschedule::jthread::hardware_concurrency(), std::thread::hardware_concurrency());
+  EXPECT_TRUE(owned.request_stop());
+  EXPECT_TRUE(owned.join().has_value());
+}
+#endif
 
 TEST(V3Api, ThisThreadReadsAndReappliesAffinity)
 {
@@ -102,52 +191,34 @@ TEST(V3Api, ThisThreadReadsAndReappliesAffinity)
   EXPECT_EQ(effective->cpus(), original->cpus());
 }
 
-TEST(V3Api, ThisThreadRejectsInvalidPortableConfiguration)
+TEST(V3Api, StrongSchedulingValuesRejectInvalidConstruction)
 {
   EXPECT_TRUE(threadschedule::this_thread::get_priority().has_value());
 
-  auto invalid_nice = threadschedule::this_thread::set_nice(20);
+  EXPECT_THROW((void)threadschedule::nice_value{ 20 }, std::invalid_argument);
+  EXPECT_THROW((void)threadschedule::realtime_priority{ 0 }, std::invalid_argument);
+  EXPECT_THROW((void)threadschedule::realtime_priority{ 100 }, std::invalid_argument);
+
+  auto invalid_nice = threadschedule::nice_value::create(20);
   ASSERT_FALSE(invalid_nice.has_value());
   EXPECT_EQ(invalid_nice.error(), std::make_error_code(std::errc::invalid_argument));
-
-  threadschedule::thread_config config;
-  config.scheduling = threadschedule::schedule::realtime_fifo(100);
-  auto invalid_config = threadschedule::this_thread::configure(config);
-  ASSERT_FALSE(invalid_config.has_value());
-  EXPECT_EQ(invalid_config.error(), std::make_error_code(std::errc::invalid_argument));
 }
 
-TEST(V3Api, InvalidNiceValueDoesNotRunConfiguredThread)
+TEST(V3Api, InvalidNiceValueCannotFormAConfiguration)
 {
-  threadschedule::thread_config config;
-  config.scheduling = threadschedule::schedule::nice(20);
-  std::atomic<bool> ran{ false };
-
-  auto worker = threadschedule::thread::create(config, [&ran] { ran.store(true); });
-
-  ASSERT_FALSE(worker.has_value());
-  EXPECT_EQ(worker.error(), std::make_error_code(std::errc::invalid_argument));
-  EXPECT_FALSE(ran.load());
+  auto value = threadschedule::nice_value::create(20);
+  ASSERT_FALSE(value.has_value());
+  EXPECT_EQ(value.error(), std::make_error_code(std::errc::invalid_argument));
 }
 
-TEST(V3Api, InvalidRealtimePriorityDoesNotRunConfiguredThread)
+TEST(V3Api, InvalidRealtimePriorityCannotFormAConfiguration)
 {
-  std::array<threadschedule::scheduling_config, 4> const invalid{ threadschedule::schedule::realtime_fifo(-1),
-                                                                  threadschedule::schedule::realtime_rr(0),
-                                                                  threadschedule::schedule::realtime_fifo(100),
-                                                                  threadschedule::schedule::realtime_rr(100) };
-
-  for (auto const scheduling : invalid)
+  std::array<int, 4> const invalid{ -1, 0, 100, 101 };
+  for (auto const priority : invalid)
     {
-      threadschedule::thread_config config;
-      config.scheduling = scheduling;
-      std::atomic<bool> ran{ false };
-
-      auto worker = threadschedule::thread::create(config, [&ran] { ran.store(true, std::memory_order_release); });
-
-      ASSERT_FALSE(worker.has_value());
-      EXPECT_EQ(worker.error(), std::make_error_code(std::errc::invalid_argument));
-      EXPECT_FALSE(ran.load(std::memory_order_acquire));
+      auto value = threadschedule::realtime_priority::create(priority);
+      ASSERT_FALSE(value.has_value());
+      EXPECT_EQ(value.error(), std::make_error_code(std::errc::invalid_argument));
     }
 }
 
@@ -155,7 +226,7 @@ TEST(V3Api, InvalidRealtimePriorityDoesNotRunConfiguredThread)
 TEST(V3Api, ConfiguredThreadObservesExactLinuxNiceValueBeforeCallable)
 {
   threadschedule::thread_config config;
-  config.scheduling = threadschedule::schedule::nice(10);
+  config.set_scheduling(threadschedule::schedule::nice(threadschedule::nice_value{ 10 }));
   std::promise<int> observed;
 
   threadschedule::thread worker(config,
@@ -169,7 +240,7 @@ TEST(V3Api, ConfiguredThreadObservesExactLinuxNiceValueBeforeCallable)
   ASSERT_TRUE(worker.join().has_value());
 }
 
-TEST(V3Api, ThreadViewRequiresTidForLinuxNiceControl)
+TEST(V3Api, ThreadViewWithoutPortableIdentityRejectsLinuxNiceControl)
 {
   std::promise<std::uint64_t> started;
   std::promise<void> release;
@@ -180,22 +251,16 @@ TEST(V3Api, ThreadViewRequiresTidForLinuxNiceControl)
           started.set_value(static_cast<std::uint64_t>(syscall(SYS_gettid)));
           ready.wait();
         });
-  auto const tid = started.get_future().get();
+  (void)started.get_future().get();
 
   threadschedule::thread_view unknown(value);
-  auto unsupported = unknown.set_nice(10);
-  threadschedule::thread_view known(value, static_cast<std::uint64_t>(tid));
-  auto set = known.set_nice(10);
-  auto priority = known.get_priority();
+  auto unsupported = unknown.set_nice(threadschedule::nice_value{ 10 });
 
   release.set_value();
   value.join();
 
   ASSERT_FALSE(unsupported.has_value());
   EXPECT_EQ(unsupported.error(), std::make_error_code(std::errc::operation_not_supported));
-  ASSERT_TRUE(set.has_value()) << set.error().message();
-  ASSERT_TRUE(priority.has_value()) << priority.error().message();
-  EXPECT_EQ(priority.value(), threadschedule::priority_level::lowest);
 }
 #endif
 
@@ -218,7 +283,7 @@ TEST(V3Api, EmptyThreadReportsJoinAndDetachErrors)
 TEST(V3Api, FailedThreadConfigurationDoesNotRunCallable)
 {
   threadschedule::thread_config config;
-  config.name = "this-name-is-longer-than-fifteen-characters";
+  config.set_name("this-name-is-longer-than-fifteen-characters");
   std::atomic<bool> ran{ false };
 
   auto worker = threadschedule::thread::create(config, [&ran] { ran.store(true); });
@@ -279,7 +344,7 @@ TEST(V3Api, EmptyJThreadReportsJoinAndDetachErrors)
 TEST(V3Api, JThreadConfigurationConstructor)
 {
   threadschedule::thread_config config;
-  config.name = "v3-jthread";
+  config.set_name("v3-jthread");
 
   threadschedule::jthread worker(config, [](std::stop_token) {});
   ASSERT_TRUE(worker.join().has_value());
@@ -289,7 +354,7 @@ TEST(V3Api, JThreadConfigurationConstructor)
 TEST(V3Api, ConfiguredJThreadObservesExactLinuxNiceValue)
 {
   threadschedule::thread_config config;
-  config.scheduling = threadschedule::schedule::nice(10);
+  config.set_scheduling(threadschedule::schedule::nice(threadschedule::nice_value{ 10 }));
   std::promise<int> observed;
 
   threadschedule::jthread worker(config,
@@ -308,7 +373,7 @@ TEST(V3Api, ConfiguredJThreadObservesExactLinuxNiceValue)
 TEST(V3Api, FailedJThreadConfigurationDoesNotRunCallable)
 {
   threadschedule::thread_config config;
-  config.name = "this-name-is-longer-than-fifteen-characters";
+  config.set_name("this-name-is-longer-than-fifteen-characters");
   std::atomic<bool> ran{ false };
 
   auto worker = threadschedule::jthread::create(config, [&ran](std::stop_token) { ran.store(true); });
@@ -329,13 +394,17 @@ TEST(V3Api, OptionalFactoriesReturnExpected)
   EXPECT_TRUE(ran.load());
 
   EXPECT_TRUE(threadschedule::thread_registry::create().has_value());
-  EXPECT_TRUE(threadschedule::thread_pool::create({ 1 }).has_value());
-  EXPECT_TRUE(threadschedule::scheduled_pool::create({ 1 }).has_value());
+  threadschedule::thread_pool_config pool_config;
+  pool_config.set_worker_count(threadschedule::worker_count{ 1 });
+  EXPECT_TRUE(threadschedule::thread_pool::create(pool_config).has_value());
+  threadschedule::scheduled_pool_config scheduled_config;
+  scheduled_config.set_worker_count(threadschedule::worker_count{ 1 });
+  EXPECT_TRUE(threadschedule::scheduled_pool::create(scheduled_config).has_value());
 }
 
 TEST(V3Api, PoolDefaultsToNonThrowingSubmission)
 {
-  threadschedule::thread_pool pool(2);
+  threadschedule::thread_pool pool(threadschedule::worker_count{ 2 });
 
   auto submitted = pool.submit([] { return 42; });
   ASSERT_TRUE(submitted.has_value());
@@ -382,7 +451,7 @@ TEST(V3Api, MovedFromPoolsRemainSafe)
       EXPECT_TRUE(pool.shutdown().has_value());
     };
 
-  threadschedule::thread_pool source(1);
+  threadschedule::thread_pool source(threadschedule::worker_count{ 1 });
   threadschedule::thread_pool moved(std::move(source));
   expect_stopped(source);
 
@@ -390,7 +459,7 @@ TEST(V3Api, MovedFromPoolsRemainSafe)
   ASSERT_TRUE(first.has_value());
   EXPECT_EQ(first->get(), 41);
 
-  threadschedule::thread_pool assigned(1);
+  threadschedule::thread_pool assigned(threadschedule::worker_count{ 1 });
   assigned = std::move(moved);
   expect_stopped(moved);
 
@@ -402,8 +471,8 @@ TEST(V3Api, MovedFromPoolsRemainSafe)
 TEST(V3Api, PoolMoveAssignmentUsesDestinationShutdownPolicy)
 {
   threadschedule::thread_pool_config config;
-  config.worker_count = 1;
-  config.shutdown = threadschedule::shutdown_policy::drop_pending;
+  config.set_worker_count(threadschedule::worker_count{ 1 })
+      .set_shutdown_policy(threadschedule::shutdown_policy::drop_pending);
   threadschedule::thread_pool destination(config);
 
   std::promise<void> entered;
@@ -432,7 +501,7 @@ TEST(V3Api, PoolMoveAssignmentUsesDestinationShutdownPolicy)
       queued = queued && posted.has_value();
     }
 
-  threadschedule::thread_pool source(1);
+  threadschedule::thread_pool source(threadschedule::worker_count{ 1 });
   auto assignment = std::async(std::launch::async, [&destination, &source] { destination = std::move(source); });
 
   EXPECT_EQ(assignment.wait_for(20ms), std::future_status::timeout);
@@ -444,18 +513,50 @@ TEST(V3Api, PoolMoveAssignmentUsesDestinationShutdownPolicy)
   EXPECT_EQ(queued_runs.load(), 0);
 }
 
+TEST(V3Api, PoolShutdownUsesConfiguredPolicyByDefault)
+{
+  threadschedule::thread_pool_config config;
+  config.set_worker_count(threadschedule::worker_count{ 1 })
+      .set_shutdown_policy(threadschedule::shutdown_policy::drop_pending);
+  threadschedule::thread_pool pool(config);
+
+  std::promise<void> entered;
+  auto entered_ready = entered.get_future();
+  std::promise<void> release;
+  auto release_ready = release.get_future().share();
+  ASSERT_TRUE(pool.post(
+                      [&]
+                        {
+                          entered.set_value();
+                          release_ready.wait();
+                        })
+                  .has_value());
+  ASSERT_EQ(entered_ready.wait_for(2s), std::future_status::ready);
+
+  std::atomic<int> queued_runs{ 0 };
+  ASSERT_TRUE(pool.post([&] { ++queued_runs; }).has_value());
+  auto shutdown = std::async(std::launch::async, [&] { return pool.shutdown(); });
+  EXPECT_EQ(shutdown.wait_for(20ms), std::future_status::timeout);
+  release.set_value();
+  ASSERT_EQ(shutdown.wait_for(2s), std::future_status::ready);
+  EXPECT_TRUE(shutdown.get().has_value());
+  EXPECT_EQ(queued_runs.load(), 0);
+}
+
 #ifndef _WIN32
 TEST(V3Api, PoolWorkerNamesReserveSpaceForGeneratedSuffix)
 {
   threadschedule::thread_pool_config pool_config;
-  pool_config.worker_count = 12;
-  pool_config.workers.name = "123456789012345";
+  threadschedule::thread_config pool_workers;
+  pool_workers.set_name("123456789012345");
+  pool_config.set_worker_count(threadschedule::worker_count{ 12 }).set_worker_config(std::move(pool_workers));
   auto pool = threadschedule::thread_pool::create(std::move(pool_config));
   ASSERT_TRUE(pool.has_value()) << pool.error().message();
 
   threadschedule::scheduled_pool_config scheduled_config;
-  scheduled_config.worker_count = 12;
-  scheduled_config.workers.name = "1234567890123";
+  threadschedule::thread_config scheduled_workers;
+  scheduled_workers.set_name("1234567890123");
+  scheduled_config.set_worker_count(threadschedule::worker_count{ 12 }).set_worker_config(std::move(scheduled_workers));
   auto scheduler = threadschedule::scheduled_pool::create(std::move(scheduled_config));
   ASSERT_TRUE(scheduler.has_value()) << scheduler.error().message();
 }
@@ -463,7 +564,7 @@ TEST(V3Api, PoolWorkerNamesReserveSpaceForGeneratedSuffix)
 
 TEST(V3Api, ScheduledPoolReportsShutdown)
 {
-  threadschedule::scheduled_pool scheduler(1);
+  threadschedule::scheduled_pool scheduler(threadschedule::worker_count{ 1 });
   ASSERT_TRUE(scheduler.shutdown().has_value());
 
   auto scheduled = scheduler.schedule_after(1ms, [] {});
@@ -473,7 +574,7 @@ TEST(V3Api, ScheduledPoolReportsShutdown)
 
 TEST(V3Api, ScheduledWorkerShutdownFailureDoesNotStopPool)
 {
-  threadschedule::scheduled_pool scheduler(1);
+  threadschedule::scheduled_pool scheduler(threadschedule::worker_count{ 1 });
   std::promise<std::error_code> attempted;
   auto ready = attempted.get_future();
   auto first = scheduler.schedule_after(1ms,
@@ -497,7 +598,7 @@ TEST(V3Api, ScheduledWorkerShutdownFailureDoesNotStopPool)
 
 TEST(V3Api, ScheduledPoolValidatesPeriodicIntervals)
 {
-  threadschedule::scheduled_pool scheduler(1);
+  threadschedule::scheduled_pool scheduler(threadschedule::worker_count{ 1 });
 
   auto zero = scheduler.schedule_periodic(0ms, [] {});
   ASSERT_FALSE(zero.has_value());
@@ -510,7 +611,7 @@ TEST(V3Api, ScheduledPoolValidatesPeriodicIntervals)
 
 TEST(V3Api, ScheduledPoolSupportsDelayedPeriodicTasks)
 {
-  threadschedule::scheduled_pool scheduler(1);
+  threadschedule::scheduled_pool scheduler(threadschedule::worker_count{ 1 });
   std::promise<void> first_run;
   auto ready = first_run.get_future();
   std::atomic<bool> reported{ false };
@@ -530,7 +631,7 @@ TEST(V3Api, ScheduledPoolSupportsDelayedPeriodicTasks)
 
 TEST(V3Api, ScheduledPoolSupportsMoveOnlyPeriodicCallables)
 {
-  threadschedule::scheduled_pool scheduler(1);
+  threadschedule::scheduled_pool scheduler(threadschedule::worker_count{ 1 });
   std::promise<int> immediate_run;
   auto immediate_ready = immediate_run.get_future();
   std::promise<int> delayed_run;
@@ -572,10 +673,14 @@ TEST(V3Api, ScheduledPoolReportsTaskExceptions)
   std::promise<std::string> reported;
   auto report = reported.get_future();
   threadschedule::scheduled_pool_config config;
-  config.worker_count = 1;
-  config.workers.name = "v3-worker";
-  config.scheduler.name = "v3-scheduler";
-  config.on_task_error = [&reported](threadschedule::task_error const& error) { reported.set_value(error.what()); };
+  threadschedule::thread_config worker_config;
+  worker_config.set_name("v3-worker");
+  threadschedule::thread_config scheduler_config;
+  scheduler_config.set_name("v3-scheduler");
+  config.set_worker_count(threadschedule::worker_count{ 1 })
+      .set_worker_config(std::move(worker_config))
+      .set_scheduler_config(std::move(scheduler_config))
+      .set_error_callback([&reported](threadschedule::task_error const& error) { reported.set_value(error.what()); });
 
   threadschedule::scheduled_pool scheduler(std::move(config));
   auto scheduled = scheduler.schedule_after(0ms, [] { throw std::runtime_error("scheduled boom"); });
@@ -589,12 +694,13 @@ TEST(V3Api, PoolReportsTaskExceptionsAndPreservesFutureException)
   std::promise<std::string> reported;
   auto report = reported.get_future();
   threadschedule::thread_pool_config config;
-  config.worker_count = 1;
-  config.on_task_error = [&reported](threadschedule::task_error const& error)
-    {
-      reported.set_value(error.what());
-      throw std::runtime_error("reporter failed");
-    };
+  config.set_worker_count(threadschedule::worker_count{ 1 })
+      .set_error_callback(
+          [&reported](threadschedule::task_error const& error)
+            {
+              reported.set_value(error.what());
+              throw std::runtime_error("reporter failed");
+            });
 
   threadschedule::thread_pool pool(std::move(config));
   auto submitted = pool.submit([]() -> int { throw std::runtime_error("boom"); });
@@ -605,7 +711,7 @@ TEST(V3Api, PoolReportsTaskExceptionsAndPreservesFutureException)
 
 TEST(V3Api, SubmissionErrorsUseExpectedByDefault)
 {
-  threadschedule::thread_pool pool(1);
+  threadschedule::thread_pool pool(threadschedule::worker_count{ 1 });
   ASSERT_TRUE(pool.shutdown().has_value());
 
   auto submitted = pool.submit([] { return 42; });
@@ -616,9 +722,19 @@ TEST(V3Api, SubmissionErrorsUseExpectedByDefault)
 
 TEST(V3Api, AdvancedPoolsRemainAvailable)
 {
-  static_assert(std::is_constructible_v<threadschedule::advanced::work_stealing_pool, std::size_t>);
+  static_assert(!std::is_constructible_v<threadschedule::advanced::work_stealing_pool, std::size_t>);
+  static_assert(std::is_constructible_v<threadschedule::advanced::work_stealing_pool, threadschedule::worker_count>);
+  static_assert(!std::is_base_of_v<threadschedule::detail::work_stealing_pool_backend,
+                                   threadschedule::advanced::work_stealing_pool>);
   threadschedule::advanced::inline_pool pool;
-  EXPECT_EQ(pool.submit([] { return 7; }).get(), 7);
+  EXPECT_EQ(pool.submit_or_throw([] { return 7; }).get(), 7);
+}
+
+TEST(V3Api, TaskErrorsDistinguishStandardAndRegistryIds)
+{
+  static_assert(std::is_same_v<decltype(threadschedule::task_error::std_id), std::thread::id>);
+  static_assert(std::is_same_v<decltype(threadschedule::registered_thread::id), threadschedule::thread_id>);
+  static_assert(std::is_same_v<decltype(threadschedule::registered_thread::std_id), std::thread::id>);
 }
 
 TEST(V3Api, NativeHandleIsAnAdvancedEscapeHatch)
@@ -647,11 +763,15 @@ TEST(V3Api, CoreTypesAreIndependentImplementations)
 
 TEST(V3Api, AffinityIsANormalizedValueType)
 {
-  threadschedule::thread_affinity affinity({ 3, 1, 3, -1 });
-  ASSERT_EQ(affinity.cpus(), (std::vector<int>{ 1, 3 }));
-  affinity.add_cpu(2);
-  affinity.remove_cpu(3);
-  EXPECT_EQ(affinity.cpus(), (std::vector<int>{ 1, 2 }));
+  EXPECT_THROW((void)threadschedule::cpu_id{ -1 }, std::invalid_argument);
+  threadschedule::thread_affinity affinity(
+      { threadschedule::cpu_id{ 3 }, threadschedule::cpu_id{ 1 }, threadschedule::cpu_id{ 3 } });
+  ASSERT_EQ(affinity.cpus(),
+            (std::vector<threadschedule::cpu_id>{ threadschedule::cpu_id{ 1 }, threadschedule::cpu_id{ 3 } }));
+  affinity.add_cpu(threadschedule::cpu_id{ 2 });
+  affinity.remove_cpu(threadschedule::cpu_id{ 3 });
+  EXPECT_EQ(affinity.cpus(),
+            (std::vector<threadschedule::cpu_id>{ threadschedule::cpu_id{ 1 }, threadschedule::cpu_id{ 2 } }));
 }
 
 TEST(V3Api, AffinityReadPreservesResultContract)
@@ -677,7 +797,7 @@ TEST(V3Api, AffinityRejectsPartiallyRepresentableMasks)
 #else
   constexpr int unsupported_cpu = CPU_SETSIZE;
 #endif
-  threadschedule::thread_affinity affinity({ 0, unsupported_cpu });
+  threadschedule::thread_affinity affinity({ threadschedule::cpu_id{ 0 }, threadschedule::cpu_id{ unsupported_cpu } });
   std::promise<void> release;
   auto ready = release.get_future().share();
   threadschedule::thread worker([ready] { ready.wait(); });
@@ -702,8 +822,8 @@ TEST(V3Api, RegistryUsesLowercaseSnapshots)
   EXPECT_EQ(snapshot->front().component, "v3");
 
   threadschedule::thread_config config;
-  config.name = "v3-control";
-  EXPECT_TRUE(registry.configure(snapshot->front().native_id, config).has_value());
+  config.set_name("v3-control");
+  EXPECT_TRUE(registry.configure(snapshot->front().id, config).has_value());
 
   EXPECT_TRUE(registry.unregister_current_thread().has_value());
   EXPECT_TRUE(registry.empty());
@@ -764,10 +884,9 @@ TEST(V3Api, MoveAssigningInjectedRegistryRetargetsGlobalRegistry)
   threadschedule::thread_registry replacement;
   ASSERT_TRUE(replacement.register_current_thread("replacement", "v3").has_value());
 
-  threadschedule::use_global_registry(&injected);
+  threadschedule::global_registry_binding binding(injected);
   injected = std::move(replacement);
   auto snapshot = threadschedule::global_registry().snapshot();
-  threadschedule::use_global_registry(nullptr);
 
   ASSERT_TRUE(snapshot.has_value());
   ASSERT_EQ(snapshot->size(), 1u);
@@ -778,7 +897,6 @@ TEST(V3Api, MoveAssigningInjectedRegistryRetargetsGlobalRegistry)
 
 TEST(V3Api, MoveAssigningGlobalRegistryPreservesGlobalFacade)
 {
-  threadschedule::use_global_registry(nullptr);
   (void)threadschedule::global_registry().unregister_current_thread();
 
   threadschedule::thread_registry local;
@@ -793,15 +911,13 @@ TEST(V3Api, MoveAssigningGlobalRegistryPreservesGlobalFacade)
     EXPECT_EQ(threadschedule::global_registry().count(), 1u);
     EXPECT_EQ(threadschedule::global_registry().count(), 1u);
   }
-
-  threadschedule::use_global_registry(nullptr);
 }
 
 TEST(V3Api, DestroyingInjectedRegistryRestoresDefaultRegistry)
 {
   {
     threadschedule::thread_registry injected;
-    threadschedule::use_global_registry(&injected);
+    threadschedule::global_registry_binding binding(injected);
     ASSERT_TRUE(threadschedule::global_registry().register_current_thread("injected", "v3").has_value());
   }
 
@@ -810,10 +926,25 @@ TEST(V3Api, DestroyingInjectedRegistryRestoresDefaultRegistry)
   EXPECT_TRUE(threadschedule::global_registry().unregister_current_thread().has_value());
 }
 
+TEST(V3Api, GlobalRegistryBindingOwnsTheInstalledBackend)
+{
+  auto injected = std::make_unique<threadschedule::thread_registry>();
+  auto binding = std::make_unique<threadschedule::global_registry_binding>(*injected);
+  injected.reset();
+
+  ASSERT_TRUE(threadschedule::global_registry().register_current_thread("owned", "v3").has_value());
+  EXPECT_EQ(threadschedule::global_registry().count(), 1u);
+  ASSERT_TRUE(threadschedule::global_registry().unregister_current_thread().has_value());
+
+  binding.reset();
+  ASSERT_TRUE(threadschedule::global_registry().register_current_thread("default", "v3").has_value());
+  EXPECT_TRUE(threadschedule::global_registry().unregister_current_thread().has_value());
+}
+
 TEST(V3Api, MovingInjectedRegistryPreservesActiveGuardBackend)
 {
   threadschedule::thread_registry injected;
-  threadschedule::use_global_registry(&injected);
+  threadschedule::global_registry_binding binding(injected);
   std::promise<void> registered;
   std::promise<void> release;
   auto release_ready = release.get_future().share();
@@ -832,7 +963,6 @@ TEST(V3Api, MovingInjectedRegistryPreservesActiveGuardBackend)
   worker.join();
 
   auto snapshot = threadschedule::global_registry().snapshot();
-  threadschedule::use_global_registry(nullptr);
   ASSERT_TRUE(snapshot.has_value());
   EXPECT_TRUE(snapshot->empty());
 }
@@ -840,7 +970,7 @@ TEST(V3Api, MovingInjectedRegistryPreservesActiveGuardBackend)
 TEST(V3Api, MovingEmptyInjectedRegistryPreservesActiveGuardBackend)
 {
   threadschedule::thread_registry injected;
-  threadschedule::use_global_registry(&injected);
+  threadschedule::global_registry_binding binding(injected);
   {
     threadschedule::auto_register_current_thread guard("moving-empty", "v3");
     ASSERT_TRUE(threadschedule::global_registry().unregister_current_thread().has_value());
@@ -851,7 +981,6 @@ TEST(V3Api, MovingEmptyInjectedRegistryPreservesActiveGuardBackend)
   }
 
   auto snapshot = threadschedule::global_registry().snapshot();
-  threadschedule::use_global_registry(nullptr);
   ASSERT_TRUE(snapshot.has_value());
   EXPECT_TRUE(snapshot->empty());
 }
@@ -877,9 +1006,9 @@ TEST(V3Api, RegistrySetsAndReadsPortablePriority)
       = threadschedule::unexpected(std::make_error_code(std::errc::no_such_process));
   if (registered_ok && snapshot.has_value() && snapshot->size() == 1)
     {
-      auto const native_id = snapshot->front().native_id;
-      set = registry.set_nice(native_id, 10);
-      priority = registry.get_priority(native_id);
+      auto const id = snapshot->front().id;
+      set = registry.set_nice(id, threadschedule::nice_value{ 10 });
+      priority = registry.get_priority(id);
     }
   release.set_value();
   auto joined = worker.join();
@@ -897,8 +1026,9 @@ TEST(V3Api, RegistrySetsAndReadsPortablePriority)
 TEST(V3Api, PoolWorkersReceiveExactLinuxNiceValue)
 {
   threadschedule::thread_pool_config config;
-  config.worker_count = 1;
-  config.workers.scheduling = threadschedule::schedule::nice(10);
+  threadschedule::thread_config workers;
+  workers.set_scheduling(threadschedule::schedule::nice(threadschedule::nice_value{ 10 }));
+  config.set_worker_count(threadschedule::worker_count{ 1 }).set_worker_config(std::move(workers));
   threadschedule::thread_pool pool(config);
 
   auto observed = pool.submit(
