@@ -117,6 +117,8 @@ public:
    * @brief Construct a lightweight pool with @p num_threads workers.
    * @param num_threads Number of worker threads (clamped to at least 1).
    *                    Defaults to @c std::thread::hardware_concurrency().
+   * @param register_workers When @c true, worker threads register in the
+   *                         global registry for discovery and control.
    */
   explicit lightweight_pool_backend_base(size_t num_threads = default_worker_count(), bool register_workers = false)
       : num_threads_(checked_worker_count(num_threads)), register_workers_(register_workers)
