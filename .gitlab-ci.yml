@@ -1,9 +1,0 @@
-variables:
-  CI_CONAN_PKG_NAME: "threadschedule"
-
-include:
-  - project: 'me-public/tools/gitlab-ci' 
-    ref: snapshot
-    file: 
-      - '/stage_definitions.yml'
-      - '/deploy-conan-package.yml'
