@@ -25,10 +25,12 @@ class ThreadScheduleConan(ConanFile):
     options = {
         "shared": [True, False],
         "fPIC": [True, False],
+        "windows_vista_compat": [True, False],
     }
     default_options = {
         "shared": False,
         "fPIC": True,
+        "windows_vista_compat": False,
     }
     exports_sources = (
         "CMakeLists.txt",
@@ -66,6 +68,9 @@ class ThreadScheduleConan(ConanFile):
         toolchain.variables["THREADSCHEDULE_BUILD_BENCHMARKS"] = False
         toolchain.variables["THREADSCHEDULE_BUILD_DOCS"] = False
         toolchain.variables["THREADSCHEDULE_INSTALL"] = True
+        toolchain.variables["THREADSCHEDULE_WINDOWS_VISTA_COMPAT"] = bool(
+            self.options.windows_vista_compat
+        )
         toolchain.generate()
 
     def build(self):

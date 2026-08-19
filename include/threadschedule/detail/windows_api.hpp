@@ -15,7 +15,11 @@
 #  endif
 
 #  ifndef _WIN32_WINNT
-#    define _WIN32_WINNT 0x0601
+#    ifdef THREADSCHEDULE_WINDOWS_VISTA_COMPAT
+#      define _WIN32_WINNT 0x0600
+#    else
+#      define _WIN32_WINNT 0x0601
+#    endif
 #  endif
 
 #  ifndef WINVER

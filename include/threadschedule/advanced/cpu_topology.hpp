@@ -68,20 +68,42 @@ read_topology() -> cpu_topology
   topo.numa_nodes = 1;
   topo.node_to_cpus = { {} };
   topo.cpu_count = 0;
-  WORD const group_count = GetActiveProcessorGroupCount();
-  for (WORD group = 0; group < group_count; ++group)
+
+#  ifndef THREADSCHEDULE_WINDOWS_VISTA_COMPAT
+  using get_active_processor_group_count_fn = WORD(WINAPI*)();
+  using get_active_processor_count_fn = DWORD(WINAPI*)(WORD);
+
+  HMODULE const kernel32 = GetModuleHandleW(L"kernel32.dll");
+  if (kernel32)
     {
-      DWORD const processor_count = GetActiveProcessorCount(group);
-      if (processor_count == 0)
-        continue;
-      topo.cpu_count += static_cast<int>(processor_count);
-      for (DWORD index = 0; index < processor_count; ++index)
-        topo.node_to_cpus[0].emplace_back(static_cast<int>(group) * 64 + static_cast<int>(index));
+      auto const get_group_count = reinterpret_cast<get_active_processor_group_count_fn>(
+          reinterpret_cast<void*>(GetProcAddress(kernel32, "GetActiveProcessorGroupCount")));
+      auto const get_processor_count = reinterpret_cast<get_active_processor_count_fn>(
+          reinterpret_cast<void*>(GetProcAddress(kernel32, "GetActiveProcessorCount")));
+      if (get_group_count && get_processor_count)
+        {
+          WORD const group_count = get_group_count();
+          for (WORD group = 0; group < group_count; ++group)
+            {
+              DWORD const processor_count = get_processor_count(group);
+              if (processor_count == 0)
+                continue;
+              topo.cpu_count += static_cast<std::size_t>(processor_count);
+              for (DWORD index = 0; index < processor_count; ++index)
+                topo.node_to_cpus[0].emplace_back(static_cast<int>(group) * 64 + static_cast<int>(index));
+            }
+        }
     }
+#  endif
+
   if (topo.node_to_cpus[0].empty())
     {
-      topo.cpu_count = 1;
-      topo.node_to_cpus[0].emplace_back(0);
+      SYSTEM_INFO system_info{};
+      GetSystemInfo(&system_info);
+      DWORD const processor_count = system_info.dwNumberOfProcessors > 0 ? system_info.dwNumberOfProcessors : 1;
+      topo.cpu_count = static_cast<std::size_t>(processor_count);
+      for (DWORD index = 0; index < processor_count; ++index)
+        topo.node_to_cpus[0].emplace_back(static_cast<int>(index));
     }
 #else
   // Try to detect NUMA nodes via sysfs

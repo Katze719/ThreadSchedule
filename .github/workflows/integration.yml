@@ -140,3 +140,5 @@ jobs:
         conan create . --build=missing --no-remote
     - name: Create and test the shared-runtime package
       run: conan create . -o '&:shared=True' --build=missing --no-remote
+    - name: Create and test package with Vista compatibility mode option
+      run: conan create . -o '&:windows_vista_compat=True' --build=missing --no-remote

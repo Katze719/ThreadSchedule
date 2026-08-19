@@ -153,3 +153,53 @@ jobs:
         if: matrix.compiler == 'mingw'
         shell: msys2 {0}
         run: ctest --test-dir build --output-on-failure
+
+  windows-vista-compat-build:
+    name: Windows Vista-Compat Build (${{ matrix.compiler }})
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [msvc, mingw]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable MSVC
+        if: matrix.compiler == 'msvc'
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Enable MinGW
+        if: matrix.compiler == 'mingw'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja
+      - name: Configure MSVC (Vista compat)
+        if: matrix.compiler == 'msvc'
+        run: >-
+          cmake -S . -B build-vista -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_STANDARD=17
+          -DCMAKE_CXX_STANDARD_REQUIRED=ON
+          -DTHREADSCHEDULE_BUILD_EXAMPLES=ON
+          -DTHREADSCHEDULE_BUILD_TESTS=ON
+          -DTHREADSCHEDULE_BUILD_DOCS=OFF
+          -DTHREADSCHEDULE_WINDOWS_VISTA_COMPAT=ON
+          -Dgtest_force_shared_crt=ON
+      - name: Configure MinGW (Vista compat)
+        if: matrix.compiler == 'mingw'
+        shell: msys2 {0}
+        run: >-
+          cmake -S . -B build-vista -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_STANDARD=17
+          -DTHREADSCHEDULE_BUILD_EXAMPLES=ON
+          -DTHREADSCHEDULE_BUILD_TESTS=ON
+          -DTHREADSCHEDULE_BUILD_DOCS=OFF
+          -DTHREADSCHEDULE_WINDOWS_VISTA_COMPAT=ON
+      - name: Build MSVC (Vista compat)
+        if: matrix.compiler == 'msvc'
+        run: cmake --build build-vista --parallel
+      - name: Build MinGW (Vista compat)
+        if: matrix.compiler == 'mingw'
+        shell: msys2 {0}
+        run: cmake --build build-vista --parallel

@@ -52,6 +52,7 @@ option(THREADSCHEDULE_INSTALL "Generate install target" ${THREADSCHEDULE_IS_TOPL
 option(THREADSCHEDULE_RUNTIME "Build the optional C++ shared registry runtime" OFF)
 option(THREADSCHEDULE_BUILD_DOCS "Build API documentation with Doxygen" OFF)
 option(THREADSCHEDULE_WARNINGS_AS_ERRORS "Treat ThreadSchedule consumer warnings as errors in this build" OFF)
+option(THREADSCHEDULE_WINDOWS_VISTA_COMPAT "Enable Windows Vista compatibility mode (disables newer Win7+ feature paths)" OFF)
 
 # CPM support (optional, download if building tests or benchmarks)
 if(THREADSCHEDULE_BUILD_TESTS OR THREADSCHEDULE_BUILD_BENCHMARKS)
@@ -153,6 +154,9 @@ target_link_libraries(ThreadSchedulePoolLayer INTERFACE ThreadScheduleRegistryLa
 target_link_libraries(ThreadScheduleScheduledLayer INTERFACE ThreadSchedulePoolLayer)
 
 target_compile_features(ThreadSchedule INTERFACE cxx_std_17)
+if(THREADSCHEDULE_WINDOWS_VISTA_COMPAT)
+    target_compile_definitions(ThreadSchedule INTERFACE THREADSCHEDULE_WINDOWS_VISTA_COMPAT=1)
+endif()
 
 # Include directories
 target_include_directories(ThreadSchedule INTERFACE
