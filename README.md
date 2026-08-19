@@ -68,6 +68,8 @@ conan create . --build=missing
 
 Windows Vista compatibility mode is available when older platform targeting is
 required. It reduces Windows feature usage to avoid Win7+ only paths.
+This mode is currently not tested on real Vista hardware and may be unstable.
+Validation is limited because no active Vista test machine is available.
 
 ```bash
 cmake -S . -B build -DTHREADSCHEDULE_WINDOWS_VISTA_COMPAT=ON
