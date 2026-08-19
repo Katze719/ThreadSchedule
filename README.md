@@ -66,6 +66,17 @@ conan profile detect
 conan create . --build=missing
 ```
 
+Windows Vista compatibility mode is available when older platform targeting is
+required. It reduces Windows feature usage to avoid Win7+ only paths.
+
+```bash
+cmake -S . -B build -DTHREADSCHEDULE_WINDOWS_VISTA_COMPAT=ON
+```
+
+```bash
+conan create . -o '&:windows_vista_compat=True' --build=missing
+```
+
 The recipe is tested in CI. Its standard `shared=True` option packages the
 optional `ThreadSchedule::Runtime`; header-only mode remains the default.
 
