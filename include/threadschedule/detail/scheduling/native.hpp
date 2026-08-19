@@ -20,13 +20,10 @@
 
 #ifdef _WIN32
 #  include "../unique_handle.hpp"
+#  include "../windows_api.hpp"
 #endif
 
 #ifdef _WIN32
-#  ifndef NOMINMAX
-#    define NOMINMAX
-#  endif
-#  include <windows.h>
 #  if defined(__MINGW32__)
 #    include <pthread.h>
 #  endif

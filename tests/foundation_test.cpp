@@ -18,7 +18,7 @@
 
 #ifdef _WIN32
 #  include <threadschedule/detail/unique_handle.hpp>
-#  include <windows.h>
+#  include <threadschedule/detail/windows_api.hpp>
 #endif
 
 namespace

@@ -23,10 +23,7 @@
 #endif
 
 #ifdef _WIN32
-#  ifndef NOMINMAX
-#    define NOMINMAX
-#  endif
-#  include <windows.h>
+#  include "../detail/windows_api.hpp"
 #endif
 
 namespace threadschedule::advanced

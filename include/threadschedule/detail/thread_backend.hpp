@@ -20,11 +20,8 @@
 #include <tuple>
 
 #ifdef _WIN32
-#  ifndef NOMINMAX
-#    define NOMINMAX
-#  endif
+#  include "windows_api.hpp"
 #  include <libloaderapi.h>
-#  include <windows.h>
 #else
 #  include <dirent.h>
 #  include <fstream>
