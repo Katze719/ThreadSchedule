@@ -331,7 +331,8 @@ public:
    * @brief Retrieve the result, invoking the error callback on failure.
    *
    * If the underlying future holds an exception, the error callback (if any)
-   * is called **before** the exception is re-thrown to the caller.
+   * is called **before** the exception is re-thrown to the caller. Exceptions
+   * from the callback are ignored so they cannot replace the original failure.
    *
    * @return The stored value of type @p T (void when @p T is @c void).
    * @throws Any exception stored in the underlying @c std::future.
@@ -348,11 +349,18 @@ public:
       }
     catch (...)
       {
+        auto const original = std::current_exception();
         if (has_callback_ && error_callback_)
           {
-            error_callback_(std::current_exception());
+            try
+              {
+                error_callback_(original);
+              }
+            catch (...)
+              {
+              }
           }
-        throw;
+        std::rethrow_exception(original);
       }
   }
 

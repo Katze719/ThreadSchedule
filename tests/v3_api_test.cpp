@@ -6,10 +6,13 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <future>
+#include <limits>
 #include <memory>
 #include <string>
 #include <system_error>
+#include <tuple>
 #include <type_traits>
 
 #ifndef _WIN32
@@ -191,6 +194,39 @@ TEST(V3Api, ThisThreadReadsAndReappliesAffinity)
   EXPECT_EQ(effective->cpus(), original->cpus());
 }
 
+#ifndef _WIN32
+TEST(V3Api, ThisThreadReadsEffectiveIdlePriority)
+{
+  using priority_result = threadschedule::result<threadschedule::priority_level>;
+  using nice_result = threadschedule::result<threadschedule::nice_value>;
+  using scheduling_results = std::tuple<threadschedule::result<void>, priority_result, nice_result>;
+
+  std::promise<scheduling_results> completed;
+  std::thread worker(
+      [&completed]
+        {
+          threadschedule::thread_config config;
+          config.set_scheduling(threadschedule::schedule::background());
+          auto configured = threadschedule::this_thread::configure(config);
+          auto priority = threadschedule::this_thread::get_priority();
+          auto nice = threadschedule::this_thread::get_nice();
+          completed.set_value(scheduling_results(configured, std::move(priority), std::move(nice)));
+        });
+
+  auto results = completed.get_future().get();
+  worker.join();
+
+  auto const& configured = std::get<0>(results);
+  ASSERT_TRUE(configured.has_value()) << configured.error().message();
+  auto const& priority = std::get<1>(results);
+  ASSERT_TRUE(priority.has_value()) << priority.error().message();
+  EXPECT_EQ(priority.value(), threadschedule::priority_level::lowest);
+  auto const& nice = std::get<2>(results);
+  ASSERT_TRUE(nice.has_value()) << nice.error().message();
+  EXPECT_EQ(nice->value(), 19);
+}
+#endif
+
 TEST(V3Api, StrongSchedulingValuesRejectInvalidConstruction)
 {
   EXPECT_TRUE(threadschedule::this_thread::get_priority().has_value());
@@ -202,6 +238,15 @@ TEST(V3Api, StrongSchedulingValuesRejectInvalidConstruction)
   auto invalid_nice = threadschedule::nice_value::create(20);
   ASSERT_FALSE(invalid_nice.has_value());
   EXPECT_EQ(invalid_nice.error(), std::make_error_code(std::errc::invalid_argument));
+}
+
+TEST(V3Api, RegistryRejectsThreadIdsThatCannotFitTheNativePlatformId)
+{
+  threadschedule::thread_registry registry;
+  threadschedule::thread_id const oversized{ (std::numeric_limits<std::int64_t>::max)() };
+  auto result = registry.get_nice(oversized);
+  ASSERT_FALSE(result.has_value());
+  EXPECT_EQ(result.error(), std::make_error_code(std::errc::invalid_argument));
 }
 
 TEST(V3Api, InvalidNiceValueCannotFormAConfiguration)

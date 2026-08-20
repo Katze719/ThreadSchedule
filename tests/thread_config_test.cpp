@@ -333,6 +333,21 @@ TEST_F(ThreadConfigTest, SchedulerParamsFIFOAcceptsNativeRealtimePriorityRange)
   EXPECT_EQ(middle.value().sched_priority, std::clamp(50, min_priority, max_priority));
   EXPECT_EQ(highest.value().sched_priority, max_priority);
 }
+
+#  ifdef SCHED_DEADLINE
+TEST_F(ThreadConfigTest, DeadlineRequiresDedicatedSchedAttrConfiguration)
+{
+  auto params
+      = scheduler_parameters::create_for_policy(native_scheduling_policy::deadline, native_thread_priority{ 50 });
+  ASSERT_FALSE(params.has_value());
+  EXPECT_EQ(params.error(), std::make_error_code(std::errc::function_not_supported));
+
+  auto range = scheduler_parameters::get_priority_range(native_scheduling_policy::deadline);
+  ASSERT_FALSE(range.has_value());
+  EXPECT_EQ(range.error(), std::make_error_code(std::errc::function_not_supported));
+  EXPECT_FALSE(detail::uses_nice_value(native_scheduling_policy::deadline));
+}
+#  endif
 #endif
 
 TEST_F(ThreadConfigTest, SchedulingFactoriesResolveToUnifiedSemantics)

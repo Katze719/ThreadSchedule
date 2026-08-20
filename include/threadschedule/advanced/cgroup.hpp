@@ -8,10 +8,11 @@
 #include "native_thread.hpp"
 
 #ifndef _WIN32
-#  include <fstream>
+#  include <cerrno>
+#  include <fcntl.h>
 #  include <string>
 #  include <system_error>
-#  include <vector>
+#  include <unistd.h>
 
 namespace threadschedule::advanced
 {
@@ -23,15 +24,33 @@ namespace threadschedule::advanced
 inline auto
 cgroup_attach_tid(std::string const& cgroup_dir, native_thread_id tid) -> result<void>
 {
-  std::vector<std::string> const candidates = { "cgroup.threads", "tasks", "cgroup.procs" };
-  for (auto const& file : candidates)
+  if (tid <= 0)
+    return unexpected(std::make_error_code(std::errc::invalid_argument));
+
+  char const* const candidates[] = { "cgroup.threads", "tasks" };
+  std::string const value = std::to_string(tid) + "\n";
+  for (auto const* file : candidates)
     {
-      std::ofstream out(cgroup_dir + "/" + file);
-      if (!out)
+      std::string const path = cgroup_dir + "/" + file;
+      int const descriptor = open(path.c_str(), O_WRONLY | O_CLOEXEC);
+      if (descriptor < 0)
         continue;
-      out << tid;
-      out.flush();
-      if (out)
+
+      std::size_t offset = 0;
+      while (offset < value.size())
+        {
+          auto const written = write(descriptor, value.data() + offset, value.size() - offset);
+          if (written > 0)
+            {
+              offset += static_cast<std::size_t>(written);
+              continue;
+            }
+          if (written < 0 && errno == EINTR)
+            continue;
+          break;
+        }
+      (void)close(descriptor);
+      if (offset == value.size())
         return {};
     }
   return unexpected(std::make_error_code(std::errc::operation_not_permitted));

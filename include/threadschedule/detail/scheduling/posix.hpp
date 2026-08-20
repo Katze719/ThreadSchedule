@@ -47,12 +47,6 @@ apply_scheduling_policy(pthread_t handle, native_scheduling_policy policy, nativ
 }
 
 inline auto
-apply_priority(pthread_t handle, native_thread_priority priority) -> expected<void, std::error_code>
-{
-  return apply_scheduling_policy(handle, native_scheduling_policy::other, priority);
-}
-
-inline auto
 apply_affinity(pthread_t handle, native_thread_affinity const& affinity) -> expected<void, std::error_code>
 {
   int const result = pthread_setaffinity_np(handle, sizeof(cpu_set_t), &affinity.native_handle());
@@ -125,12 +119,6 @@ apply_scheduling_policy(pid_t tid, native_scheduling_policy policy, native_threa
     -> expected<void, std::error_code>
 {
   return apply_sched_params(policy, priority, [tid](int p, sched_param* sp) { return sched_setscheduler(tid, p, sp); });
-}
-
-inline auto
-apply_priority(pid_t tid, native_thread_priority priority) -> expected<void, std::error_code>
-{
-  return apply_scheduling_policy(tid, native_scheduling_policy::other, priority);
 }
 
 inline auto

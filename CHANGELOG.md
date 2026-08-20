@@ -15,6 +15,10 @@
   task groups, or specialized pools.
 - Moved optional and platform-specific facilities to focused headers under `<threadschedule/advanced/>` and to the
   `threadschedule::advanced` namespace. `<threadschedule/advanced.hpp>` is their complete umbrella.
+- Hardened Linux cgroup thread attachment: it opens only existing `cgroup.threads`/`tasks` controls and never falls back
+  to the process-wide `cgroup.procs` file or creates lookalike files in an ordinary directory.
+- Made NUMA affinity helpers fail safely with an empty affinity when handed inconsistent topology snapshots or a
+  non-positive CPU count, instead of indexing outside the supplied node mapping.
 - Standardized recoverable failures on `result<T>`, an alias for the library-owned
   `expected<T, std::error_code>`. Direct construction remains the normal, potentially throwing path; `create(...)` and
   explicitly named `*_or_throw` operations make the alternate policy visible.
@@ -32,7 +36,8 @@
   `PThreadWrapper` and `ThreadInfo` families were removed.
 - Added the independent Linux `advanced::thread_by_name_view` as the lowercase replacement for `ThreadByNameView`. Exact
   singular lookup rejects duplicate names, `find_all` returns deterministic matches, and every control operation checks
-  both the native TID and its start-time generation before acting.
+  both kernel-visible TID liveness and its start-time generation before acting. Registry control blocks share the same
+  identity check.
 - Added `this_thread` operations for configuring the calling thread without first wrapping or registering it.
 - Added portable `scheduling_config`, `priority_level`, `schedule::*` factories, and `thread_affinity`. Native handles and
   raw OS IDs live under `advanced`; native scheduling is performed through the platform API rather than a duplicate public
@@ -40,12 +45,17 @@
 - Added non-converting `cpu_id`, `thread_id`, `nice_value`, `realtime_priority`, and `worker_count` value types plus explicit
   `worker_registration`. Invalid direct construction throws `invalid_argument`; matching `create(...)` factories return
   `result<T>`. Pool worker count zero no longer acts as an automatic sentinel.
+- Native conversion and registry control now reject `thread_id` values that cannot fit the platform thread-ID type instead
+  of narrowing them onto a different thread. `advanced::native_id(thread_id)` therefore returns `result<native_thread_id>`.
 - Made scheduling and pool configurations closed classes with named mutators. `thread_config` is a patch: omitted
   properties remain unchanged, while `set_name("")` is distinct from `clear_name()`.
 - Configured thread startup is transactional: the callable is released only after name, scheduling, and affinity setup
   succeeds. The error-returning factory reports the configuration error; the direct constructor throws `system_error`.
 - Added per-thread nice control plus exact nice and portable priority readback. Linux uses the requested nice value; MSVC and MinGW use a
   bounded Win32 thread-priority mapping that does not select `TIME_CRITICAL` for portable requests.
+- Made priority readback consistent across `thread`, `jthread`, `thread_view`, `this_thread`, and registry-backed views.
+  Linux `SCHED_IDLE` reads as the effective lowest priority/nice 19, while policies without meaningful nice semantics
+  report `operation_not_supported`.
 - Validate portable nice values as `-20..19` and realtime priorities as `1..99`, preserve concrete pthread/Win32 errors,
   reject affinity masks that cannot be represented losslessly, and verify affinity changes by exact readback with rollback
   where possible.
@@ -67,6 +77,8 @@
 - Periodic intervals must be positive. Periodic work follows fixed-rate deadlines, never overlaps with itself, and skips
   missed occurrences rather than queuing an overdue backlog. Cancellation prevents future invocations but does not stop an
   invocation already running.
+- Corrected advanced future helpers so `when_any` executes deferred futures instead of waiting forever, and a throwing
+  `future_with_error_handler` callback no longer replaces the future's original exception.
 - Replaced correlated periodic flags and zero-duration sentinels with separate one-shot and periodic construction paths;
   periodic records construct only with a positive interval.
 - Hardened pool lifecycle behavior: self-wait and self-shutdown report `resource_deadlock_would_occur`, moved-from objects

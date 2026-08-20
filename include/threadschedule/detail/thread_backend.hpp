@@ -225,9 +225,9 @@ configure_thread(ThreadLike& thread, native_thread_config const& config) -> expe
  * diagnosable.
  *
  * @par set_priority()
- * Maps through scheduler_parameters::create_for_policy(). On Linux, uses
- * @c pthread_setschedparam and may require @c CAP_SYS_NICE or root privileges
- * for real-time policies. On Windows, maps to @c SetThreadPriority constants.
+ * Applies the regular portable priority model. On Linux this selects
+ * @c SCHED_OTHER and updates the thread's nice value. On Windows it maps to
+ * @c SetThreadPriority constants.
  *
  * @par set_scheduling_policy()
  * Linux-specific concept; on Windows this falls back to set_priority().
@@ -326,7 +326,12 @@ public:
   {
     if (!joinable())
       return no_such_thread();
+#ifdef _WIN32
     return detail::apply_priority(native_handle(), priority);
+#else
+    return detail::apply_scheduling_config(native_handle(), native_id_,
+                                           detail::native_schedule::posix_nice(priority.value()));
+#endif
   }
 
   [[nodiscard]] auto
@@ -678,9 +683,16 @@ public:
   [[nodiscard]] auto
   set_priority(native_thread_priority priority) const -> expected<void, std::error_code>
   {
+#ifdef _WIN32
     if (has_native_handle())
       return detail::apply_priority(native_handle(), priority);
     return detail::apply_priority(tid_, priority);
+#else
+    if (has_native_handle())
+      return detail::apply_scheduling_config(native_handle(), tid_,
+                                             detail::native_schedule::posix_nice(priority.value()));
+    return detail::apply_scheduling_config(tid_, tid_, detail::native_schedule::posix_nice(priority.value()));
+#endif
   }
 
   [[nodiscard]] auto

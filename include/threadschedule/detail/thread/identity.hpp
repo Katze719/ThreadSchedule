@@ -23,6 +23,8 @@
 #ifndef _WIN32
 #  include <cerrno>
 #  include <dirent.h>
+#  include <sys/syscall.h>
+#  include <unistd.h>
 #endif
 
 namespace threadschedule::detail
@@ -49,8 +51,11 @@ read_thread_start_time(native_thread_id id) noexcept -> std::optional<std::uint6
         return std::nullopt;
 
       std::istringstream fields(line.substr(command_end + 2));
+      char state = '\0';
+      if (!(fields >> state) || state == 'Z' || state == 'X' || state == 'x')
+        return std::nullopt;
       std::string ignored;
-      for (int field = 3; field < 22; ++field)
+      for (int field = 4; field < 22; ++field)
         if (!(fields >> ignored))
           return std::nullopt;
       std::uint64_t value = 0;
@@ -72,6 +77,9 @@ native_thread_is_alive(native_thread_identity const& identity) noexcept -> bool
   (void)identity;
   return false;
 #else
+  errno = 0;
+  if (syscall(SYS_tgkill, getpid(), identity.id, 0) != 0 && errno != EPERM)
+    return false;
   auto const current = read_thread_start_time(identity.id);
   return current.has_value() && current.value() == identity.start_time;
 #endif

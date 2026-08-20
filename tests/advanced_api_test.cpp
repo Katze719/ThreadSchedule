@@ -6,9 +6,17 @@
 #include <chrono>
 #include <functional>
 #include <future>
+#include <limits>
 #include <memory>
+#include <stdexcept>
 #include <type_traits>
 #include <vector>
+
+#ifndef _WIN32
+#  include <filesystem>
+#  include <fstream>
+#  include <unistd.h>
+#endif
 
 namespace advanced = threadschedule::advanced;
 using namespace std::chrono_literals;
@@ -52,6 +60,17 @@ TEST(AdvancedApi, CompositeRegistryMergesPortableSnapshots)
   EXPECT_TRUE(first.unregister_current_thread());
 }
 
+TEST(AdvancedApi, NativeThreadIdConversionRejectsNarrowing)
+{
+  auto valid = advanced::native_id(threadschedule::thread_id{ 1 });
+  ASSERT_TRUE(valid.has_value());
+  EXPECT_EQ(valid.value(), static_cast<advanced::native_thread_id>(1));
+
+  auto oversized = advanced::native_id(threadschedule::thread_id{ (std::numeric_limits<std::int64_t>::max)() });
+  ASSERT_FALSE(oversized.has_value());
+  EXPECT_EQ(oversized.error(), std::make_error_code(std::errc::invalid_argument));
+}
+
 TEST(AdvancedApi, NegativeNumaThreadIndexWrapsWithinNode)
 {
   advanced::cpu_topology topology;
@@ -62,6 +81,18 @@ TEST(AdvancedApi, NegativeNumaThreadIndexWrapsWithinNode)
   auto affinity = advanced::affinity_for_node(topology, 0, -1, 2);
   EXPECT_EQ(affinity.cpus(),
             (std::vector<threadschedule::cpu_id>{ threadschedule::cpu_id{ 2 }, threadschedule::cpu_id{ 6 } }));
+}
+
+TEST(AdvancedApi, MalformedOrEmptyNumaSnapshotsReturnEmptyAffinity)
+{
+  advanced::cpu_topology missing_mapping;
+  missing_mapping.numa_nodes = 2;
+  EXPECT_TRUE(advanced::affinity_for_node(missing_mapping, 1, 0).empty());
+
+  advanced::cpu_topology topology;
+  topology.numa_nodes = 1;
+  topology.node_to_cpus = { { threadschedule::cpu_id{ 2 } } };
+  EXPECT_TRUE(advanced::affinity_for_node(topology, 0, 0, 0).empty());
 }
 
 TEST(AdvancedApi, ErrorHandledTaskAcceptsLvalueCallable)
@@ -75,6 +106,53 @@ TEST(AdvancedApi, ErrorHandledTaskAcceptsLvalueCallable)
 
   EXPECT_TRUE(ran);
 }
+
+TEST(AdvancedApi, FutureErrorCallbackCannotReplaceOriginalException)
+{
+  std::promise<int> failed;
+  failed.set_exception(std::make_exception_ptr(std::runtime_error("original")));
+  advanced::future_with_error_handler<int> future(failed.get_future());
+  bool callback_called = false;
+  future.on_error(
+      [&callback_called](std::exception_ptr)
+        {
+          callback_called = true;
+          throw std::logic_error("callback");
+        });
+
+  EXPECT_THROW((void)future.get(), std::runtime_error);
+  EXPECT_TRUE(callback_called);
+}
+
+#ifndef _WIN32
+TEST(AdvancedApi, CgroupAttachUsesOnlyExistingThreadControlFiles)
+{
+  auto const directory = std::filesystem::temp_directory_path()
+                         / ("threadschedule-cgroup-" + std::to_string(static_cast<long long>(getpid())));
+  std::filesystem::remove_all(directory);
+  std::filesystem::create_directory(directory);
+
+  auto missing = advanced::cgroup_attach_tid(directory.string(), static_cast<advanced::native_thread_id>(getpid()));
+  EXPECT_FALSE(missing.has_value());
+  EXPECT_FALSE(std::filesystem::exists(directory / "cgroup.threads"));
+  EXPECT_FALSE(std::filesystem::exists(directory / "tasks"));
+
+  {
+    std::ofstream tasks(directory / "tasks");
+  }
+  auto attached = advanced::cgroup_attach_tid(directory.string(), static_cast<advanced::native_thread_id>(getpid()));
+  ASSERT_TRUE(attached.has_value()) << attached.error().message();
+  std::ifstream tasks(directory / "tasks");
+  std::string written;
+  std::getline(tasks, written);
+  EXPECT_EQ(written, std::to_string(getpid()));
+
+  auto invalid = advanced::cgroup_attach_tid(directory.string(), static_cast<advanced::native_thread_id>(0));
+  ASSERT_FALSE(invalid.has_value());
+  EXPECT_EQ(invalid.error(), std::make_error_code(std::errc::invalid_argument));
+  std::filesystem::remove_all(directory);
+}
+#endif
 
 template <typename Pool>
 void

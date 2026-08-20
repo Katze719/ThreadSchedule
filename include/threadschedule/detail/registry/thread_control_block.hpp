@@ -174,7 +174,7 @@ public:
 #ifdef _WIN32
     return detail::apply_priority(native_handle(), priority);
 #else
-    return detail::apply_priority(tid_, priority);
+    return detail::apply_scheduling_config(tid_, tid_, detail::native_schedule::posix_nice(priority.value()));
 #endif
   }
 
@@ -313,8 +313,7 @@ private:
     // native controls are applied to an unrelated thread.
     if (!start_time_.has_value())
       return false;
-    auto const current = read_thread_start_time(tid_);
-    return current.has_value() && current == start_time_;
+    return native_thread_is_alive({ tid_, start_time_.value() });
 #endif
   }
 

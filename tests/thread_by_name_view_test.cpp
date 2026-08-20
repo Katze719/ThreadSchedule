@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <future>
 #include <string>
 #include <system_error>
@@ -60,6 +61,15 @@ expect_no_such_process(threadschedule::result<T> const& result)
 {
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(result.error(), std::make_error_code(std::errc::no_such_process));
+}
+
+auto
+wait_until_dead(advanced::thread_by_name_view const& view) -> bool
+{
+  auto const deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  while (view.alive() && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  return !view.alive();
 }
 
 } // namespace
@@ -196,7 +206,7 @@ TEST(ThreadByNameView, RejectsEveryControlAfterTargetExit)
   ASSERT_TRUE(view.has_value());
   target.finish();
 
-  EXPECT_FALSE(view->alive());
+  ASSERT_TRUE(wait_until_dead(*view));
   expect_no_such_process(view->configure(threadschedule::thread_config{}));
   expect_no_such_process(view->set_name("ts_v3_stale"));
   expect_no_such_process(view->get_name());

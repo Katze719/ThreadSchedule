@@ -309,7 +309,10 @@ its `std_id` is the separate `std::thread::id`. `global_registry()` returns the
 active process registry. A scoped `global_registry_binding` installs an
 application-owned registry, keeps its backend alive, and restores the previous
 registry when the binding is destroyed. Bindings must be destroyed in reverse
-installation order.
+installation order. Installing, moving, or destroying a binding must not run
+concurrently with operations through `global_registry()`; install bindings
+during application startup and destroy them only after registry users have
+stopped.
 Header-only builds have one instance per linked image; the optional runtime
 supplies one instance to compatible DSOs that link it.
 
@@ -338,12 +341,11 @@ never select `TIME_CRITICAL`. Portable realtime requests map only to
 platform API through `advanced::native_handle(...)`. MinGW-w64 uses the same
 Win32 behavior through its pthread-to-`HANDLE` adapter.
 
-`thread`, C++20 `jthread`, and `thread_view` provide `set_priority`,
-`set_nice`, `get_priority`, `get_nice`, and error-preserving `get_affinity` operations. A
-Linux `thread_view` over an external
-`std::thread` has no portable identity for nice control, so nice operations
-report `operation_not_supported`. Native identity-based control is available
-only under `advanced`.
+`thread`, C++20 `jthread`, `thread_view`, and `this_thread` provide `set_priority`, `set_nice`, `get_priority`, `get_nice`,
+and error-preserving `get_affinity` operations. Linux readback reports the effective portable value: `SCHED_IDLE` maps to
+lowest/nice 19, while realtime and other policies without nice semantics report `operation_not_supported`. A Linux
+`thread_view` over an external `std::thread` has no portable identity for nice control, so nice operations also report
+`operation_not_supported`. Native identity-based control is available only under `advanced`.
 Registry-managed threads expose matching operations by `thread_id`, and pool
 workers use the same settings through `thread_config`.
 

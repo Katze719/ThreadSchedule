@@ -9,6 +9,9 @@
 #include "../thread.hpp"
 #include "../thread_id.hpp"
 
+#include <cstdint>
+#include <limits>
+
 #ifndef _WIN32
 #  include <sys/types.h>
 #endif
@@ -58,10 +61,14 @@ using native_thread_id = unsigned long;
 using native_thread_id = pid_t;
 #endif
 
-[[nodiscard]] constexpr auto
-native_id(thread_id id) noexcept -> native_thread_id
+[[nodiscard]] inline auto
+native_id(thread_id id) noexcept -> result<native_thread_id>
 {
-  return static_cast<native_thread_id>(::threadschedule::detail::thread_id_access::value(id));
+  auto const value = ::threadschedule::detail::thread_id_access::value(id);
+  auto const maximum = static_cast<std::uint64_t>((std::numeric_limits<native_thread_id>::max)());
+  if (value > maximum)
+    return unexpected(std::make_error_code(std::errc::invalid_argument));
+  return static_cast<native_thread_id>(value);
 }
 
 } // namespace threadschedule::advanced

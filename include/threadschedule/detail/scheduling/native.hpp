@@ -64,7 +64,7 @@ using native_thread_id = pid_t; // Linux TID via gettid()
  * assumes the thread is CPU-bound (longer slices).| None | | IDLE | Extremely
  * low priority; runs only when no other runnable thread exists.      | None |
  * | DEADLINE   | EDF (Earliest Deadline First) real-time scheduling (Linux
- * >= 3.14).          | `CAP_SYS_NICE` or root |
+ * >= 3.14). Readback only; configuring it requires `sched_setattr()`. |
  *
  * ### Windows behaviour
  * Windows does not expose POSIX scheduling policies. The library maps each
@@ -76,8 +76,10 @@ using native_thread_id = pid_t; // Linux TID via gettid()
  * @note DEADLINE is only available on Linux when `SCHED_DEADLINE` is defined
  * by the kernel headers. It is not available on Windows.
  *
- * @warning Setting FIFO, RR, or DEADLINE without adequate privileges will fail
- *          with a permission error (`EPERM` on Linux).
+ * @warning Setting FIFO or RR without adequate privileges will fail with a
+ *          permission error (`EPERM` on Linux). DEADLINE configuration is not
+ *          supported by this backend because a priority alone cannot express
+ *          its runtime, deadline, and period parameters.
  */
 enum class native_scheduling_policy : std::uint_fast8_t
 {
@@ -339,6 +341,12 @@ constexpr auto
 is_realtime_policy(native_scheduling_policy policy) noexcept -> bool
 {
   return policy == native_scheduling_policy::fifo || policy == native_scheduling_policy::rr;
+}
+
+constexpr auto
+uses_nice_value(native_scheduling_policy policy) noexcept -> bool
+{
+  return policy == native_scheduling_policy::other || policy == native_scheduling_policy::batch;
 }
 
 [[nodiscard]] constexpr auto
@@ -679,6 +687,11 @@ public:
   {
     sched_param param{};
 
+#  ifdef SCHED_DEADLINE
+    if (policy == native_scheduling_policy::deadline)
+      return unexpected(std::make_error_code(std::errc::function_not_supported));
+#  endif
+
     int const policy_int = static_cast<int>(policy);
     int const min_prio = sched_get_priority_min(policy_int);
     int const max_prio = sched_get_priority_max(policy_int);
@@ -712,6 +725,11 @@ public:
   static auto
   get_priority_range(native_scheduling_policy policy) -> expected<int, std::error_code>
   {
+#  ifdef SCHED_DEADLINE
+    if (policy == native_scheduling_policy::deadline)
+      return unexpected(std::make_error_code(std::errc::function_not_supported));
+#  endif
+
     int const policy_int = static_cast<int>(policy);
     int const min_prio = sched_get_priority_min(policy_int);
     int const max_prio = sched_get_priority_max(policy_int);
@@ -757,8 +775,8 @@ to_string(native_scheduling_policy policy) -> std::string
 // detail:: free functions for thread configuration (priority, policy,
 // affinity)
 //
-// Overloaded by handle type so that every wrapper class can delegate with a
-// single call: detail::apply_priority(handle, priority).
+// Overloaded by handle type so that wrapper classes can delegate native
+// control operations through a common boundary.
 // ---------------------------------------------------------------------------
 
 #ifdef _WIN32
@@ -839,7 +857,7 @@ read_effective_nice(NativeHandle handle, native_thread_id tid) -> expected<int, 
     return unexpected(std::make_error_code(std::errc::no_such_process));
   if (policy.value() == native_scheduling_policy::idle)
     return 19;
-  if (is_realtime_policy(policy.value()))
+  if (!uses_nice_value(policy.value()))
     return unexpected(std::make_error_code(std::errc::operation_not_supported));
   return read_nice_value(tid);
 #endif

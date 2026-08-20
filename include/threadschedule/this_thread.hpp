@@ -41,14 +41,16 @@ set_nice(nice_value value) -> result<void>
 [[nodiscard]] inline auto
 get_priority() -> result<priority_level>
 {
-  return detail::portable_thread_control::get_priority(detail::read_nice_value(detail::current_native_thread_id()));
+  auto const id = detail::current_native_thread_id();
+  return detail::portable_thread_control::get_priority(detail::read_effective_nice(id, id));
 }
 
 /** @brief Query current nice value of the calling thread. */
 [[nodiscard]] inline auto
 get_nice() -> result<nice_value>
 {
-  return detail::portable_thread_control::get_nice(detail::read_nice_value(detail::current_native_thread_id()));
+  auto const id = detail::current_native_thread_id();
+  return detail::portable_thread_control::get_nice(detail::read_effective_nice(id, id));
 }
 
 /** @brief Set the calling thread name. */

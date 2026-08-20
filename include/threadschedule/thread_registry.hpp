@@ -11,6 +11,7 @@
 #include "thread_id.hpp"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -189,12 +190,11 @@ public:
   {
     if (!has_native())
       return unexpected(std::make_error_code(std::errc::operation_canceled));
-    return detail::try_result(
-        [&]() -> result<void>
-          {
-            return native().configure(static_cast<detail::native_thread_id>(detail::thread_id_access::value(id)),
-                                      detail::to_native(config));
-          });
+    auto const native_id = checked_native_id(id);
+    if (!native_id)
+      return unexpected(native_id.error());
+    return detail::try_result([&]() -> result<void>
+                                { return native().configure(native_id.value(), detail::to_native(config)); });
   }
 
   /** @brief Set portable priority preset for a registered thread. */
@@ -210,12 +210,12 @@ public:
   {
     if (!has_native())
       return unexpected(std::make_error_code(std::errc::operation_canceled));
+    auto const native_id = checked_native_id(id);
+    if (!native_id)
+      return unexpected(native_id.error());
     return detail::try_result(
         [&]() -> result<void>
-          {
-            return native().configure(static_cast<detail::native_thread_id>(detail::thread_id_access::value(id)),
-                                      detail::native_schedule::posix_nice(value.value()));
-          });
+          { return native().configure(native_id.value(), detail::native_schedule::posix_nice(value.value())); });
   }
 
   /** @brief Query portable priority preset for a registered thread. */
@@ -224,11 +224,13 @@ public:
   {
     if (!has_native())
       return unexpected(std::make_error_code(std::errc::operation_canceled));
+    auto const native_id = checked_native_id(id);
+    if (!native_id)
+      return unexpected(native_id.error());
     return detail::try_result(
         [&]() -> result<priority_level>
           {
-            auto value
-                = native().get_nice_value(static_cast<detail::native_thread_id>(detail::thread_id_access::value(id)));
+            auto value = native().get_nice_value(native_id.value());
             if (!value)
               return unexpected(value.error());
             return detail::to_priority_level(value.value());
@@ -241,16 +243,28 @@ public:
   {
     if (!has_native())
       return unexpected(std::make_error_code(std::errc::operation_canceled));
+    auto const native_id = checked_native_id(id);
+    if (!native_id)
+      return unexpected(native_id.error());
     return detail::try_result(
         [&]() -> result<nice_value>
           {
-            auto value
-                = native().get_nice_value(static_cast<detail::native_thread_id>(detail::thread_id_access::value(id)));
+            auto value = native().get_nice_value(native_id.value());
             return detail::portable_thread_control::get_nice(std::move(value));
           });
   }
 
 private:
+  [[nodiscard]] static auto
+  checked_native_id(thread_id id) noexcept -> result<detail::native_thread_id>
+  {
+    auto const value = detail::thread_id_access::value(id);
+    auto const maximum = static_cast<std::uint64_t>((std::numeric_limits<detail::native_thread_id>::max)());
+    if (value > maximum)
+      return unexpected(std::make_error_code(std::errc::invalid_argument));
+    return static_cast<detail::native_thread_id>(value);
+  }
+
   struct global_tag
   {
   };
@@ -296,6 +310,11 @@ global_registry() -> thread_registry&
  * @brief Temporarily bind an owning registry as the global external registry.
  *
  * Restores the previous binding on destruction.
+ *
+ * Installing, moving, or destroying a binding must not run concurrently with
+ * operations through @ref global_registry. Bindings are intended to be
+ * installed during application startup and destroyed after worker threads
+ * have stopped using the global registry.
  */
 class global_registry_binding
 {

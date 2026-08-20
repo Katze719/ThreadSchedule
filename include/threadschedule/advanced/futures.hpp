@@ -152,6 +152,8 @@ when_all_settled(std::vector<std::future<void>>& futures) -> std::vector<expecte
  *
  * @note The remaining futures are left in their current state - the caller
  *       is responsible for managing their lifetime.
+ * @note A deferred future is eligible immediately and is executed by the
+ *       calling thread through `get()`.
  *
  * @tparam T The value type of each future.
  * @return A pair of (index of the first ready future, its value).
@@ -170,12 +172,18 @@ when_any(std::vector<std::future<T>>& futures) -> std::pair<size_t, T>
 
   while (true)
     {
+      size_t deferred = futures.size();
       for (size_t k = 0; k < futures.size(); ++k)
         {
           size_t const i = (start + k) % futures.size();
-          if (futures[i].wait_for(std::chrono::milliseconds(1)) == std::future_status::ready)
+          auto const status = futures[i].wait_for(std::chrono::milliseconds(1));
+          if (status == std::future_status::ready)
             return { i, futures[i].get() };
+          if (status == std::future_status::deferred && deferred == futures.size())
+            deferred = i;
         }
+      if (deferred != futures.size())
+        return { deferred, futures[deferred].get() };
       std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
       if (backoff_ms < 16)
         backoff_ms *= 2;
@@ -201,14 +209,23 @@ when_any(std::vector<std::future<void>>& futures) -> size_t
 
   while (true)
     {
+      size_t deferred = futures.size();
       for (size_t k = 0; k < futures.size(); ++k)
         {
           size_t const i = (start + k) % futures.size();
-          if (futures[i].wait_for(std::chrono::milliseconds(1)) == std::future_status::ready)
+          auto const status = futures[i].wait_for(std::chrono::milliseconds(1));
+          if (status == std::future_status::ready)
             {
               futures[i].get();
               return i;
             }
+          if (status == std::future_status::deferred && deferred == futures.size())
+            deferred = i;
+        }
+      if (deferred != futures.size())
+        {
+          futures[deferred].get();
+          return deferred;
         }
       std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
       if (backoff_ms < 16)

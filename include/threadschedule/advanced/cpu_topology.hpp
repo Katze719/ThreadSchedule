@@ -12,7 +12,9 @@
  */
 
 #include "../thread_affinity.hpp"
+#include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <thread>
 #include <vector>
 
@@ -195,22 +197,30 @@ inline auto
 affinity_for_node(cpu_topology const& topo, int node_index, int thread_index, int threads_per_node = 1)
     -> thread_affinity
 {
-  if (topo.numa_nodes == 0)
+  auto const available_nodes = (std::min)(topo.numa_nodes, topo.node_to_cpus.size());
+  if (available_nodes == 0 || threads_per_node <= 0)
     return {};
-  auto const nodes = static_cast<int>(topo.numa_nodes);
-  int const n = (node_index % nodes + nodes) % nodes;
+  auto const wrapped_index = [](int value, std::size_t count)
+    {
+      if (value >= 0)
+        return static_cast<std::size_t>(value) % count;
+      auto const magnitude = static_cast<std::uint64_t>(-(static_cast<std::int64_t>(value) + 1)) + 1;
+      auto const remainder = static_cast<std::size_t>(magnitude % count);
+      return remainder == 0 ? std::size_t{ 0 } : count - remainder;
+    };
+  auto const n = wrapped_index(node_index, available_nodes);
   auto const& cpus = topo.node_to_cpus[n];
   thread_affinity aff;
   if (cpus.empty())
     return aff;
 
-  int const cpu_count = static_cast<int>(cpus.size());
-  int const first = (thread_index % cpu_count + cpu_count) % cpu_count;
+  auto const cpu_count = cpus.size();
+  auto const first = wrapped_index(thread_index, cpu_count);
   cpu_id const cpu = cpus[first];
   aff.add_cpu(cpu);
   for (int k = 1; k < threads_per_node; ++k)
     {
-      cpu_id const extra = cpus[(first + k) % cpu_count];
+      cpu_id const extra = cpus[(first + static_cast<std::size_t>(k)) % cpu_count];
       aff.add_cpu(extra);
     }
   return aff;

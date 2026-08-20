@@ -150,6 +150,29 @@ TEST(FuturesTest, WhenAnySingleFuture)
   EXPECT_EQ(value, 42);
 }
 
+TEST(FuturesTest, WhenAnyExecutesDeferredFuture)
+{
+  std::vector<std::future<int>> futures;
+  futures.push_back(std::async(std::launch::deferred, [] { return 42; }));
+
+  auto [idx, value] = when_any(futures);
+  EXPECT_EQ(idx, 0u);
+  EXPECT_EQ(value, 42);
+}
+
+TEST(FuturesTest, WhenAnyPrefersReadyFutureOverDeferredFuture)
+{
+  std::vector<std::future<int>> futures;
+  futures.push_back(std::async(std::launch::deferred, [] { return 1; }));
+  std::promise<int> ready;
+  ready.set_value(2);
+  futures.push_back(ready.get_future());
+
+  auto [idx, value] = when_any(futures);
+  EXPECT_EQ(idx, 1u);
+  EXPECT_EQ(value, 2);
+}
+
 // ==================== when_any (void) ====================
 
 TEST(FuturesTest, WhenAnyVoidReturnsFirst)
@@ -177,4 +200,25 @@ TEST(FuturesTest, WhenAnyVoidPropagatesException)
   futures.push_back(pool.submit([] { throw std::runtime_error("boom"); }));
 
   EXPECT_THROW(when_any(futures), std::runtime_error);
+}
+
+TEST(FuturesTest, WhenAnyExecutesDeferredVoidFuture)
+{
+  bool invoked = false;
+  std::vector<std::future<void>> futures;
+  futures.push_back(std::async(std::launch::deferred, [&invoked] { invoked = true; }));
+
+  EXPECT_EQ(when_any(futures), 0u);
+  EXPECT_TRUE(invoked);
+}
+
+TEST(FuturesTest, WhenAnyVoidPrefersReadyFutureOverDeferredFuture)
+{
+  std::vector<std::future<void>> futures;
+  futures.push_back(std::async(std::launch::deferred, [] {}));
+  std::promise<void> ready;
+  ready.set_value();
+  futures.push_back(ready.get_future());
+
+  EXPECT_EQ(when_any(futures), 1u);
 }

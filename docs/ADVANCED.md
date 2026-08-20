@@ -46,7 +46,9 @@ Scheduling intent remains portable even in advanced profiles: use
 type system. Code that truly needs a POSIX or Win32-only policy uses
 `advanced::native_handle(...)` and calls the platform API directly. Raw OS
 thread IDs exist only as `advanced::native_thread_id`, for APIs such as Linux
-cgroup attachment.
+cgroup attachment. Converting a registry `thread_id` with
+`advanced::native_id(...)` returns a `result<native_thread_id>` and rejects
+values that cannot fit the platform ID type.
 
 Normal Windows priority configuration does not alter the process priority
 class and does not select `THREAD_PRIORITY_TIME_CRITICAL`. Under MinGW-w64,
@@ -83,8 +85,9 @@ Direct construction provides the same singular lookup and throws
 `std::system_error` on failure.
 
 A view stays bound to the original native ID and Linux start-time generation
-after a rename. `alive()` and every control operation reject an exited or
-recycled target. Linux nevertheless provides no handle-based form of the
+after a rename. `alive()` and every control operation verify both kernel TID
+existence and that generation, rejecting an exited or recycled target. Linux
+nevertheless provides no handle-based form of the
 supported TID control syscalls, so an unregistered thread can exit between the
 last identity check and the syscall. Use `thread_registry` for lifecycle-bound
 control. Lookup returns `function_not_supported` on Windows.

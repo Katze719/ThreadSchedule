@@ -302,10 +302,11 @@ TEST_F(ThreadBackendTest, native_thread_priority)
 {
   detail::thread_backend thread([]() { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
 
-  // Set priority should not crash
-  [[maybe_unused]] bool priority_set = thread.set_priority(native_thread_priority::normal()).has_value();
-  // Priority setting may fail depending on permissions
-  // Just ensure it doesn't crash
+  auto priority_set = thread.set_priority(native_thread_priority::lowest());
+  ASSERT_TRUE(priority_set.has_value()) << priority_set.error().message();
+  auto effective = thread.get_nice_value();
+  ASSERT_TRUE(effective.has_value()) << effective.error().message();
+  EXPECT_EQ(effective.value(), native_thread_priority::lowest().value());
 
   thread.join();
 }
