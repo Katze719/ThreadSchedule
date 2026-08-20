@@ -36,6 +36,12 @@ add_executable(thread_configuration_example thread_configuration_example.cpp)
 target_link_libraries(thread_configuration_example
                       ThreadSchedule::ThreadSchedule)
 
+if(NOT WIN32)
+    add_executable(thread_by_name_view_example thread_by_name_view_example.cpp)
+    target_link_libraries(thread_by_name_view_example
+                          ThreadSchedule::ThreadSchedule)
+endif()
+
 if(CMAKE_CXX_STANDARD GREATER_EQUAL 20)
     add_executable(jthread_example jthread_example.cpp)
     target_link_libraries(jthread_example ThreadSchedule::ThreadSchedule)

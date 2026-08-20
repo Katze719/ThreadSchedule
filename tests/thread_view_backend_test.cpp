@@ -1,10 +1,8 @@
 #include <atomic>
 #include <chrono>
 #include <gtest/gtest.h>
-#ifndef _WIN32
-#  include <sched.h>
-#endif
 #include <thread>
+#include <threadschedule/detail/thread/identity.hpp>
 #include <threadschedule/threadschedule.hpp>
 
 using namespace threadschedule;
@@ -56,58 +54,15 @@ TEST_F(ThreadViewBackendTest, ViewDoesNotOwnLifetime)
 }
 
 #ifndef _WIN32
-TEST_F(ThreadViewBackendTest, ThreadByNameViewSetName)
+TEST_F(ThreadViewBackendTest, NativeThreadIdentityRejectsMismatchedGeneration)
 {
-  // Start a thread and set an initial name through the owning backend.
-  std::thread t([] { std::this_thread::sleep_for(std::chrono::milliseconds(100)); });
-  detail::thread_view_backend view(t);
-  ASSERT_TRUE(view.set_name("th_1").has_value());
+  detail::native_thread_identity identity;
+  identity.id = detail::current_native_thread_id();
+  auto const start_time = detail::read_thread_start_time(identity.id);
+  ASSERT_TRUE(start_time.has_value());
 
-  // Find it by name and rename via thread_by_name_view
-  thread_by_name_view by_name("th_1");
-  ASSERT_TRUE(by_name.found());
-  EXPECT_TRUE(by_name.get_name().has_value());
-  ASSERT_TRUE(by_name.set_name("new_name").has_value());
-
-  // Verify new name
-  thread_by_name_view verify("new_name");
-  ASSERT_TRUE(verify.found());
-  auto nm = verify.get_name();
-  ASSERT_TRUE(nm.has_value());
-  EXPECT_EQ(nm.value(), "new_name");
-
-  view.join();
-}
-#endif
-
-#ifndef _WIN32
-TEST_F(ThreadViewBackendTest, ThreadByNameBindToCpu0)
-{
-  // Start a thread and name it
-  std::thread t([] { std::this_thread::sleep_for(std::chrono::milliseconds(200)); });
-  detail::thread_view_backend view(t);
-  ASSERT_TRUE(view.set_name("th_bind").has_value());
-
-  // Lookup by name and bind to CPU 0
-  thread_by_name_view by_name("th_bind");
-  ASSERT_TRUE(by_name.found());
-
-  native_thread_affinity affinity;
-  affinity.add_cpu(0);
-  auto res = by_name.set_affinity(affinity);
-  if (!res.has_value())
-    {
-      GTEST_SKIP() << "set_affinity not permitted: " << res.error().message();
-    }
-
-  // Verify via sched_getaffinity on the TID
-  cpu_set_t mask;
-  CPU_ZERO(&mask);
-  int rc = sched_getaffinity(by_name.native_handle(), sizeof(mask), &mask);
-  ASSERT_EQ(rc, 0) << "sched_getaffinity failed";
-  EXPECT_TRUE(CPU_ISSET(0, &mask));
-
-  view.join();
+  identity.start_time = start_time.value() + 1;
+  EXPECT_FALSE(detail::native_thread_is_alive(identity));
 }
 #endif
 

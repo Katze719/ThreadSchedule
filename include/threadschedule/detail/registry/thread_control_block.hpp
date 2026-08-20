@@ -7,6 +7,7 @@
 #include "../../expected.hpp"
 #include "../callable/copyable_function.hpp"
 #include "../scheduling/native.hpp"
+#include "../thread/identity.hpp"
 #include "../thread_backend.hpp"
 
 #ifdef _WIN32
@@ -15,11 +16,9 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <fstream>
 #include <memory>
 #include <optional>
 #include <shared_mutex>
-#include <sstream>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -260,7 +259,7 @@ public:
     block->handle_.reset(realHandle);
 #else
     block->pthread_handle_ = pthread_self();
-    block->start_time_ = read_start_time(block->tid_);
+    block->start_time_ = read_thread_start_time(block->tid_);
 #endif
     current_thread_controls().add(block);
     return block;
@@ -314,41 +313,10 @@ private:
     // native controls are applied to an unrelated thread.
     if (!start_time_.has_value())
       return false;
-    auto const current = read_start_time(tid_);
+    auto const current = read_thread_start_time(tid_);
     return current.has_value() && current == start_time_;
 #endif
   }
-
-#ifndef _WIN32
-  [[nodiscard]] static auto
-  read_start_time(native_thread_id tid) noexcept -> std::optional<std::uint64_t>
-  {
-    try
-      {
-        std::ifstream input("/proc/self/task/" + std::to_string(tid) + "/stat");
-        std::string line;
-        if (!std::getline(input, line))
-          return std::nullopt;
-        auto const command_end = line.rfind(')');
-        if (command_end == std::string::npos || command_end + 2 >= line.size())
-          return std::nullopt;
-
-        std::istringstream fields(line.substr(command_end + 2));
-        std::string ignored;
-        for (int field = 3; field < 22; ++field)
-          if (!(fields >> ignored))
-            return std::nullopt;
-        std::uint64_t value = 0;
-        if (!(fields >> value))
-          return std::nullopt;
-        return value;
-      }
-    catch (...)
-      {
-        return std::nullopt;
-      }
-  }
-#endif
 
   void
   deactivate() noexcept

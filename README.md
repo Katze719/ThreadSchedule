@@ -116,6 +116,7 @@ own `CMakeLists.txt` and is tested against a freshly installed package.
 | Submit general-purpose work | `thread_pool` |
 | Run delayed or periodic work | `scheduled_pool` |
 | Discover and control registered threads | `thread_registry` |
+| Find unregistered Linux threads by OS name | `advanced::thread_by_name_view` |
 | Select a specialized pool or native control | `advanced::*` |
 
 Include `<threadschedule/threadschedule.hpp>` for the complete core. Include
@@ -281,6 +282,25 @@ privileges on Linux. Native scheduling remains available through
 threadschedule::advanced::work_stealing_pool pool(8);
 auto future = pool.submit(expensive_work);
 ```
+
+On Linux, an unregistered process thread can also be found by its exact
+kernel-visible name. A singular lookup rejects duplicate names; use
+`find_all()` when duplicates are intentional:
+
+```cpp
+auto worker = threadschedule::advanced::thread_by_name_view::create("io-worker");
+if (!worker)
+    report(worker.error());
+else if (auto lowered = worker->set_priority(
+             threadschedule::priority_level::low);
+         !lowered)
+    report(lowered.error());
+```
+
+The view remembers the Linux TID and its start-time generation, so exited or
+recycled targets report `no_such_process`. This native lookup cannot fully
+close the race between the last identity check and a TID-based syscall; use
+`thread_registry` when target lifetime must be coupled to control operations.
 
 The advanced namespace is public and follows semantic versioning. See
 [Advanced APIs](docs/ADVANCED.md) for native controls, profiles, topology,

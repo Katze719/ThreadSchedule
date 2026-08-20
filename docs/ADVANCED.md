@@ -61,12 +61,41 @@ in more than one group, `get_affinity()` reports the primary group exposed by
 Pool distribution therefore stays within the caller's reported group unless
 workers are configured explicitly with per-group masks.
 
+## Linux lookup by thread name
+
+`advanced::thread_by_name_view` finds unregistered threads in the current
+process by an exact `/proc/self/task/*/comm` match. Include
+`<threadschedule/advanced/thread_by_name_view.hpp>`. Linux names must be
+non-empty and at most 15 bytes.
+
+```cpp
+auto worker = advanced::thread_by_name_view::create("io-worker");
+if (!worker)
+  report(worker.error());
+else if (auto pinned = worker->set_affinity(allowed_worker_cpus); !pinned)
+  report(pinned.error());
+```
+
+`create()` requires exactly one match: no match returns `no_such_process` and
+multiple matches return `invalid_argument`. `find_all()` returns every match
+ordered by native thread ID, including an empty vector when there is no match.
+Direct construction provides the same singular lookup and throws
+`std::system_error` on failure.
+
+A view stays bound to the original native ID and Linux start-time generation
+after a rename. `alive()` and every control operation reject an exited or
+recycled target. Linux nevertheless provides no handle-based form of the
+supported TID control syscalls, so an unregistered thread can exit between the
+last identity check and the syscall. Use `thread_registry` for lifecycle-bound
+control. Lookup returns `function_not_supported` on Windows.
+
 `composite_thread_registry` can merge independent header-only registries when
 using the shared runtime is not appropriate.
 
 Advanced facilities also have self-contained focused headers. Common choices
 are `<threadschedule/advanced/pools.hpp>`,
 `<threadschedule/advanced/native_thread.hpp>`,
+`<threadschedule/advanced/thread_by_name_view.hpp>`,
 `<threadschedule/advanced/thread_profile.hpp>`, and
 `<threadschedule/advanced/composite_thread_registry.hpp>`. The full
 `advanced.hpp` umbrella is provided for applications that intentionally use

@@ -29,7 +29,10 @@
   `JThreadWrapper = ThreadWrapper` fallback from 2.4.0 was removed.
 - Replaced `ThreadWrapperView` with the control-only `thread_view`; ownership and lifecycle operations stay on the original
   standard or ThreadSchedule thread. It accepts `std::thread` and `thread`, plus both jthread forms under C++20. The 2.4
-  `PThreadWrapper`, `ThreadByNameView`, and `ThreadInfo` families were removed.
+  `PThreadWrapper` and `ThreadInfo` families were removed.
+- Added the independent Linux `advanced::thread_by_name_view` as the lowercase replacement for `ThreadByNameView`. Exact
+  singular lookup rejects duplicate names, `find_all` returns deterministic matches, and every control operation checks
+  both the native TID and its start-time generation before acting.
 - Added `this_thread` operations for configuring the calling thread without first wrapping or registering it.
 - Added portable `scheduling_config`, `priority_level`, `schedule::*` factories, and `thread_affinity`. Native handles and
   raw OS IDs live under `advanced`; native scheduling is performed through the platform API rather than a duplicate public

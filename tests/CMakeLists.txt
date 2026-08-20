@@ -61,6 +61,7 @@ set(THREADSCHEDULE_SELF_CONTAINED_HEADERS
     threadschedule/advanced/scheduled_lightweight_pool.hpp
     threadschedule/advanced/thread_profile.hpp
     threadschedule/advanced/task_group.hpp
+    threadschedule/advanced/thread_by_name_view.hpp
     threadschedule/advanced.hpp
     threadschedule/detail/callable/copyable_function.hpp
     threadschedule/detail/callable/function_ref.hpp
@@ -70,6 +71,7 @@ set(THREADSCHEDULE_SELF_CONTAINED_HEADERS
     threadschedule/detail/unique_handle.hpp
     threadschedule/detail/scheduling/native.hpp
     threadschedule/detail/thread/control.hpp
+    threadschedule/detail/thread/identity.hpp
     threadschedule/detail/thread_backend.hpp
     threadschedule/detail/registry/backend.hpp
     threadschedule/detail/registry/composite_thread_registry_backend.hpp
@@ -157,6 +159,17 @@ if(TARGET gtest)
         gtest_main
     )
     gtest_discover_tests(thread_view_backend_test
+        DISCOVERY_TIMEOUT 60
+        PROPERTIES TIMEOUT 120
+    )
+
+    add_executable(thread_by_name_view_test thread_by_name_view_test.cpp)
+    target_link_libraries(thread_by_name_view_test
+        ThreadSchedule::ThreadSchedule
+        gtest
+        gtest_main
+    )
+    gtest_discover_tests(thread_by_name_view_test
         DISCOVERY_TIMEOUT 60
         PROPERTIES TIMEOUT 120
     )

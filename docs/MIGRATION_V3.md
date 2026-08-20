@@ -59,6 +59,7 @@ The lowercase 3.0 types are new implementations, not aliases or subclasses of th
 | `ThreadWrapper` | `thread` |
 | `JThreadWrapper` | `jthread` when C++20 `std::jthread` is available |
 | `ThreadWrapperView` | `thread_view` for configuration only |
+| `ThreadByNameView` | `advanced::thread_by_name_view` for exact Linux process-thread lookup |
 | `ThreadAffinity` | `thread_affinity` containing `cpu_id` values |
 | `ThreadPriority` | `priority_level`, `nice_value`, or `realtime_priority` |
 | `SchedulingPolicy` | `schedule::*` |
@@ -75,9 +76,9 @@ The lowercase 3.0 types are new implementations, not aliases or subclasses of th
 | `set_external_registry(...)` | scoped `global_registry_binding` |
 
 `thread_view` also replaces `JThreadWrapperView` when C++20 is enabled. There is no 3.0 public replacement for
-`PThreadWrapper`, `PThreadAttributes`, `PThreadMutex`,
-`ThreadByNameView`, or the public `ThreadControlBlock`. Use the original `std::thread`/`std::jthread`, the platform API, the
-calling-thread API, or a registry snapshot according to the ownership model.
+`PThreadWrapper`, `PThreadAttributes`, `PThreadMutex`, or the public `ThreadControlBlock`. The lowercase
+`advanced::thread_by_name_view` replaces `ThreadByNameView` without a compatibility alias. It rejects ambiguous names and
+checks the Linux thread start-time generation before control operations.
 
 The build-mode enumerators are lowercase as well: `BuildMode::HEADER_ONLY` becomes `build_mode::header_only`, and
 `BuildMode::RUNTIME` becomes `build_mode::runtime`. `is_runtime_build` and `build_mode_string()` keep their names.
@@ -375,7 +376,7 @@ The following 2.4 facilities have no 3.0 compatibility layer:
 - C++26 reflection and reflection-backed registry queries;
 - public concepts/type traits and callable-storage helpers;
 - standard-dependent ranges overloads;
-- the dedicated pthread wrapper, registered-wrapper subclasses, by-name thread view, and jthread view;
+- the dedicated pthread wrapper, registered-wrapper subclasses, and jthread view;
 - generic public pool bases and wait policies.
 
 Use standard-library or application-owned implementations where no v3 replacement is listed. In particular, applications

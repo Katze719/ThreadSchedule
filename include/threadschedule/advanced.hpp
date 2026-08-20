@@ -14,5 +14,6 @@
 #include "advanced/pools.hpp"
 #include "advanced/task_group.hpp"
 #include "advanced/testing/chaos_controller.hpp"
+#include "advanced/thread_by_name_view.hpp"
 #include "advanced/thread_profile.hpp"
 #include "core.hpp"
