@@ -199,7 +199,7 @@ public:
    * More efficient than calling @ref post() in a loop because the mutex
    * is acquired only once and all workers are woken via @c notify_all().
    *
-   * @tparam Iterator Forward iterator whose value_type is callable as @c
+   * @tparam Iterator Input iterator whose value_type is callable as @c
    * void().
    * @throws std::runtime_error If the pool is shutting down.
    */
@@ -221,7 +221,7 @@ public:
   try_post_batch(Iterator begin, Iterator end) -> expected<void, std::error_code>
   {
     std::vector<detail::move_only_function<void(), TaskSize - sizeof(void*)>> prepared;
-    prepared.reserve(std::distance(begin, end));
+    prepared.reserve(detail::multipass_range_size(begin, end));
     for (auto it = begin; it != end; ++it)
       prepared.emplace_back(*it);
 

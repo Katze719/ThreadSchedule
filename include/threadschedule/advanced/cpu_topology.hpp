@@ -13,15 +13,15 @@
 
 #include "../thread_affinity.hpp"
 #include <algorithm>
-#include <cctype>
+#include <charconv>
 #include <cstdint>
+#include <string_view>
 #include <thread>
 #include <vector>
 
 #ifndef _WIN32
 #  include <fstream>
 #  include <string>
-#  include <unistd.h>
 #endif
 
 #ifdef _WIN32
@@ -31,6 +31,67 @@
 namespace threadschedule::advanced
 {
 
+#ifndef _WIN32
+namespace topology_detail
+{
+[[nodiscard]] inline auto
+parse_index_list(std::string_view input) -> std::vector<int>
+{
+  std::vector<int> values;
+  auto const* cursor = input.data();
+  auto const* const end = cursor + input.size();
+
+  while (cursor != end)
+    {
+      while (cursor != end && (*cursor == ',' || *cursor == ' ' || *cursor == '\t' || *cursor == '\n'))
+        ++cursor;
+      if (cursor == end)
+        break;
+
+      int first = 0;
+      auto parsed = std::from_chars(cursor, end, first);
+      if (parsed.ec != std::errc{} || parsed.ptr == cursor || first < 0)
+        return {};
+      cursor = parsed.ptr;
+
+      int last = first;
+      if (cursor != end && *cursor == '-')
+        {
+          ++cursor;
+          parsed = std::from_chars(cursor, end, last);
+          if (parsed.ec != std::errc{} || parsed.ptr == cursor || last < first)
+            return {};
+          cursor = parsed.ptr;
+        }
+
+      for (int value = first;; ++value)
+        {
+          values.push_back(value);
+          if (value == last)
+            break;
+        }
+
+      if (cursor != end && *cursor != ',' && *cursor != ' ' && *cursor != '\t' && *cursor != '\n')
+        return {};
+    }
+
+  std::sort(values.begin(), values.end());
+  values.erase(std::unique(values.begin(), values.end()), values.end());
+  return values;
+}
+
+[[nodiscard]] inline auto
+read_index_list(std::string const& path) -> std::vector<int>
+{
+  std::ifstream input(path);
+  std::string contents;
+  if (!std::getline(input, contents))
+    return {};
+  return parse_index_list(contents);
+}
+} // namespace topology_detail
+#endif
+
 /**
  * @brief Snapshot of basic CPU/NUMA topology.
  *
@@ -38,8 +99,8 @@ namespace threadschedule::advanced
  *
  * - @c cpu_count: total logical CPUs (from @c
  * std::thread::hardware_concurrency).
- * - @c numa_nodes: number of NUMA nodes (always 1 on Windows; detected
- *   via @c /sys/devices/system/node/ on Linux).
+ * - @c numa_nodes: number of CPU-bearing NUMA nodes (always 1 on Windows;
+ *   detected via the Linux sysfs node lists).
  * - @c node_to_cpus: mapping from NUMA node index to the set of
  *   logical CPU indices belonging to that node.
  */
@@ -108,78 +169,30 @@ read_topology() -> cpu_topology
         topo.node_to_cpus[0].emplace_back(static_cast<int>(index));
     }
 #else
-  // Try to detect NUMA nodes via sysfs
-  std::size_t nodes = 0;
-  for (;;)
-    {
-      std::string path = "/sys/devices/system/node/node" + std::to_string(nodes);
-      if (access(path.c_str(), F_OK) != 0)
-        break;
-      ++nodes;
-    }
-  topo.numa_nodes = (nodes > 0) ? nodes : 1;
-  topo.node_to_cpus.resize(topo.numa_nodes);
+  auto node_ids = topology_detail::read_index_list("/sys/devices/system/node/has_cpu");
+  if (node_ids.empty())
+    node_ids = topology_detail::read_index_list("/sys/devices/system/node/online");
 
-  if (nodes > 0)
+  for (int const node_id : node_ids)
     {
-      for (std::size_t node_index = 0; node_index < nodes; ++node_index)
-        {
-          std::string list_path = "/sys/devices/system/node/node" + std::to_string(node_index) + "/cpulist";
-          std::ifstream in(list_path);
-          if (!in)
-            continue;
-          std::string s;
-          std::getline(in, s);
-          // Parse cpulist like "0-3,8-11"
-          size_t i = 0;
-          while (i < s.size())
-            {
-              // read number
-              int start_cpu = 0;
-              bool got = false;
-              while (i < s.size() && (std::isdigit(static_cast<unsigned char>(s[i])) != 0))
-                {
-                  got = true;
-                  start_cpu = start_cpu * 10 + (s[i] - '0');
-                  ++i;
-                }
-              if (!got)
-                {
-                  ++i;
-                  continue;
-                }
-              if (i < s.size() && s[i] == '-')
-                {
-                  ++i;
-                  int end_cpu = 0;
-                  bool gotb = false;
-                  while (i < s.size() && (std::isdigit(static_cast<unsigned char>(s[i])) != 0))
-                    {
-                      gotb = true;
-                      end_cpu = end_cpu * 10 + (s[i] - '0');
-                      ++i;
-                    }
-                  if (gotb && end_cpu >= start_cpu)
-                    {
-                      for (int cpu_index = start_cpu; cpu_index <= end_cpu; ++cpu_index)
-                        topo.node_to_cpus[node_index].emplace_back(cpu_index);
-                    }
-                }
-              else
-                {
-                  topo.node_to_cpus[node_index].emplace_back(start_cpu);
-                }
-              if (i < s.size() && s[i] == ',')
-                ++i;
-            }
-        }
+      auto const cpu_indices
+          = topology_detail::read_index_list("/sys/devices/system/node/node" + std::to_string(node_id) + "/cpulist");
+      if (cpu_indices.empty())
+        continue;
+      std::vector<cpu_id> cpus;
+      cpus.reserve(cpu_indices.size());
+      for (int const cpu : cpu_indices)
+        cpus.emplace_back(cpu);
+      topo.node_to_cpus.push_back(std::move(cpus));
     }
-  else
+
+  if (topo.node_to_cpus.empty())
     {
       topo.node_to_cpus = { {} };
       for (std::size_t i = 0; i < topo.cpu_count; ++i)
         topo.node_to_cpus[0].emplace_back(static_cast<std::int64_t>(i));
     }
+  topo.numa_nodes = topo.node_to_cpus.size();
 #endif
   return topo;
 }

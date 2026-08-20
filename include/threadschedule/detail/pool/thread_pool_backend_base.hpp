@@ -224,16 +224,17 @@ public:
    * @brief Submit a range of @c void() callables in one go (non-throwing).
    *
    * All tasks are enqueued under a single lock acquisition.
+   * @tparam Iterator Input iterator whose value is callable as @c void().
    */
   template <typename Iterator>
   auto
   try_submit_batch(Iterator begin, Iterator end) -> expected<std::vector<std::future<void>>, std::error_code>
   {
     std::vector<std::future<void>> futures;
-    size_t const batch_size = std::distance(begin, end);
-    futures.reserve(batch_size);
+    size_t const batch_size_hint = detail::multipass_range_size(begin, end);
+    futures.reserve(batch_size_hint);
     std::vector<std::shared_ptr<std::packaged_task<void()>>> prepared;
-    prepared.reserve(batch_size);
+    prepared.reserve(batch_size_hint);
 
     for (auto it = begin; it != end; ++it)
       {
@@ -278,6 +279,7 @@ public:
   }
 
   /// @brief Apply @p func to @c [begin, end) in parallel (chunked).
+  /// @tparam Iterator Forward iterator; task chunks retain iterator pairs.
   template <typename Iterator, typename F>
   void
   parallel_for_each(Iterator begin, Iterator end, F&& func)

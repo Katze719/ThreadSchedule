@@ -129,6 +129,18 @@ types are not an additional canonical core API. `task_group` is intended for
 advanced pool facades. Their `submit` operation follows the common
 `result<std::future<T>>` contract.
 
+`task_group::wait()` also waits for child work submitted to the same group by
+an already tracked task. Batch submission accepts single-pass input iterators;
+`parallel_for_each` requires at least forward iterators because worker chunks
+retain iterator pairs until execution completes.
+
+On Linux, `read_topology()` reads the sysfs `has_cpu` node list rather than
+assuming contiguous NUMA identifiers. The returned mapping is compact and
+contains CPU-bearing nodes only, so NUMA distribution never intentionally
+selects a memory-only node. Attaching a moved-from registry to
+`composite_thread_registry` throws `std::system_error` with
+`operation_canceled`.
+
 Advanced APIs use the same C++17 public type policy as the core API. Feature
 detection may optimize implementation details but must not change a public
 layout or signature.

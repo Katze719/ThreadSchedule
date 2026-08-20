@@ -575,26 +575,54 @@ private:
  * @{
  */
 
+struct external_registry_binding_state
+{
+  explicit external_registry_binding_state(thread_registry_backend* value) noexcept : registry(value) {}
+  explicit external_registry_binding_state(std::shared_ptr<thread_registry_backend> value)
+      : registry(value.get()), owner(std::move(value))
+  {
+  }
+
+  void
+  replace(std::shared_ptr<thread_registry_backend> value)
+  {
+    owner = std::move(value);
+    registry = owner.get();
+  }
+
+  thread_registry_backend* registry{ nullptr };
+  std::shared_ptr<thread_registry_backend> owner;
+};
+
 #if defined(THREADSCHEDULE_RUNTIME)
 THREADSCHEDULE_API auto runtime_registry() -> thread_registry_backend&;
 THREADSCHEDULE_API void runtime_set_external_registry(thread_registry_backend* reg);
 THREADSCHEDULE_API auto runtime_exchange_external_registry(thread_registry_backend* reg) -> thread_registry_backend*;
+THREADSCHEDULE_API void runtime_set_external_registry_state(std::shared_ptr<external_registry_binding_state> state);
+THREADSCHEDULE_API auto runtime_exchange_external_registry_state(std::shared_ptr<external_registry_binding_state> state)
+    -> std::shared_ptr<external_registry_binding_state>;
+THREADSCHEDULE_API auto runtime_external_registry_state() -> std::shared_ptr<external_registry_binding_state>;
 #else
 /** @cond INTERNAL */
-inline auto
-registry_storage() -> thread_registry_backend*&
+struct runtime_registry_storage
 {
-  static thread_registry_backend* external = nullptr;
-  return external;
+  std::shared_ptr<external_registry_binding_state> external;
+};
+
+inline auto
+registry_storage() -> runtime_registry_storage&
+{
+  static runtime_registry_storage storage;
+  return storage;
 }
 /** @endcond */
 
 inline auto
 runtime_registry() -> thread_registry_backend&
 {
-  thread_registry_backend*& ext = registry_storage();
-  if (ext != nullptr)
-    return *ext;
+  auto const& storage = registry_storage();
+  if (storage.external && storage.external->registry != nullptr)
+    return *storage.external->registry;
   static thread_registry_backend local;
   return local;
 }
@@ -602,15 +630,39 @@ runtime_registry() -> thread_registry_backend&
 inline void
 runtime_set_external_registry(thread_registry_backend* reg)
 {
-  registry_storage() = reg;
+  auto& storage = registry_storage();
+  storage.external = reg == nullptr ? nullptr : std::make_shared<external_registry_binding_state>(reg);
 }
 
 inline auto
 runtime_exchange_external_registry(thread_registry_backend* reg) -> thread_registry_backend*
 {
-  auto* const previous = registry_storage();
-  registry_storage() = reg;
+  auto& storage = registry_storage();
+  auto* const previous = storage.external ? storage.external->registry : nullptr;
+  runtime_set_external_registry(reg);
   return previous;
+}
+
+inline void
+runtime_set_external_registry_state(std::shared_ptr<external_registry_binding_state> state)
+{
+  registry_storage().external = std::move(state);
+}
+
+inline auto
+runtime_exchange_external_registry_state(std::shared_ptr<external_registry_binding_state> state)
+    -> std::shared_ptr<external_registry_binding_state>
+{
+  auto& storage = registry_storage();
+  auto previous = std::move(storage.external);
+  storage.external = std::move(state);
+  return previous;
+}
+
+inline auto
+runtime_external_registry_state() -> std::shared_ptr<external_registry_binding_state>
+{
+  return registry_storage().external;
 }
 #endif
 

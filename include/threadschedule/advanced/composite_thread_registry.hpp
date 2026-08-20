@@ -32,6 +32,9 @@ public:
   void
   attach(thread_registry& registry)
   {
+    if (!registry.has_native())
+      throw std::system_error(std::make_error_code(std::errc::operation_canceled),
+                              "composite_thread_registry::attach: moved-from registry");
     implementation_.attach(&registry.native());
   }
 

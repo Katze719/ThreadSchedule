@@ -309,10 +309,13 @@ its `std_id` is the separate `std::thread::id`. `global_registry()` returns the
 active process registry. A scoped `global_registry_binding` installs an
 application-owned registry, keeps its backend alive, and restores the previous
 registry when the binding is destroyed. Bindings must be destroyed in reverse
-installation order. Installing, moving, or destroying a binding must not run
-concurrently with operations through `global_registry()`; install bindings
-during application startup and destroy them only after registry users have
-stopped.
+installation order. Installing, moving, or destroying a binding, and
+move-assigning a bound registry, must not run concurrently with operations
+through `global_registry()`; install bindings during application startup and
+destroy them only after registry users have stopped.
+Move-assigning a bound registry retargets its binding to the replacement
+backend. This also applies while an outer binding is temporarily hidden by a
+nested binding; the replacement remains owned until that binding is destroyed.
 Header-only builds have one instance per linked image; the optional runtime
 supplies one instance to compatible DSOs that link it.
 
@@ -321,6 +324,9 @@ their `thread_id` can be passed to `thread_registry::configure` while the
 registered thread remains alive.
 After a move, the source registry reads as empty and mutating operations return
 `operation_canceled`. Assigning a new registry makes it usable again.
+Constructing `auto_register_current_thread` with a moved-from registry throws
+`std::system_error` with `operation_canceled`, because a constructor cannot
+return a `result`.
 
 ## Scheduling
 

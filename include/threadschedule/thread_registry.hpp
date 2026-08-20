@@ -10,6 +10,7 @@
 #include "thread_config.hpp"
 #include "thread_id.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -72,6 +73,7 @@ public:
         auto* const current = owned_.get();
         bool const is_external = current != nullptr && &detail::runtime_registry() == current;
         retired_.reserve(retired_.size() + (owned_ != nullptr ? 1u : 0u) + other.retired_.size());
+        bindings_.reserve(bindings_.size() + other.bindings_.size());
         // A registration guard can outlive its entry (for example after an
         // explicit unregister) and still retain the backend address for its
         // destructor. Keep every replaced backend alive, even when it is
@@ -81,19 +83,34 @@ public:
         for (auto& backend : other.retired_)
           retired_.push_back(std::move(backend));
         other.retired_.clear();
+        for (auto& binding : other.bindings_)
+          bindings_.push_back(std::move(binding));
+        other.bindings_.clear();
         owned_ = std::move(other.owned_);
+        retarget_bindings();
         if (keep_global_proxy)
           {
             // global_registry() is a permanent facade over registry(). A
             // public move-assignment must not turn that singleton into an
             // unrelated owning registry.
             global_ = true;
-            detail::runtime_set_external_registry(other.global_ ? nullptr : owned_.get());
+            if (other.global_)
+              detail::runtime_set_external_registry(nullptr);
+            else if (auto state = detail::runtime_external_registry_state())
+              state->replace(owned_);
+            else
+              detail::runtime_set_external_registry_state(
+                  std::make_shared<detail::external_registry_binding_state>(owned_));
           }
         else
           {
             if (is_external)
-              detail::runtime_set_external_registry(other.global_ ? nullptr : owned_.get());
+              {
+                if (other.global_)
+                  detail::runtime_set_external_registry(nullptr);
+                else if (auto state = detail::runtime_external_registry_state())
+                  state->replace(owned_);
+              }
             global_ = other.global_;
           }
       }
@@ -291,7 +308,28 @@ private:
 
   std::shared_ptr<detail::thread_registry_backend> owned_;
   std::vector<std::shared_ptr<detail::thread_registry_backend>> retired_;
+  std::vector<std::weak_ptr<detail::external_registry_binding_state>> bindings_;
   bool global_{ false };
+
+  void
+  retarget_bindings()
+  {
+    bindings_.erase(
+        std::remove_if(bindings_.begin(), bindings_.end(), [](auto const& binding) { return binding.expired(); }),
+        bindings_.end());
+    for (auto const& binding : bindings_)
+      if (auto state = binding.lock())
+        state->replace(owned_);
+  }
+
+  void
+  track_binding(std::shared_ptr<detail::external_registry_binding_state> const& state)
+  {
+    bindings_.erase(
+        std::remove_if(bindings_.begin(), bindings_.end(), [](auto const& binding) { return binding.expired(); }),
+        bindings_.end());
+    bindings_.push_back(state);
+  }
 
   friend auto global_registry() -> thread_registry&;
   friend class global_registry_binding;
@@ -311,10 +349,11 @@ global_registry() -> thread_registry&
  *
  * Restores the previous binding on destruction.
  *
- * Installing, moving, or destroying a binding must not run concurrently with
- * operations through @ref global_registry. Bindings are intended to be
- * installed during application startup and destroyed after worker threads
- * have stopped using the global registry.
+ * Installing, moving, or destroying a binding, and move-assigning a bound
+ * registry, must not run concurrently with operations through @ref
+ * global_registry. Bindings are intended to be installed during application
+ * startup and destroyed after worker threads have stopped using the global
+ * registry.
  */
 class global_registry_binding
 {
@@ -329,8 +368,9 @@ public:
     if (registry.global_ || registry.owned_ == nullptr)
       throw std::invalid_argument("global registry facade cannot be bound as an external registry");
     owner_ = registry.owned_;
-    installed_ = owner_.get();
-    previous_ = detail::runtime_exchange_external_registry(installed_);
+    state_ = std::make_shared<detail::external_registry_binding_state>(owner_);
+    registry.track_binding(state_);
+    previous_state_ = detail::runtime_exchange_external_registry_state(state_);
   }
 
   ~global_registry_binding()
@@ -342,8 +382,8 @@ public:
   auto operator=(global_registry_binding const&) -> global_registry_binding& = delete;
 
   global_registry_binding(global_registry_binding&& other) noexcept
-      : owner_(std::move(other.owner_)), installed_(std::exchange(other.installed_, nullptr)),
-        previous_(std::exchange(other.previous_, nullptr))
+      : owner_(std::move(other.owner_)), state_(std::move(other.state_)),
+        previous_state_(std::move(other.previous_state_))
   {
   }
 
@@ -354,8 +394,8 @@ public:
       {
         reset();
         owner_ = std::move(other.owner_);
-        installed_ = std::exchange(other.installed_, nullptr);
-        previous_ = std::exchange(other.previous_, nullptr);
+        state_ = std::move(other.state_);
+        previous_state_ = std::move(other.previous_state_);
       }
     return *this;
   }
@@ -364,16 +404,16 @@ private:
   void
   reset() noexcept
   {
-    if (installed_ != nullptr)
-      detail::runtime_set_external_registry(previous_);
+    if (state_)
+      detail::runtime_set_external_registry_state(previous_state_);
     owner_.reset();
-    installed_ = nullptr;
-    previous_ = nullptr;
+    state_.reset();
+    previous_state_.reset();
   }
 
   std::shared_ptr<detail::thread_registry_backend> owner_;
-  detail::thread_registry_backend* installed_{ nullptr };
-  detail::thread_registry_backend* previous_{ nullptr };
+  std::shared_ptr<detail::external_registry_binding_state> state_;
+  std::shared_ptr<detail::external_registry_binding_state> previous_state_;
 };
 
 /** @brief RAII registration of the calling thread in a portable registry. */
@@ -386,8 +426,11 @@ public:
   }
 
   explicit auto_register_current_thread(thread_registry& registry, std::string name = {}, std::string component = {})
-      : registry_(&registry.native())
   {
+    if (!registry.has_native())
+      throw std::system_error(std::make_error_code(std::errc::operation_canceled),
+                              "auto_register_current_thread: moved-from registry");
+    registry_ = &registry.native();
     auto control = detail::thread_control_block::create_for_current_thread();
     native_id_ = control->tid();
     (void)control->set_name(name);

@@ -19,10 +19,24 @@
 #include <iterator>
 #include <string>
 #include <system_error>
+#include <type_traits>
 #include <vector>
 
 namespace threadschedule::detail
 {
+
+template <typename Iterator>
+inline constexpr bool is_forward_iterator_v
+    = std::is_base_of_v<std::forward_iterator_tag, typename std::iterator_traits<Iterator>::iterator_category>;
+
+template <typename Iterator>
+[[nodiscard]] inline auto
+multipass_range_size(Iterator begin, Iterator end) -> size_t
+{
+  if constexpr (is_forward_iterator_v<Iterator>)
+    return static_cast<size_t>(std::distance(begin, end));
+  return 0;
+}
 
 template <typename Pool>
 class worker_context_guard
@@ -165,6 +179,7 @@ template <typename Pool, typename Iterator, typename F>
 inline void
 parallel_for_each_chunked(Pool& pool, Iterator begin, Iterator end, F&& func, size_t num_workers)
 {
+  static_assert(is_forward_iterator_v<Iterator>, "parallel_for_each requires at least a forward iterator");
   auto const total = static_cast<size_t>(std::distance(begin, end));
   if (total == 0)
     return;

@@ -4,10 +4,11 @@
  * @file task_group.hpp
  * @brief Structured concurrency via @c task_group.
  *
- * A @c task_group ties a set of tasks to a scope: all submitted tasks
- * are guaranteed to complete before @c wait() returns (or the destructor
- * runs). This eliminates dangling-future bugs and makes exception
- * propagation deterministic.
+ * A @c task_group ties a set of tasks to a scope: all submitted tasks,
+ * including child tasks submitted to the same group by tracked tasks, are
+ * guaranteed to complete before @c wait() returns (or the destructor runs).
+ * This eliminates dangling-future bugs and makes exception propagation
+ * deterministic.
  */
 
 #include "../result.hpp"
@@ -100,29 +101,37 @@ public:
   /**
    * @brief Block until all submitted tasks complete.
    *
+   * Tasks submitted to this group by a task currently being waited on are
+   * included in the same wait operation.
+   *
    * @throws Rethrows the first exception from any task. All tasks are
    *         still waited on even if one throws.
    */
   void
   wait()
   {
-    std::vector<std::future<void>> local;
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      local.swap(futures_);
-    }
-
     std::exception_ptr first_error;
-    for (auto& f : local)
+    while (true)
       {
-        try
+        std::vector<std::future<void>> local;
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          if (futures_.empty())
+            break;
+          local.swap(futures_);
+        }
+
+        for (auto& future : local)
           {
-            f.get();
-          }
-        catch (...)
-          {
-            if (!first_error)
-              first_error = std::current_exception();
+            try
+              {
+                future.get();
+              }
+            catch (...)
+              {
+                if (!first_error)
+                  first_error = std::current_exception();
+              }
           }
       }
 

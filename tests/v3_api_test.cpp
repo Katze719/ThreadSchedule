@@ -940,6 +940,73 @@ TEST(V3Api, MoveAssigningInjectedRegistryRetargetsGlobalRegistry)
   EXPECT_TRUE(injected.unregister_current_thread().has_value());
 }
 
+TEST(V3Api, BindingOwnsBackendRetargetedByRegistryMoveAssignment)
+{
+  auto injected = std::make_unique<threadschedule::thread_registry>();
+  auto binding = std::make_unique<threadschedule::global_registry_binding>(*injected);
+
+  threadschedule::thread_registry replacement;
+  *injected = std::move(replacement);
+  injected.reset();
+
+  ASSERT_TRUE(threadschedule::global_registry().register_current_thread("retargeted", "v3").has_value());
+  EXPECT_EQ(threadschedule::global_registry().count(), 1u);
+  EXPECT_TRUE(threadschedule::global_registry().unregister_current_thread().has_value());
+  binding.reset();
+}
+
+TEST(V3Api, NestedBindingTracksMoveAssignedOuterRegistry)
+{
+  threadschedule::thread_registry outer;
+  threadschedule::global_registry_binding outer_binding(outer);
+  {
+    threadschedule::thread_registry inner;
+    threadschedule::global_registry_binding inner_binding(inner);
+    threadschedule::thread_registry replacement;
+    ASSERT_TRUE(replacement.register_current_thread("replacement", "v3").has_value());
+    outer = std::move(replacement);
+    EXPECT_TRUE(threadschedule::global_registry().empty());
+  }
+
+  auto snapshot = threadschedule::global_registry().snapshot();
+  ASSERT_TRUE(snapshot.has_value());
+  ASSERT_EQ(snapshot->size(), 1u);
+  EXPECT_EQ(snapshot->front().name, "replacement");
+  EXPECT_TRUE(outer.unregister_current_thread().has_value());
+}
+
+TEST(V3Api, HelpersRejectMovedFromRegistry)
+{
+  threadschedule::thread_registry source;
+  threadschedule::thread_registry destination(std::move(source));
+
+  try
+    {
+      // Intentionally verify the documented moved-from state.
+      // NOLINTNEXTLINE(bugprone-use-after-move)
+      threadschedule::auto_register_current_thread registration(source, "invalid", "v3");
+      FAIL() << "moved-from registry was accepted";
+    }
+  catch (std::system_error const& error)
+    {
+      EXPECT_EQ(error.code(), std::make_error_code(std::errc::operation_canceled));
+    }
+
+  threadschedule::advanced::composite_thread_registry composite;
+  try
+    {
+      // Intentionally verify the documented moved-from state.
+      // NOLINTNEXTLINE(bugprone-use-after-move)
+      composite.attach(source);
+      FAIL() << "moved-from registry was attached";
+    }
+  catch (std::system_error const& error)
+    {
+      EXPECT_EQ(error.code(), std::make_error_code(std::errc::operation_canceled));
+    }
+  EXPECT_TRUE(destination.empty());
+}
+
 TEST(V3Api, MoveAssigningGlobalRegistryPreservesGlobalFacade)
 {
   (void)threadschedule::global_registry().unregister_current_thread();

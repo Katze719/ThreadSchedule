@@ -19,6 +19,8 @@
   to the process-wide `cgroup.procs` file or creates lookalike files in an ordinary directory.
 - Made NUMA affinity helpers fail safely with an empty affinity when handed inconsistent topology snapshots or a
   non-positive CPU count, instead of indexing outside the supplied node mapping.
+- Read Linux CPU-bearing NUMA nodes from the sysfs node-list ABI, preserving sparse native node IDs during discovery and
+  excluding memory-only nodes from affinity distribution.
 - Standardized recoverable failures on `result<T>`, an alias for the library-owned
   `expected<T, std::error_code>`. Direct construction remains the normal, potentially throwing path; `create(...)` and
   explicitly named `*_or_throw` operations make the alternate policy visible.
@@ -86,6 +88,9 @@
   shutdown/submission paths preserve accepted work according to the selected policy.
 - Corrected timed shutdown so submission closes before waiting and corrected scheduled timed waits so queue mutation during
   shutdown cannot invalidate the active deadline.
+- Made advanced batch submission consume single-pass input ranges exactly once, while diagnosing the forward-iterator
+  requirement of chunked `parallel_for_each` at compile time. `task_group::wait()` now includes child tasks submitted to
+  the same group by work it is already tracking.
 
 ### Registry and runtime
 
@@ -95,6 +100,8 @@
 - Renamed `registry()` to `global_registry()` and replaced `set_external_registry()` with scoped
   `global_registry_binding`. The binding owns backend lifetime and restores the previous registry. Registration retains a
   guarded native control object so stale, exited, unregistered, or replaced entries cannot be configured.
+- Kept global binding ownership valid when a bound registry is move-assigned, including nested bindings, and made registry
+  helpers reject moved-from registry objects instead of dereferencing empty backend storage.
 - Moved registry composition to `advanced::composite_thread_registry` and cgroup attachment to the advanced Linux surface.
 - Kept the optional `ThreadSchedule::Runtime`, but changed its C++ ABI and made it opt-in by default. It now exports only the
   internal registry-storage hooks and `current_build_mode()`; all participating binaries must be rebuilt with the same v3

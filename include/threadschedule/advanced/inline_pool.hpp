@@ -2,6 +2,7 @@
 
 #include "../detail/pool/inline_pool_backend.hpp"
 #include "../detail/pool/shutdown.hpp"
+#include "../detail/pool/worker_context_guard.hpp"
 #include "../detail/try_result.hpp"
 #include "../result.hpp"
 #include "../shutdown_policy.hpp"
@@ -74,6 +75,7 @@ public:
   auto
   parallel_for_each(Iterator begin, Iterator end, Function&& function) -> result<void>
   {
+    static_assert(detail::is_forward_iterator_v<Iterator>, "parallel_for_each requires at least a forward iterator");
     return detail::try_result(
         [&]() -> result<void>
           {

@@ -6,9 +6,11 @@
 #include <chrono>
 #include <functional>
 #include <future>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <thread>
 #include <type_traits>
 #include <vector>
 
@@ -20,6 +22,69 @@
 
 namespace advanced = threadschedule::advanced;
 using namespace std::chrono_literals;
+
+namespace
+{
+class single_pass_task_iterator
+{
+public:
+  using iterator_category = std::input_iterator_tag;
+  using value_type = std::function<void()>;
+  using difference_type = std::ptrdiff_t;
+  using pointer = value_type const*;
+  using reference = value_type const&;
+
+  single_pass_task_iterator(std::shared_ptr<std::vector<value_type>> tasks, std::shared_ptr<std::size_t> position,
+                            bool sentinel = false)
+      : tasks_(std::move(tasks)), position_(std::move(position)), sentinel_(sentinel)
+  {
+  }
+
+  [[nodiscard]] auto
+  operator*() const -> reference
+  {
+    return tasks_->at(*position_);
+  }
+
+  auto
+  operator++() -> single_pass_task_iterator&
+  {
+    ++*position_;
+    return *this;
+  }
+
+  auto
+  operator++(int) -> single_pass_task_iterator
+  {
+    auto copy = *this;
+    ++*this;
+    return copy;
+  }
+
+  friend auto
+  operator==(single_pass_task_iterator const& lhs, single_pass_task_iterator const& rhs) -> bool
+  {
+    if (lhs.tasks_ != rhs.tasks_)
+      return false;
+    bool const lhs_at_end = lhs.sentinel_ || *lhs.position_ >= lhs.tasks_->size();
+    bool const rhs_at_end = rhs.sentinel_ || *rhs.position_ >= rhs.tasks_->size();
+    if (lhs.sentinel_ || rhs.sentinel_)
+      return lhs_at_end && rhs_at_end;
+    return *lhs.position_ == *rhs.position_;
+  }
+
+  friend auto
+  operator!=(single_pass_task_iterator const& lhs, single_pass_task_iterator const& rhs) -> bool
+  {
+    return !(lhs == rhs);
+  }
+
+private:
+  std::shared_ptr<std::vector<value_type>> tasks_;
+  std::shared_ptr<std::size_t> position_;
+  bool sentinel_{ false };
+};
+} // namespace
 
 TEST(AdvancedApi, UmbrellaExposesOptionalFacilities)
 {
@@ -93,6 +158,73 @@ TEST(AdvancedApi, MalformedOrEmptyNumaSnapshotsReturnEmptyAffinity)
   topology.numa_nodes = 1;
   topology.node_to_cpus = { { threadschedule::cpu_id{ 2 } } };
   EXPECT_TRUE(advanced::affinity_for_node(topology, 0, 0, 0).empty());
+}
+
+#ifndef _WIN32
+TEST(AdvancedApi, LinuxIndexListParserPreservesSparseIds)
+{
+  EXPECT_EQ(advanced::topology_detail::parse_index_list("0,2-4,8"), (std::vector<int>{ 0, 2, 3, 4, 8 }));
+  EXPECT_TRUE(advanced::topology_detail::parse_index_list("2-1").empty());
+
+  auto const topology = advanced::read_topology();
+  EXPECT_EQ(topology.numa_nodes, topology.node_to_cpus.size());
+  for (auto const& node : topology.node_to_cpus)
+    EXPECT_FALSE(node.empty());
+}
+#endif
+
+TEST(AdvancedApi, BatchSubmissionAcceptsSinglePassInputIterators)
+{
+  advanced::raw_thread_pool pool(threadschedule::worker_count{ 2 });
+  std::atomic<int> executions{ 0 };
+  auto tasks = std::make_shared<std::vector<std::function<void()>>>();
+  for (int index = 0; index < 4; ++index)
+    tasks->emplace_back([&executions] { executions.fetch_add(1); });
+  auto position = std::make_shared<std::size_t>(0);
+
+  auto submitted
+      = pool.submit_batch(single_pass_task_iterator(tasks, position), single_pass_task_iterator(tasks, position, true));
+  ASSERT_TRUE(submitted.has_value());
+  ASSERT_EQ(submitted->size(), tasks->size());
+  for (auto& future : submitted.value())
+    future.get();
+  EXPECT_EQ(executions.load(), 4);
+}
+
+TEST(AdvancedApi, TaskGroupWaitIncludesTasksSpawnedByTrackedTasks)
+{
+  advanced::raw_thread_pool pool(threadschedule::worker_count{ 1 });
+  advanced::task_group<advanced::raw_thread_pool> group(pool);
+  std::promise<void> child_started;
+  auto child_ready = child_started.get_future();
+  std::promise<void> release_child;
+  auto release_ready = release_child.get_future().share();
+  std::atomic<bool> child_finished{ false };
+
+  auto submitted = group.submit(
+      [&]
+        {
+          (void)group.submit(
+              [&]
+                {
+                  child_started.set_value();
+                  release_ready.wait();
+                  child_finished.store(true);
+                });
+        });
+  ASSERT_TRUE(submitted.has_value());
+
+  std::thread releaser(
+      [&]
+        {
+          child_ready.wait();
+          std::this_thread::sleep_for(30ms);
+          release_child.set_value();
+        });
+  group.wait();
+  EXPECT_TRUE(child_finished.load());
+  EXPECT_EQ(group.pending(), 0u);
+  releaser.join();
 }
 
 TEST(AdvancedApi, ErrorHandledTaskAcceptsLvalueCallable)

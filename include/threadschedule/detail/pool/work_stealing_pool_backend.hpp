@@ -409,7 +409,7 @@ public:
    * queues in round-robin fashion. Significantly more efficient than
    * calling @c submit() in a loop for large batches.
    *
-   * @tparam Iterator Forward iterator whose value_type is callable as @c
+   * @tparam Iterator Input iterator whose value_type is callable as @c
    * void().
    * @return @c expected containing a vector of futures, or
    *         @c std::errc::operation_canceled on shutdown.
@@ -419,10 +419,10 @@ public:
   try_submit_batch(Iterator begin, Iterator end) -> expected<std::vector<std::future<void>>, std::error_code>
   {
     std::vector<std::future<void>> futures;
-    size_t const batch_size = std::distance(begin, end);
-    futures.reserve(batch_size);
+    size_t const batch_size_hint = detail::multipass_range_size(begin, end);
+    futures.reserve(batch_size_hint);
     std::vector<queued_task> prepared;
-    prepared.reserve(batch_size);
+    prepared.reserve(batch_size_hint);
 
     for (auto it = begin; it != end; ++it)
       {
@@ -430,6 +430,8 @@ public:
         futures.push_back(task->get_future());
         prepared.emplace_back([task]() { (*task)(); });
       }
+
+    size_t const batch_size = prepared.size();
 
     std::shared_lock<std::shared_mutex> submission_lock(submission_mutex_);
 
@@ -497,6 +499,7 @@ public:
    *
    * The range is split into chunks and submitted as tasks. Blocks until
    * all elements have been processed.
+   * @tparam Iterator Forward iterator; task chunks retain iterator pairs.
    */
   template <typename Iterator, typename F>
   void
