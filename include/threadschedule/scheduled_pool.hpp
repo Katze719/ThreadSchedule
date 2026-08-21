@@ -7,6 +7,7 @@
 
 #include "detail/pool/shutdown.hpp"
 #include "detail/scheduled/backend.hpp"
+#include "detail/scheduled/time.hpp"
 #include "detail/thread/control.hpp"
 #include "scheduled_task.hpp"
 #include "shutdown_policy.hpp"
@@ -174,16 +175,7 @@ public:
   {
     if (this != &other)
       {
-        if (impl_)
-          {
-            try
-              {
-                impl_->shutdown(detail::to_native(config_.get_shutdown_policy()));
-              }
-            catch (...)
-              {
-              }
-          }
+        dispose_impl();
         config_ = std::move(other.config_);
         impl_ = std::move(other.impl_);
         stopped_.store(other.stopped_.load(std::memory_order_acquire), std::memory_order_release);
@@ -199,15 +191,7 @@ public:
    */
   ~scheduled_pool()
   {
-    if (!impl_)
-      return;
-    try
-      {
-        impl_->shutdown(detail::to_native(config_.get_shutdown_policy()));
-      }
-    catch (...)
-      {
-      }
+    dispose_impl();
   }
 
   /**
@@ -236,9 +220,10 @@ public:
     return detail::try_result(
         [&]() -> result<scheduled_task>
           {
-            auto handle
-                = impl_->schedule_after(std::chrono::duration_cast<detail::scheduled_pool_backend::duration>(delay),
-                                        wrap_task(std::forward<F>(function)));
+            auto native_delay = detail::checked_duration_cast<detail::scheduled_pool_backend::duration>(delay);
+            if (!native_delay)
+              return unexpected(native_delay.error());
+            auto handle = impl_->schedule_after(native_delay.value(), wrap_task(std::forward<F>(function)));
             if (handle.is_cancelled())
               return unexpected(std::make_error_code(std::errc::operation_canceled));
             return scheduled_task(std::move(handle));
@@ -278,13 +263,15 @@ public:
   {
     if (stopped_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
-    auto const native_interval = std::chrono::duration_cast<detail::scheduled_pool_backend::duration>(interval);
-    if (native_interval <= detail::scheduled_pool_backend::duration::zero())
+    auto const native_interval = detail::checked_duration_cast<detail::scheduled_pool_backend::duration>(interval);
+    if (!native_interval)
+      return unexpected(native_interval.error());
+    if (native_interval.value() <= detail::scheduled_pool_backend::duration::zero())
       return unexpected(std::make_error_code(std::errc::invalid_argument));
     return detail::try_result(
         [&]() -> result<scheduled_task>
           {
-            auto handle = impl_->schedule_periodic(native_interval, wrap_task(std::forward<F>(function)));
+            auto handle = impl_->schedule_periodic(native_interval.value(), wrap_task(std::forward<F>(function)));
             if (handle.is_cancelled())
               return unexpected(std::make_error_code(std::errc::operation_canceled));
             return scheduled_task(std::move(handle));
@@ -305,15 +292,19 @@ public:
   {
     if (stopped_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
-    auto const native_interval = std::chrono::duration_cast<detail::scheduled_pool_backend::duration>(interval);
-    if (native_interval <= detail::scheduled_pool_backend::duration::zero())
+    auto const native_interval = detail::checked_duration_cast<detail::scheduled_pool_backend::duration>(interval);
+    if (!native_interval)
+      return unexpected(native_interval.error());
+    if (native_interval.value() <= detail::scheduled_pool_backend::duration::zero())
       return unexpected(std::make_error_code(std::errc::invalid_argument));
+    auto const native_delay = detail::checked_duration_cast<detail::scheduled_pool_backend::duration>(initial_delay);
+    if (!native_delay)
+      return unexpected(native_delay.error());
     return detail::try_result(
         [&]() -> result<scheduled_task>
           {
-            auto handle = impl_->schedule_periodic_after(
-                std::chrono::duration_cast<detail::scheduled_pool_backend::duration>(initial_delay), native_interval,
-                wrap_task(std::forward<F>(function)));
+            auto handle = impl_->schedule_periodic_after(native_delay.value(), native_interval.value(),
+                                                         wrap_task(std::forward<F>(function)));
             if (handle.is_cancelled())
               return unexpected(std::make_error_code(std::errc::operation_canceled));
             return scheduled_task(std::move(handle));
@@ -353,6 +344,49 @@ public:
   }
 
 private:
+  void
+  dispose_impl() noexcept
+  {
+    if (!impl_)
+      return;
+
+    auto const policy = detail::to_native(config_.get_shutdown_policy());
+    if (!impl_->is_current_context())
+      {
+        try
+          {
+            impl_->shutdown(policy);
+          }
+        catch (...)
+          {
+          }
+        impl_.reset();
+        return;
+      }
+
+    auto* backend = impl_.release();
+    try
+      {
+        std::thread reaper(
+            [backend, policy]() noexcept
+              {
+                std::unique_ptr<detail::scheduled_pool_backend> owner(backend);
+                try
+                  {
+                    owner->shutdown(policy);
+                  }
+                catch (...)
+                  {
+                  }
+              });
+        reaper.detach();
+      }
+    catch (...)
+      {
+        (void)backend;
+      }
+  }
+
   template <typename F>
   auto
   wrap_task(F&& function)

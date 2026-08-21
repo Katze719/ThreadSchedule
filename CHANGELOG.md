@@ -68,6 +68,14 @@
 
 ### Pools and scheduled work
 
+- Rejected unrepresentable delayed and periodic deadlines with `value_too_large` and replaced unchecked `steady_clock`
+  arithmetic that could overflow and execute a maximally delayed task immediately.
+- Made scheduled-task handles observe `drop_pending` when a due task had already moved from the scheduler queue into the
+  worker queue but had not started.
+- Made `scheduled_pool` and specialized scheduled-pool destruction from one of their own callbacks transfer cleanup to a
+  reaper thread, matching the safe last-owner behavior of `thread_pool`.
+- Synchronized worker startup with optional registry registration so configured worker names cannot be overwritten after
+  pool construction, and kept registry metadata aligned with later worker renames.
 - Added the canonical `thread_pool` facade. `submit()` and `post()` are non-throwing submission operations; their throwing
   counterparts are `submit_or_throw()` and `post_or_throw()`. Construction, worker configuration, waiting, and shutdown
   have matching result-based paths.
@@ -98,6 +106,8 @@
 
 ### Registry and runtime
 
+- Made `auto_register_current_thread` retain the selected owning registry backend so a guard can safely outlive its local
+  `thread_registry` facade without dereferencing freed storage during unregister.
 - Replaced `ThreadRegistry`, `RegisteredThreadInfo`, and `AutoRegisterCurrentThread` with `thread_registry`,
   `registered_thread`, and `auto_register_current_thread`. The public registry exposes portable snapshots and configuration
   by live native ID instead of the 2.4.0 control-block and chainable-query implementation.

@@ -607,6 +607,38 @@ TEST(V3Api, PoolWorkerNamesReserveSpaceForGeneratedSuffix)
 }
 #endif
 
+TEST(V3Api, RegisteredPoolWorkersKeepConfiguredNames)
+{
+  threadschedule::thread_config workers;
+  workers.set_name("configured").set_scheduling(threadschedule::schedule::nice(threadschedule::nice_value{ 5 }));
+  threadschedule::thread_pool_config config;
+  config.set_worker_count(threadschedule::worker_count{ 1 })
+      .set_registration(threadschedule::worker_registration::global_registry)
+      .set_worker_config(std::move(workers));
+  threadschedule::thread_pool pool(std::move(config));
+
+  auto observed = pool.submit(
+      []
+        {
+          auto name = threadschedule::this_thread::get_name();
+          auto nice = threadschedule::this_thread::get_nice();
+          if (!name)
+            throw std::system_error(name.error());
+          if (!nice)
+            throw std::system_error(nice.error());
+          return std::make_pair(name.value(), nice->value());
+        });
+  ASSERT_TRUE(observed.has_value());
+  auto const effective = observed->get();
+  EXPECT_EQ(effective.first, "configured_0");
+  EXPECT_EQ(effective.second, 5);
+
+  auto snapshot = threadschedule::global_registry().snapshot();
+  ASSERT_TRUE(snapshot.has_value());
+  ASSERT_EQ(snapshot->size(), 1u);
+  EXPECT_EQ(snapshot->front().name, effective.first);
+}
+
 TEST(V3Api, ScheduledPoolReportsShutdown)
 {
   threadschedule::scheduled_pool scheduler(threadschedule::worker_count{ 1 });
@@ -652,6 +684,58 @@ TEST(V3Api, ScheduledPoolValidatesPeriodicIntervals)
   auto negative = scheduler.schedule_periodic_after(1ms, -1ms, [] {});
   ASSERT_FALSE(negative.has_value());
   EXPECT_EQ(negative.error(), std::make_error_code(std::errc::invalid_argument));
+}
+
+TEST(V3Api, ScheduledPoolRejectsUnrepresentableDeadlines)
+{
+  threadschedule::scheduled_pool scheduler(threadschedule::worker_count{ 1 });
+  std::atomic<bool> ran{ false };
+
+  auto delayed = scheduler.schedule_after(std::chrono::steady_clock::duration::max(), [&ran] { ran.store(true); });
+  ASSERT_FALSE(delayed.has_value());
+  EXPECT_EQ(delayed.error(), std::make_error_code(std::errc::value_too_large));
+
+  auto periodic = scheduler.schedule_periodic(std::chrono::steady_clock::duration::max(), [&ran] { ran.store(true); });
+  ASSERT_FALSE(periodic.has_value());
+  EXPECT_EQ(periodic.error(), std::make_error_code(std::errc::value_too_large));
+  EXPECT_FALSE(ran.load());
+}
+
+TEST(V3Api, ScheduledDropPendingMarksDispatchedTaskCancelled)
+{
+  threadschedule::scheduled_pool scheduler(threadschedule::worker_count{ 1 });
+  std::promise<void> entered;
+  auto entered_ready = entered.get_future();
+  std::promise<void> release;
+  auto release_ready = release.get_future().share();
+  auto blocker = scheduler.schedule_after(0ms,
+                                          [&]
+                                            {
+                                              entered.set_value();
+                                              release_ready.wait();
+                                            });
+  ASSERT_TRUE(blocker.has_value());
+  ASSERT_EQ(entered_ready.wait_for(2s), std::future_status::ready);
+
+  std::atomic<bool> ran{ false };
+  auto pending = scheduler.schedule_after(0ms, [&ran] { ran.store(true); });
+  ASSERT_TRUE(pending.has_value());
+  auto const dispatch_deadline = std::chrono::steady_clock::now() + 2s;
+  while (scheduler.scheduled_count() != 0 && std::chrono::steady_clock::now() < dispatch_deadline)
+    std::this_thread::yield();
+
+  auto shutdown = std::async(std::launch::async,
+                             [&] { return scheduler.shutdown(threadschedule::shutdown_policy::drop_pending); });
+  auto const cancellation_deadline = std::chrono::steady_clock::now() + 2s;
+  while (!pending->is_cancelled() && std::chrono::steady_clock::now() < cancellation_deadline)
+    std::this_thread::yield();
+  bool const cancelled = pending->is_cancelled();
+  release.set_value();
+
+  ASSERT_EQ(shutdown.wait_for(2s), std::future_status::ready);
+  EXPECT_TRUE(shutdown.get().has_value());
+  EXPECT_TRUE(cancelled);
+  EXPECT_FALSE(ran.load());
 }
 
 TEST(V3Api, ScheduledPoolSupportsDelayedPeriodicTasks)
@@ -789,6 +873,26 @@ TEST(V3Api, PoolMayReleaseItsLastOwnerFromAWorker)
 
   pool.reset();
   release.set_value();
+
+  EXPECT_EQ(completed_future.wait_for(2s), std::future_status::ready);
+  EXPECT_TRUE(observer.expired());
+}
+
+TEST(V3Api, ScheduledPoolMayReleaseItsLastOwnerFromAWorker)
+{
+  auto pool = std::make_shared<threadschedule::scheduled_pool>(threadschedule::worker_count{ 1 });
+  std::weak_ptr<threadschedule::scheduled_pool> observer = pool;
+  std::promise<void> completed;
+  auto completed_future = completed.get_future();
+
+  auto scheduled = pool->schedule_after(0ms,
+                                        [keep_alive = pool, &completed]() mutable
+                                          {
+                                            keep_alive.reset();
+                                            completed.set_value();
+                                          });
+  ASSERT_TRUE(scheduled.has_value());
+  pool.reset();
 
   EXPECT_EQ(completed_future.wait_for(2s), std::future_status::ready);
   EXPECT_TRUE(observer.expired());
@@ -1034,6 +1138,18 @@ TEST(V3Api, HelpersRejectMovedFromRegistry)
       EXPECT_EQ(error.code(), std::make_error_code(std::errc::operation_canceled));
     }
   EXPECT_TRUE(destination.empty());
+}
+
+TEST(V3Api, RegistrationGuardMayOutliveOwningRegistry)
+{
+  std::unique_ptr<threadschedule::auto_register_current_thread> guard;
+  {
+    threadschedule::thread_registry registry;
+    guard = std::make_unique<threadschedule::auto_register_current_thread>(registry, "long-lived", "v3");
+    EXPECT_EQ(registry.count(), 1u);
+  }
+
+  EXPECT_NO_THROW(guard.reset());
 }
 
 TEST(V3Api, MoveAssigningGlobalRegistryPreservesGlobalFacade)

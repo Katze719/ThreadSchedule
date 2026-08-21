@@ -8,6 +8,7 @@
 #include "../../worker_registration.hpp"
 #include "../pool/shutdown.hpp"
 #include "../thread/control.hpp"
+#include "time.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -15,6 +16,7 @@
 #include <functional>
 #include <memory>
 #include <system_error>
+#include <thread>
 #include <utility>
 
 namespace threadschedule::detail
@@ -43,8 +45,10 @@ public:
     return try_result(
         [&]() -> result<scheduled_task>
           {
-            auto handle = impl_->schedule_after(std::chrono::duration_cast<typename Backend::duration>(delay),
-                                                std::forward<F>(function));
+            auto native_delay = checked_duration_cast<typename Backend::duration>(delay);
+            if (!native_delay)
+              return unexpected(native_delay.error());
+            auto handle = impl_->schedule_after(native_delay.value(), std::forward<F>(function));
             if (handle.is_cancelled())
               return unexpected(std::make_error_code(std::errc::operation_canceled));
             return scheduled_task_access::make(std::move(handle));
@@ -71,15 +75,17 @@ public:
   auto
   schedule_periodic(std::chrono::duration<Rep, Period> interval, F&& function) -> result<scheduled_task>
   {
-    auto const native_interval = std::chrono::duration_cast<typename Backend::duration>(interval);
-    if (native_interval <= Backend::duration::zero())
+    auto const native_interval = checked_duration_cast<typename Backend::duration>(interval);
+    if (!native_interval)
+      return unexpected(native_interval.error());
+    if (native_interval.value() <= Backend::duration::zero())
       return unexpected(std::make_error_code(std::errc::invalid_argument));
     if (stopped_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
     return try_result(
         [&]() -> result<scheduled_task>
           {
-            auto handle = impl_->schedule_periodic(native_interval, std::forward<F>(function));
+            auto handle = impl_->schedule_periodic(native_interval.value(), std::forward<F>(function));
             if (handle.is_cancelled())
               return unexpected(std::make_error_code(std::errc::operation_canceled));
             return scheduled_task_access::make(std::move(handle));
@@ -92,17 +98,21 @@ public:
                           std::chrono::duration<IntervalRep, IntervalPeriod> interval, F&& function)
       -> result<scheduled_task>
   {
-    auto const native_interval = std::chrono::duration_cast<typename Backend::duration>(interval);
-    if (native_interval <= Backend::duration::zero())
+    auto const native_interval = checked_duration_cast<typename Backend::duration>(interval);
+    if (!native_interval)
+      return unexpected(native_interval.error());
+    if (native_interval.value() <= Backend::duration::zero())
       return unexpected(std::make_error_code(std::errc::invalid_argument));
+    auto const native_delay = checked_duration_cast<typename Backend::duration>(initial_delay);
+    if (!native_delay)
+      return unexpected(native_delay.error());
     if (stopped_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
     return try_result(
         [&]() -> result<scheduled_task>
           {
-            auto handle
-                = impl_->schedule_periodic_after(std::chrono::duration_cast<typename Backend::duration>(initial_delay),
-                                                 native_interval, std::forward<F>(function));
+            auto handle = impl_->schedule_periodic_after(native_delay.value(), native_interval.value(),
+                                                         std::forward<F>(function));
             if (handle.is_cancelled())
               return unexpected(std::make_error_code(std::errc::operation_canceled));
             return scheduled_task_access::make(std::move(handle));
@@ -146,9 +156,54 @@ public:
   }
 
 protected:
-  ~scheduled_pool_facade() = default;
+  ~scheduled_pool_facade()
+  {
+    dispose_impl();
+  }
 
 private:
+  void
+  dispose_impl() noexcept
+  {
+    if (!impl_)
+      return;
+
+    if (!impl_->is_current_context())
+      {
+        try
+          {
+            impl_->shutdown(shutdown_policy_backend::drain);
+          }
+        catch (...)
+          {
+          }
+        impl_.reset();
+        return;
+      }
+
+    auto* backend = impl_.release();
+    try
+      {
+        std::thread reaper(
+            [backend]() noexcept
+              {
+                std::unique_ptr<Backend> owner(backend);
+                try
+                  {
+                    owner->shutdown(shutdown_policy_backend::drain);
+                  }
+                catch (...)
+                  {
+                  }
+              });
+        reaper.detach();
+      }
+    catch (...)
+      {
+        (void)backend;
+      }
+  }
+
   std::unique_ptr<Backend> impl_;
   std::atomic<bool> stopped_{ false };
 };

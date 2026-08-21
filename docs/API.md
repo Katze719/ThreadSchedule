@@ -245,9 +245,9 @@ configuration return `operation_canceled`; shutdown remains an idempotent
 success.
 
 Calling `wait()` or `shutdown()` from one of the same pool's worker tasks is
-rejected with `std::errc::resource_deadlock_would_occur`. Destroying a pool
-from one of its own tasks is unsupported because the task is still using that
-pool; arrange destruction from an external owner after the task returns.
+rejected with `std::errc::resource_deadlock_would_occur`. Releasing the last
+owner from one of its own tasks is safe: destruction transfers backend cleanup
+to a reaper thread after the current task returns.
 
 ## Scheduled work
 
@@ -286,7 +286,9 @@ each next deadline is based on the preceding deadline, not task completion.
 An occurrence never overlaps with itself; deadlines missed while it is still
 running are skipped instead of building a worker-blocking backlog.
 Cancellation is cooperative and does not interrupt a running task. Scheduling
-after shutdown returns `std::errc::operation_canceled`.
+after shutdown returns `std::errc::operation_canceled`. Delays, initial delays,
+and periodic deadlines that cannot be represented by `steady_clock` return
+`std::errc::value_too_large` instead of wrapping into an earlier deadline.
 
 `scheduled_pool_config` supports the same worker registration, worker
 configuration, shutdown policy, and task-error callback as `thread_pool_config`,
@@ -295,6 +297,10 @@ and dispatching scheduled entries; the selected policy controls work already
 queued in the worker pool. Calling shutdown from one of its worker tasks or
 from scheduler-thread cleanup is rejected with
 `std::errc::resource_deadlock_would_occur` before shutdown state changes.
+Releasing the last owner from a scheduled worker is safe and uses the same
+reaper cleanup as `thread_pool`. Under `drop_pending`, handles for scheduled
+tasks already dispatched but discarded from the worker queue report
+`is_cancelled() == true`.
 
 ## Registry
 
@@ -322,6 +328,9 @@ installation order. Installing, moving, or destroying a binding, and
 move-assigning a bound registry, must not run concurrently with operations
 through `global_registry()`; install bindings during application startup and
 destroy them only after registry users have stopped.
+An `auto_register_current_thread` guard likewise retains the owning registry
+backend, so it can safely outlive the `thread_registry` facade passed to its
+constructor.
 Move-assigning a bound registry retargets its binding to the replacement
 backend. This also applies while an outer binding is temporarily hidden by a
 nested binding; the replacement remains owned until that binding is destroyed.
@@ -360,11 +369,15 @@ Win32 behavior through its pthread-to-`HANDLE` adapter.
 and error-preserving `get_affinity` operations. Linux readback reports the effective portable value: `SCHED_IDLE` maps to
 lowest/nice 19, while realtime and other policies without nice semantics report `operation_not_supported`. A Linux
 `thread_view` over an external `std::thread` has no portable identity for nice control, so nice operations also report
-`operation_not_supported`. Native identity-based control is available only under `advanced`.
+`operation_not_supported`. The same limitation applies to `thread` and `jthread` objects that adopt existing standard
+threads. Native identity-based control is available only under `advanced`.
 Registry-managed threads expose matching operations by `thread_id`, and pool
 workers use the same settings through `thread_config`.
 
-Increasing priority with a negative nice value usually requires privileges on
-Linux. Applying realtime policies can likewise fail with `permission_denied`
-or `operation_not_permitted`. Platform-native policy manipulation is done
-directly through the operating-system API and an advanced native handle.
+Increasing priority by lowering the numeric nice value usually requires
+privileges on Linux, including restoring a positive nice value to zero.
+Leaving `SCHED_IDLE` after `schedule::background()` can require the same
+privileges. Applying realtime policies can likewise fail with
+`permission_denied` or `operation_not_permitted`. Platform-native policy
+manipulation is done directly through the operating-system API and an advanced
+native handle.

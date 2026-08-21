@@ -119,6 +119,7 @@ public:
       {
         for (size_t i = 0; i < num_threads_; ++i)
           workers_.emplace_back(&thread_pool_backend_base::worker_function, this, i);
+        startup_.wait(num_threads_);
       }
     catch (...)
       {
@@ -323,13 +324,14 @@ public:
                     native_thread_priority priority = native_thread_priority::normal())
       -> expected<void, std::error_code>
   {
-    return detail::configure_worker_threads(workers_, name_prefix, policy, priority);
+    return detail::configure_worker_threads(workers_, name_prefix, policy, priority,
+                                            register_workers_ ? &runtime_registry() : nullptr);
   }
 
   auto
   configure_threads(native_thread_config const& config) -> expected<void, std::error_code>
   {
-    return detail::configure_worker_threads(workers_, config);
+    return detail::configure_worker_threads(workers_, config, register_workers_ ? &runtime_registry() : nullptr);
   }
 
   /// @brief Pin all workers to the same CPU set.
@@ -552,6 +554,7 @@ public:
 private:
   size_t num_threads_;
   bool register_workers_;
+  detail::worker_startup_latch startup_;
   std::vector<detail::thread_backend> workers_;
   std::queue<queued_task> tasks_;
 
@@ -578,8 +581,17 @@ private:
   {
     detail::worker_context_guard<thread_pool_backend_base> worker_context(current_pool, this);
     std::optional<registration_guard_backend> reg_guard;
-    if (register_workers_)
-      reg_guard.emplace("pool_worker_" + std::to_string(worker_id), "threadschedule.pool");
+    try
+      {
+        if (register_workers_)
+          reg_guard.emplace("pool_worker_" + std::to_string(worker_id), "threadschedule.pool");
+        startup_.arrive();
+      }
+    catch (...)
+      {
+        startup_.arrive(std::current_exception());
+        return;
+      }
 
     while (true)
       {

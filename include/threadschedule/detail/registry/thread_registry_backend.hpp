@@ -444,6 +444,15 @@ public:
     return blk->set_name(name);
   }
 
+  void
+  update_registered_name(native_thread_id tid, std::string const& name)
+  {
+    std::unique_lock<std::shared_mutex> lock(mutex_);
+    auto const found = threads_.find(tid);
+    if (found != threads_.end())
+      found->second.name = name;
+  }
+
   // Register/unregister hooks (system integration)
   void
   set_on_register(registry_callback cb)

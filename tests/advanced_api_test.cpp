@@ -340,6 +340,34 @@ TEST(AdvancedApi, SpecializedScheduledPoolsDispatchCancelAndShutdown)
   exercise_scheduled_pool<advanced::scheduled_lightweight_pool>();
 }
 
+TEST(AdvancedApi, ScheduledFacadeRejectsUnrepresentableDelay)
+{
+  advanced::raw_scheduled_pool pool(threadschedule::worker_count{ 1 });
+  auto scheduled = pool.schedule_after(std::chrono::steady_clock::duration::max(), [] {});
+
+  ASSERT_FALSE(scheduled.has_value());
+  EXPECT_EQ(scheduled.error(), std::make_error_code(std::errc::value_too_large));
+}
+
+TEST(AdvancedApi, ScheduledFacadeMayReleaseItsLastOwnerFromAWorker)
+{
+  auto pool = std::make_shared<advanced::raw_scheduled_pool>(threadschedule::worker_count{ 1 });
+  std::weak_ptr<advanced::raw_scheduled_pool> observer = pool;
+  std::promise<void> completed;
+  auto completed_future = completed.get_future();
+  auto scheduled = pool->schedule_after(0ms,
+                                        [keep_alive = pool, &completed]() mutable
+                                          {
+                                            keep_alive.reset();
+                                            completed.set_value();
+                                          });
+  ASSERT_TRUE(scheduled.has_value());
+  pool.reset();
+
+  EXPECT_EQ(completed_future.wait_for(2s), std::future_status::ready);
+  EXPECT_TRUE(observer.expired());
+}
+
 TEST(AdvancedApi, ProfilesUsePortableSchedulingIntents)
 {
   auto const realtime = advanced::profiles::realtime();

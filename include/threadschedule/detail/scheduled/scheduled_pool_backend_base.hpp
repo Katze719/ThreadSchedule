@@ -7,6 +7,7 @@
 #include "../pool/backend.hpp"
 #include "../pool/worker_count.hpp"
 #include "scheduled_task_backend.hpp"
+#include "time.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -15,6 +16,7 @@
 #include <cstdint>
 #include <functional>
 #include <future>
+#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -116,6 +118,28 @@ public:
     std::atomic<bool> running{ false };
   };
 
+  struct scheduled_dispatch_state
+  {
+    explicit scheduled_dispatch_state(std::shared_ptr<detail::scheduled_cancellation_state> cancellation_value,
+                                      std::shared_ptr<periodic_task_state> periodic_value = {})
+        : cancellation(std::move(cancellation_value)), periodic(std::move(periodic_value))
+    {
+    }
+
+    ~scheduled_dispatch_state()
+    {
+      if (started.load(std::memory_order_acquire))
+        return;
+      cancellation->pool_stopped.store(true, std::memory_order_release);
+      if (periodic)
+        periodic->running.store(false, std::memory_order_release);
+    }
+
+    std::shared_ptr<detail::scheduled_cancellation_state> cancellation;
+    std::shared_ptr<periodic_task_state> periodic;
+    std::atomic<bool> started{ false };
+  };
+
   class scheduled_task_info
   {
   public:
@@ -171,11 +195,25 @@ public:
     advance(time_point now)
     {
       auto const interval = *interval_;
-      next_run_ += interval;
+      auto advanced = detail::checked_deadline_after(next_run_, interval);
+      if (!advanced)
+        throw std::system_error(advanced.error(), "scheduled_pool periodic deadline");
+      next_run_ = advanced.value();
       if (next_run_ <= now)
         {
-          auto const missed = (now - next_run_) / interval + 1;
-          next_run_ += interval * missed;
+          auto const quotient = (now - next_run_) / interval;
+          auto const maximum = (std::numeric_limits<decltype(quotient)>::max)();
+          if (quotient == maximum)
+            throw std::system_error(std::make_error_code(std::errc::value_too_large),
+                                    "scheduled_pool periodic deadline");
+          auto const missed = quotient + 1;
+          if (missed > maximum / interval.count())
+            throw std::system_error(std::make_error_code(std::errc::value_too_large),
+                                    "scheduled_pool periodic deadline");
+          advanced = detail::checked_deadline_after(next_run_, interval * missed);
+          if (!advanced)
+            throw std::system_error(advanced.error(), "scheduled_pool periodic deadline");
+          next_run_ = advanced.value();
         }
     }
 
@@ -239,16 +277,20 @@ public:
   auto
   schedule_after(duration delay, task_type task) -> scheduled_task_backend
   {
-    auto run_time = std::chrono::steady_clock::now() + delay;
-    return insert_one_shot_task(run_time, detail::make_move_only_function<void()>(std::move(task)));
+    auto run_time = detail::checked_deadline_after(std::chrono::steady_clock::now(), delay);
+    if (!run_time)
+      throw std::system_error(run_time.error(), "scheduled_pool delay");
+    return insert_one_shot_task(run_time.value(), detail::make_move_only_function<void()>(std::move(task)));
   }
 
   template <typename F, std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<F>, task_type>, int> = 0>
   auto
   schedule_after(duration delay, F&& task) -> scheduled_task_backend
   {
-    auto run_time = std::chrono::steady_clock::now() + delay;
-    return insert_one_shot_task(run_time, detail::make_move_only_function<void()>(std::forward<F>(task)));
+    auto run_time = detail::checked_deadline_after(std::chrono::steady_clock::now(), delay);
+    if (!run_time)
+      throw std::system_error(run_time.error(), "scheduled_pool delay");
+    return insert_one_shot_task(run_time.value(), detail::make_move_only_function<void()>(std::forward<F>(task)));
   }
 
   /**
@@ -304,8 +346,13 @@ public:
   {
     if (interval <= duration::zero())
       throw std::invalid_argument("scheduled_pool periodic interval must be positive");
-    auto const run_time = std::chrono::steady_clock::now() + initial_delay;
-    return insert_periodic_task(run_time, interval, detail::make_move_only_function<void()>(std::move(task)));
+    auto const run_time = detail::checked_deadline_after(std::chrono::steady_clock::now(), initial_delay);
+    if (!run_time)
+      throw std::system_error(run_time.error(), "scheduled_pool initial delay");
+    auto const next_run = detail::checked_deadline_after(run_time.value(), interval);
+    if (!next_run)
+      throw std::system_error(next_run.error(), "scheduled_pool periodic deadline");
+    return insert_periodic_task(run_time.value(), interval, detail::make_move_only_function<void()>(std::move(task)));
   }
 
   template <typename F, std::enable_if_t<!std::is_same_v<detail::remove_cvref_t<F>, task_type>, int> = 0>
@@ -314,8 +361,14 @@ public:
   {
     if (interval <= duration::zero())
       throw std::invalid_argument("scheduled_pool periodic interval must be positive");
-    auto const run_time = std::chrono::steady_clock::now() + initial_delay;
-    return insert_periodic_task(run_time, interval, detail::make_move_only_function<void()>(std::forward<F>(task)));
+    auto const run_time = detail::checked_deadline_after(std::chrono::steady_clock::now(), initial_delay);
+    if (!run_time)
+      throw std::system_error(run_time.error(), "scheduled_pool initial delay");
+    auto const next_run = detail::checked_deadline_after(run_time.value(), interval);
+    if (!next_run)
+      throw std::system_error(next_run.error(), "scheduled_pool periodic deadline");
+    return insert_periodic_task(run_time.value(), interval,
+                                detail::make_move_only_function<void()>(std::forward<F>(task)));
   }
 
   /**
@@ -340,6 +393,13 @@ public:
     return scheduled_tasks_.size();
   }
 
+  [[nodiscard]] auto
+  is_current_context() const noexcept -> bool
+  {
+    return pool_.is_current_worker()
+           || (scheduler_thread_.joinable() && thread_info::get_thread_id() == scheduler_tid_);
+  }
+
   /**
    * @brief Get the underlying thread pool for direct task submission
    */
@@ -355,7 +415,7 @@ public:
   void
   shutdown(shutdown_policy_backend policy = shutdown_policy_backend::drain)
   {
-    if (pool_.is_current_worker() || (scheduler_thread_.joinable() && thread_info::get_thread_id() == scheduler_tid_))
+    if (is_current_context())
       detail::throw_worker_deadlock();
     std::lock_guard<std::recursive_mutex> shutdown_lock(shutdown_mutex_);
     std::multimap<time_point, scheduled_task_info> discarded;
@@ -565,11 +625,13 @@ private:
                 bool const already_running = periodic_task->running.exchange(true, std::memory_order_acq_rel);
                 if (!already_running)
                   {
+                    auto dispatch = std::make_shared<scheduled_dispatch_state>(cancellation, periodic_task);
                     try
                       {
                         pool_.post(
-                            [periodic_task, cancellation]()
+                            [periodic_task, cancellation, dispatch]()
                               {
+                                dispatch->started.store(true, std::memory_order_release);
                                 try
                                   {
                                     if (!cancellation->user_cancelled.load(std::memory_order_acquire))
@@ -598,9 +660,11 @@ private:
             else
               {
                 auto one_shot_task = info.take_one_shot();
+                auto dispatch = std::make_shared<scheduled_dispatch_state>(cancellation);
                 pool_.post(
-                    [task = std::move(one_shot_task), cancellation]() mutable
+                    [task = std::move(one_shot_task), cancellation, dispatch]() mutable
                       {
+                        dispatch->started.store(true, std::memory_order_release);
                         if (!cancellation->user_cancelled.load(std::memory_order_acquire))
                           {
                             task();

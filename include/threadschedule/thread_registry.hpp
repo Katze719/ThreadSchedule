@@ -430,7 +430,16 @@ public:
     if (!registry.has_native())
       throw std::system_error(std::make_error_code(std::errc::operation_canceled),
                               "auto_register_current_thread: moved-from registry");
-    registry_ = &registry.native();
+    if (registry.global_)
+      {
+        if (auto state = detail::runtime_external_registry_state())
+          registry_owner_ = state->owner;
+      }
+    else
+      {
+        registry_owner_ = registry.owned_;
+      }
+    registry_ = registry_owner_ ? registry_owner_.get() : &registry.native();
     auto control = detail::thread_control_block::create_for_current_thread();
     native_id_ = control->tid();
     (void)control->set_name(name);
@@ -448,7 +457,7 @@ public:
 
   auto_register_current_thread(auto_register_current_thread&& other) noexcept
       : active_(other.active_), registry_(other.registry_), native_id_(other.native_id_),
-        control_(std::move(other.control_))
+        control_(std::move(other.control_)), registry_owner_(std::move(other.registry_owner_))
   {
     other.active_ = false;
     other.registry_ = nullptr;
@@ -465,6 +474,7 @@ public:
         registry_ = other.registry_;
         native_id_ = other.native_id_;
         control_ = std::move(other.control_);
+        registry_owner_ = std::move(other.registry_owner_);
         other.active_ = false;
         other.registry_ = nullptr;
         other.native_id_ = {};
@@ -479,12 +489,15 @@ private:
     if (active_ && registry_ != nullptr)
       registry_->unregister_thread(native_id_, control_.get());
     active_ = false;
+    registry_ = nullptr;
+    registry_owner_.reset();
   }
 
   bool active_{ false };
   detail::thread_registry_backend* registry_{ nullptr };
   detail::native_thread_id native_id_{};
   std::shared_ptr<detail::thread_control_block> control_;
+  std::shared_ptr<detail::thread_registry_backend> registry_owner_;
 };
 
 } // namespace threadschedule

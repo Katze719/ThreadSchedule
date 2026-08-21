@@ -13,17 +13,51 @@
 #include "../thread_backend.hpp"
 
 #include <algorithm>
+#include <condition_variable>
 #include <cstddef>
 #include <exception>
 #include <future>
 #include <iterator>
+#include <mutex>
 #include <string>
 #include <system_error>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace threadschedule::detail
 {
+
+class worker_startup_latch
+{
+public:
+  void
+  arrive(std::exception_ptr error = {})
+  {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (error && !error_)
+        error_ = std::move(error);
+      ++arrived_;
+    }
+    condition_.notify_one();
+  }
+
+  void
+  wait(size_t expected)
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    condition_.wait(lock, [&] { return arrived_ == expected; });
+    if (error_)
+      std::rethrow_exception(error_);
+  }
+
+private:
+  std::mutex mutex_;
+  std::condition_variable condition_;
+  size_t arrived_{ 0 };
+  std::exception_ptr error_;
+};
 
 template <typename Iterator>
 inline constexpr bool is_forward_iterator_v
@@ -84,7 +118,8 @@ worker_thread_name(std::string const& name_prefix, size_t index) -> std::string
 template <typename WorkerRange>
 inline auto
 configure_worker_threads(WorkerRange& workers, std::string const& name_prefix, native_scheduling_policy policy,
-                         native_thread_priority priority) -> expected<void, std::error_code>
+                         native_thread_priority priority, thread_registry_backend* registry = nullptr)
+    -> expected<void, std::error_code>
 {
   std::error_code first_error;
   for (size_t i = 0; i < workers.size(); ++i)
@@ -93,6 +128,8 @@ configure_worker_threads(WorkerRange& workers, std::string const& name_prefix, n
       auto named = workers[i].set_name(thread_name);
       if (!named && !first_error)
         first_error = named.error();
+      if (named && registry != nullptr)
+        registry->update_registered_name(workers[i].native_id(), thread_name);
       auto scheduled = workers[i].set_scheduling_policy(policy, priority);
       if (!scheduled && !first_error)
         first_error = scheduled.error();
@@ -104,7 +141,8 @@ configure_worker_threads(WorkerRange& workers, std::string const& name_prefix, n
 
 template <typename WorkerRange>
 inline auto
-configure_worker_threads(WorkerRange& workers, native_thread_config const& config) -> expected<void, std::error_code>
+configure_worker_threads(WorkerRange& workers, native_thread_config const& config,
+                         thread_registry_backend* registry = nullptr) -> expected<void, std::error_code>
 {
   std::error_code first_error;
   for (size_t i = 0; i < workers.size(); ++i)
@@ -115,6 +153,8 @@ configure_worker_threads(WorkerRange& workers, native_thread_config const& confi
           auto named = workers[i].set_name(thread_name);
           if (!named && !first_error)
             first_error = named.error();
+          if (named && registry != nullptr)
+            registry->update_registered_name(workers[i].native_id(), thread_name);
         }
       if (config.scheduling)
         {

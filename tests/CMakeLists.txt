@@ -100,6 +100,7 @@ set(THREADSCHEDULE_SELF_CONTAINED_HEADERS
     threadschedule/detail/scheduled/scheduled_cancellation_state.hpp
     threadschedule/detail/scheduled/scheduled_pool_backend_base.hpp
     threadschedule/detail/scheduled/scheduled_task_backend.hpp
+    threadschedule/detail/scheduled/time.hpp
 )
 
 foreach(header IN LISTS THREADSCHEDULE_SELF_CONTAINED_HEADERS)
