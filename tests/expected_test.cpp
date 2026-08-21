@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <system_error>
 #include <threadschedule/expected.hpp>
@@ -19,6 +20,32 @@ enum class parse_error
   invalid_input = 1,
   overflow = 2
 };
+
+struct nondefault_error
+{
+  nondefault_error() = delete;
+  explicit nondefault_error(int value) : value(value) {}
+  int value;
+};
+
+struct throwing_copy_value
+{
+  static bool throw_on_copy;
+
+  explicit throwing_copy_value(int value = 0) : value(value) {}
+  throwing_copy_value(throwing_copy_value const& other) : value(other.value)
+  {
+    if (throw_on_copy)
+      throw std::runtime_error("copy failed");
+  }
+  throwing_copy_value(throwing_copy_value&&) noexcept = default;
+  auto operator=(throwing_copy_value const&) -> throwing_copy_value& = default;
+  auto operator=(throwing_copy_value&&) noexcept -> throwing_copy_value& = default;
+
+  int value;
+};
+
+bool throwing_copy_value::throw_on_copy = false;
 
 ts::expected<int, std::error_code>
 parse_int_ok()
@@ -295,6 +322,49 @@ TEST(ExpectedTest, VoidTransform)
   auto bad = do_void_fail();
   auto result2 = bad.transform([]() { return 42; });
   EXPECT_FALSE(result2.has_value());
+}
+
+TEST(ExpectedTest, TransformSupportsVoidResults)
+{
+  int calls = 0;
+  ts::expected<int, std::error_code> value(42);
+  auto from_value = value.transform([&calls](int) { ++calls; });
+  static_assert(std::is_same_v<decltype(from_value), ts::expected<void, std::error_code>>);
+  EXPECT_TRUE(from_value.has_value());
+
+  ts::expected<void, std::error_code> empty;
+  auto from_void = empty.transform([&calls] { ++calls; });
+  static_assert(std::is_same_v<decltype(from_void), ts::expected<void, std::error_code>>);
+  EXPECT_TRUE(from_void.has_value());
+  EXPECT_EQ(calls, 2);
+}
+
+TEST(ExpectedTest, CopyTraitsFollowStoredTypes)
+{
+  using move_only = ts::expected<std::unique_ptr<int>, std::error_code>;
+  static_assert(!std::is_copy_constructible_v<move_only>);
+  static_assert(!std::is_copy_assignable_v<move_only>);
+  static_assert(std::is_move_constructible_v<move_only>);
+  static_assert(std::is_move_assignable_v<move_only>);
+}
+
+TEST(ExpectedTest, VoidSuccessDoesNotConstructError)
+{
+  ts::expected<void, nondefault_error> result;
+  EXPECT_TRUE(result.has_value());
+}
+
+TEST(ExpectedTest, ThrowingCrossStateAssignmentPreservesOriginalState)
+{
+  ts::expected<throwing_copy_value, int> source(std::in_place, 42);
+  ts::expected<throwing_copy_value, int> destination(ts::unexpect, 7);
+
+  throwing_copy_value::throw_on_copy = true;
+  EXPECT_THROW(destination = source, std::runtime_error);
+  throwing_copy_value::throw_on_copy = false;
+
+  ASSERT_FALSE(destination.has_value());
+  EXPECT_EQ(destination.error(), 7);
 }
 
 TEST(ExpectedTest, EqualityOperators)

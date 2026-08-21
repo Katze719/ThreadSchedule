@@ -2,32 +2,7 @@
 
 /**
  * @file expected.hpp
- * @brief Stable @c expected implementation for ThreadSchedule public APIs.
- *
- * ThreadSchedule intentionally keeps @c threadschedule::expected as a single
- * library-defined type across all supported language standards. Even when the
- * standard library provides @c std::expected in C++23 and later, public
- * ThreadSchedule APIs keep returning the same @c threadschedule::expected
- * specialization to avoid ABI drift between consumers built with different
- * language modes.
- *
- * When @c std::expected is available, the library-owned type implicitly
- * converts to the matching standard specialization. It remains an independent
- * type rather than an alias to preserve its layout across language modes.
- *
- * @par Exception handling
- * The polyfill respects @c -fno-exceptions builds.  When exceptions are
- * disabled, @c value() calls @c std::terminate() instead of throwing
- * @c bad_expected_access.  Prefer @c value_or(), @c operator*(), or an
- * explicit @c has_value() check when building without exceptions.
- *
- * @par Monadic operations
- * Both the primary template and the @c void specialization support the four
- * monadic combinators from P0323R12:
- * - @c and_then  - chain an operation that returns an @c expected
- * - @c or_else   - recover from an error, returning an @c expected
- * - @c transform - map the contained value
- * - @c transform_error - map the contained error
+ * @brief Stable library-owned expected implementation for ThreadSchedule APIs.
  */
 
 #include <exception>
@@ -35,12 +10,11 @@
 #include <system_error>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 #if defined(__has_include)
 #  if __has_include(<version>)
 #    include <version>
-#  elif __has_include(<experimental/version>)
-#    include <experimental/version>
 #  endif
 #endif
 
@@ -54,13 +28,6 @@
 #  define THREADSCHEDULE_HAS_STD_EXPECTED 0
 #endif
 
-// Exception handling control
-// Automatically detects if exceptions are available using __cpp_exceptions
-// When exceptions are disabled (e.g., with -fno-exceptions):
-// - value() will call std::terminate() if accessed in an error state
-// - Prefer value_or(), operator*, or check has_value() before accessing the
-// value
-// - Compatible with exception-free builds
 #ifdef __cpp_exceptions
 #  define THREADSCHEDULE_EXPECTED_THROW(ex) throw ex
 #else
@@ -70,13 +37,6 @@
 namespace threadschedule
 {
 
-/**
- * @brief Tag type used to construct an expected in the error state.
- *
- * Pass the global constant @c unexpect as the first argument to the
- * @c expected constructor to indicate that the following arguments should
- * be forwarded to the error type's constructor.
- */
 struct unexpect_t
 {
   explicit unexpect_t() = default;
@@ -86,22 +46,11 @@ inline constexpr unexpect_t unexpect{};
 template <typename E>
 class bad_expected_access;
 
-/**
- * @brief Exception thrown by @c expected::value() when the object is in the
- * error state.
- *
- * The base specialization for @c void carries no error payload and simply
- * reports "bad expected access".  The derived template
- * @c bad_expected_access<E> additionally stores a copy of the error value.
- *
- * @tparam E Error type.  The @c void specialization serves as the common base.
- */
 /// @cond INTERNAL
 template <>
 class bad_expected_access<void> : public std::exception
 {
 public:
-  bad_expected_access() = default;
   [[nodiscard]] auto
   what() const noexcept -> char const* override
   {
@@ -109,17 +58,11 @@ public:
   }
 };
 
-/**
- * @brief Typed specialization of bad_expected_access that carries the error
- * value.
- * @tparam E The error type stored in the originating @c expected.
- */
 template <typename E>
 class bad_expected_access : public bad_expected_access<void>
-/// @endcond
 {
 public:
-  explicit bad_expected_access(E e) : error_(std::move(e)) {}
+  explicit bad_expected_access(E error) : error_(std::move(error)) {}
   [[nodiscard]] auto
   error() const& noexcept -> E const&
   {
@@ -144,26 +87,14 @@ public:
 private:
   E error_;
 };
+/// @endcond
 
-/**
- * @brief Wrapper that holds an error value for constructing an expected in the
- * error state.
- *
- * Use @c unexpected to explicitly construct or assign an error into an
- * @c expected object:
- * @code
- *   threadschedule::expected<int> result =
- * threadschedule::unexpected(make_error_code(std::errc::invalid_argument));
- * @endcode
- *
- * @tparam E The error type.
- */
 template <typename E>
 class unexpected
 {
 public:
-  constexpr explicit unexpected(E const& e) : error_(e) {}
-  constexpr explicit unexpected(E&& e) : error_(std::move(e)) {}
+  constexpr explicit unexpected(E const& error) : error_(error) {}
+  constexpr explicit unexpected(E&& error) : error_(std::move(error)) {}
   [[nodiscard]] constexpr auto
   error() const& noexcept -> E const&
   {
@@ -173,6 +104,11 @@ public:
   error() & noexcept -> E&
   {
     return error_;
+  }
+  [[nodiscard]] constexpr auto
+  error() const&& noexcept -> E const&&
+  {
+    return std::move(error_);
   }
   constexpr auto
   error() && noexcept -> E&&
@@ -184,38 +120,397 @@ private:
   E error_;
 };
 
-/**
- * @brief A result type that holds either a value of type @p T or an error of
- * type @p E.
- *
- * This is a polyfill for @c std::expected<T,E> (C++23).  It provides
- * value-semantic storage: copyable when both @p T and @p E are copyable,
- * movable when both are movable.
- *
- * @tparam T The value type.  Must be destructible.  The default constructor is
- *           available only when @p T is default-constructible.
- * @tparam E The error type.  Defaults to @c std::error_code.
- *
- * @par Thread safety
- * This is a plain value type with no internal synchronization.  Concurrent
- * access from multiple threads requires external locking.
- *
- * @par Implementation notes
- * Storage is implemented as a union with placement new / manual destructor
- * calls to avoid requiring default-constructibility of either @p T or @p E.
- *
- * @par Monadic operations
- * The following combinators are provided (matching the C++23 specification):
- * - @c and_then(f)        - if has_value(), invoke @p f with the value and
- * return the result
- * - @c or_else(f)         - if in error state, invoke @p f with the error and
- * return the result
- * - @c transform(f)       - if has_value(), apply @p f to the value and wrap
- * the result
- * - @c transform_error(f) - if in error state, apply @p f to the error and
- * wrap the result
- */
 template <typename T, typename E = std::error_code>
+class expected;
+
+namespace detail
+{
+/// @cond INTERNAL
+
+struct expected_value_tag
+{
+};
+struct expected_error_tag
+{
+};
+
+template <typename T>
+struct expected_value_holder
+{
+  template <typename... Args>
+  explicit constexpr expected_value_holder(std::in_place_t, Args&&... args) : value(std::forward<Args>(args)...)
+  {
+  }
+  T value;
+};
+
+template <typename E>
+struct expected_error_holder
+{
+  template <typename... Args>
+  explicit constexpr expected_error_holder(std::in_place_t, Args&&... args) : error(std::forward<Args>(args)...)
+  {
+  }
+  E error;
+};
+
+template <typename T, typename E>
+class expected_storage_common
+{
+public:
+  using value_holder = expected_value_holder<T>;
+  using error_holder = expected_error_holder<E>;
+
+  template <typename... Args>
+  explicit constexpr expected_storage_common(expected_value_tag, Args&&... args)
+      : data_(std::in_place_index<0>, std::in_place, std::forward<Args>(args)...)
+  {
+  }
+  template <typename... Args>
+  explicit constexpr expected_storage_common(expected_error_tag, Args&&... args)
+      : data_(std::in_place_index<1>, std::in_place, std::forward<Args>(args)...)
+  {
+  }
+
+  expected_storage_common(expected_storage_common const&) = default;
+  expected_storage_common(expected_storage_common&&) = default;
+  auto operator=(expected_storage_common const&) -> expected_storage_common& = default;
+  auto operator=(expected_storage_common&&) -> expected_storage_common& = default;
+  ~expected_storage_common() = default;
+
+  [[nodiscard]] constexpr auto
+  has_value() const noexcept -> bool
+  {
+    return data_.index() == 0;
+  }
+  constexpr auto
+  value() & noexcept -> T&
+  {
+    return std::get<0>(data_).value;
+  }
+  [[nodiscard]] constexpr auto
+  value() const& noexcept -> T const&
+  {
+    return std::get<0>(data_).value;
+  }
+  constexpr auto
+  value() && noexcept -> T&&
+  {
+    return std::move(std::get<0>(data_).value);
+  }
+  [[nodiscard]] constexpr auto
+  value() const&& noexcept -> T const&&
+  {
+    return std::move(std::get<0>(data_).value);
+  }
+  constexpr auto
+  error() & noexcept -> E&
+  {
+    return std::get<1>(data_).error;
+  }
+  [[nodiscard]] constexpr auto
+  error() const& noexcept -> E const&
+  {
+    return std::get<1>(data_).error;
+  }
+  constexpr auto
+  error() && noexcept -> E&&
+  {
+    return std::move(std::get<1>(data_).error);
+  }
+  [[nodiscard]] constexpr auto
+  error() const&& noexcept -> E const&&
+  {
+    return std::move(std::get<1>(data_).error);
+  }
+
+  template <typename U>
+  void
+  assign_value(U&& source)
+  {
+    if (has_value())
+      value() = std::forward<U>(source);
+    else
+      replace_with_value(std::forward<U>(source));
+  }
+
+  template <typename G>
+  void
+  assign_error(G&& source)
+  {
+    if (has_value())
+      replace_with_error(std::forward<G>(source));
+    else
+      error() = std::forward<G>(source);
+  }
+
+  template <typename... Args>
+  auto
+  emplace_value(Args&&... args) noexcept -> T&
+  {
+    data_.template emplace<0>(std::in_place, std::forward<Args>(args)...);
+    return value();
+  }
+
+  void
+  copy_assign(expected_storage_common const& other)
+  {
+    if (has_value() && other.has_value())
+      value() = other.value();
+    else if (!has_value() && !other.has_value())
+      error() = other.error();
+    else if (other.has_value())
+      replace_with_value(other.value());
+    else
+      replace_with_error(other.error());
+  }
+
+  void
+  move_assign(expected_storage_common&& other)
+  {
+    if (has_value() && other.has_value())
+      value() = std::move(other).value();
+    else if (!has_value() && !other.has_value())
+      error() = std::move(other).error();
+    else if (other.has_value())
+      replace_with_value(std::move(other).value());
+    else
+      replace_with_error(std::move(other).error());
+  }
+
+  void
+  swap_storage(expected_storage_common& other) noexcept(std::is_nothrow_move_constructible_v<T>
+                                                        && std::is_nothrow_move_constructible_v<E>
+                                                        && std::is_nothrow_swappable_v<T>
+                                                        && std::is_nothrow_swappable_v<E>)
+  {
+    if (has_value() && other.has_value())
+      {
+        using std::swap;
+        swap(value(), other.value());
+      }
+    else if (!has_value() && !other.has_value())
+      {
+        using std::swap;
+        swap(error(), other.error());
+      }
+    else if (has_value())
+      swap_value_error(*this, other);
+    else
+      swap_value_error(other, *this);
+  }
+
+private:
+  template <typename U>
+  void
+  replace_with_value(U&& source)
+  {
+    if constexpr (std::is_nothrow_constructible_v<T, U>)
+      data_.template emplace<0>(std::in_place, std::forward<U>(source));
+    else if constexpr (std::is_nothrow_move_constructible_v<T>)
+      {
+        T replacement(std::forward<U>(source));
+        data_.template emplace<0>(std::in_place, std::move(replacement));
+      }
+    else
+      {
+        static_assert(std::is_nothrow_move_constructible_v<E>);
+        E backup(std::move(error()));
+#ifdef __cpp_exceptions
+        try
+          {
+            data_.template emplace<0>(std::in_place, std::forward<U>(source));
+          }
+        catch (...)
+          {
+            data_.template emplace<1>(std::in_place, std::move(backup));
+            throw;
+          }
+#else
+        (void)backup;
+        data_.template emplace<0>(std::in_place, std::forward<U>(source));
+#endif
+      }
+  }
+
+  template <typename G>
+  void
+  replace_with_error(G&& source)
+  {
+    if constexpr (std::is_nothrow_constructible_v<E, G>)
+      data_.template emplace<1>(std::in_place, std::forward<G>(source));
+    else if constexpr (std::is_nothrow_move_constructible_v<E>)
+      {
+        E replacement(std::forward<G>(source));
+        data_.template emplace<1>(std::in_place, std::move(replacement));
+      }
+    else
+      {
+        static_assert(std::is_nothrow_move_constructible_v<T>);
+        T backup(std::move(value()));
+#ifdef __cpp_exceptions
+        try
+          {
+            data_.template emplace<1>(std::in_place, std::forward<G>(source));
+          }
+        catch (...)
+          {
+            data_.template emplace<0>(std::in_place, std::move(backup));
+            throw;
+          }
+#else
+        (void)backup;
+        data_.template emplace<1>(std::in_place, std::forward<G>(source));
+#endif
+      }
+  }
+
+  static void
+  swap_value_error(expected_storage_common& with_value, expected_storage_common& with_error)
+  {
+    if constexpr (std::is_nothrow_move_constructible_v<T>)
+      {
+        T backup(std::move(with_value.value()));
+#ifdef __cpp_exceptions
+        try
+          {
+            with_value.data_.template emplace<1>(std::in_place, std::move(with_error.error()));
+          }
+        catch (...)
+          {
+            with_value.data_.template emplace<0>(std::in_place, std::move(backup));
+            throw;
+          }
+#else
+        with_value.data_.template emplace<1>(std::in_place, std::move(with_error.error()));
+#endif
+        with_error.data_.template emplace<0>(std::in_place, std::move(backup));
+      }
+    else
+      {
+        static_assert(std::is_nothrow_move_constructible_v<E>);
+        E backup(std::move(with_error.error()));
+#ifdef __cpp_exceptions
+        try
+          {
+            with_error.data_.template emplace<0>(std::in_place, std::move(with_value.value()));
+          }
+        catch (...)
+          {
+            with_error.data_.template emplace<1>(std::in_place, std::move(backup));
+            throw;
+          }
+#else
+        with_error.data_.template emplace<0>(std::in_place, std::move(with_value.value()));
+#endif
+        with_value.data_.template emplace<1>(std::in_place, std::move(backup));
+      }
+  }
+
+  std::variant<value_holder, error_holder> data_;
+};
+
+template <typename T, typename E>
+inline constexpr bool expected_copy_assignable_v
+    = std::is_copy_constructible_v<T> && std::is_copy_constructible_v<E> && std::is_copy_assignable_v<T>
+      && std::is_copy_assignable_v<E>
+      && (std::is_nothrow_move_constructible_v<T> || std::is_nothrow_move_constructible_v<E>);
+template <typename T, typename E>
+inline constexpr bool expected_move_assignable_v
+    = std::is_move_constructible_v<T> && std::is_move_constructible_v<E> && std::is_move_assignable_v<T>
+      && std::is_move_assignable_v<E>
+      && (std::is_nothrow_move_constructible_v<T> || std::is_nothrow_move_constructible_v<E>);
+
+template <typename T, typename E, bool Copy = expected_copy_assignable_v<T, E>,
+          bool Move = expected_move_assignable_v<T, E>>
+class expected_storage;
+
+template <typename T, typename E>
+class expected_storage<T, E, true, true> : public expected_storage_common<T, E>
+{
+  using base = expected_storage_common<T, E>;
+
+public:
+  using base::base;
+  expected_storage(expected_storage const&) = default;
+  expected_storage(expected_storage&&) = default;
+  auto
+  operator=(expected_storage const& other) -> expected_storage&
+  {
+    if (this != &other)
+      this->copy_assign(other);
+    return *this;
+  }
+  auto
+  operator=(expected_storage&& other) noexcept(std::is_nothrow_move_constructible_v<T>
+                                               && std::is_nothrow_move_constructible_v<E>
+                                               && std::is_nothrow_move_assignable_v<T>
+                                               && std::is_nothrow_move_assignable_v<E>) -> expected_storage&
+  {
+    if (this != &other)
+      this->move_assign(std::move(other));
+    return *this;
+  }
+};
+
+template <typename T, typename E>
+class expected_storage<T, E, true, false> : public expected_storage_common<T, E>
+{
+  using base = expected_storage_common<T, E>;
+
+public:
+  using base::base;
+  expected_storage(expected_storage const&) = default;
+  expected_storage(expected_storage&&) = default;
+  auto
+  operator=(expected_storage const& other) -> expected_storage&
+  {
+    if (this != &other)
+      this->copy_assign(other);
+    return *this;
+  }
+  auto operator=(expected_storage&&) -> expected_storage& = delete;
+};
+
+template <typename T, typename E>
+class expected_storage<T, E, false, true> : public expected_storage_common<T, E>
+{
+  using base = expected_storage_common<T, E>;
+
+public:
+  using base::base;
+  expected_storage(expected_storage const&) = default;
+  expected_storage(expected_storage&&) = default;
+  auto operator=(expected_storage const&) -> expected_storage& = delete;
+  auto
+  operator=(expected_storage&& other) noexcept(std::is_nothrow_move_constructible_v<T>
+                                               && std::is_nothrow_move_constructible_v<E>
+                                               && std::is_nothrow_move_assignable_v<T>
+                                               && std::is_nothrow_move_assignable_v<E>) -> expected_storage&
+  {
+    if (this != &other)
+      this->move_assign(std::move(other));
+    return *this;
+  }
+};
+
+template <typename T, typename E>
+class expected_storage<T, E, false, false> : public expected_storage_common<T, E>
+{
+  using base = expected_storage_common<T, E>;
+
+public:
+  using base::base;
+  expected_storage(expected_storage const&) = default;
+  expected_storage(expected_storage&&) = default;
+  auto operator=(expected_storage const&) -> expected_storage& = delete;
+  auto operator=(expected_storage&&) -> expected_storage& = delete;
+};
+
+/// @endcond
+} // namespace detail
+
+template <typename T, typename E>
 class expected
 {
 public:
@@ -223,937 +518,728 @@ public:
   using error_type = E;
   using unexpected_type = unexpected<E>;
 
-  // constructors
-  template <typename u = T, typename std::enable_if_t<std::is_default_constructible_v<u>, int> = 0>
-  constexpr expected() : has_(true)
+  template <typename U = T, std::enable_if_t<std::is_default_constructible_v<U>, int> = 0>
+  constexpr expected() : storage_(detail::expected_value_tag{})
   {
-    new (&storage_.value_) T();
+  }
+  template <typename U = T, std::enable_if_t<!std::is_default_constructible_v<U>, int> = 0>
+  expected() = delete;
+
+  expected(expected const&) = default;
+  expected(expected&&) = default;
+  auto operator=(expected const&) -> expected& = default;
+  auto operator=(expected&&) -> expected& = default;
+  ~expected() = default;
+
+  template <typename U = T, std::enable_if_t<!std::is_same_v<std::decay_t<U>, expected>
+                                                 && !std::is_same_v<std::decay_t<U>, std::in_place_t>
+                                                 && !std::is_same_v<std::decay_t<U>, unexpected<E>>
+                                                 && std::is_constructible_v<T, U> && std::is_convertible_v<U, T>,
+                                             int> = 0>
+  constexpr expected(U&& value) : storage_(detail::expected_value_tag{}, std::forward<U>(value))
+  {
+  }
+  template <typename U = T, std::enable_if_t<!std::is_same_v<std::decay_t<U>, expected>
+                                                 && !std::is_same_v<std::decay_t<U>, std::in_place_t>
+                                                 && !std::is_same_v<std::decay_t<U>, unexpected<E>>
+                                                 && std::is_constructible_v<T, U> && !std::is_convertible_v<U, T>,
+                                             int> = 0>
+  constexpr explicit expected(U&& value) : storage_(detail::expected_value_tag{}, std::forward<U>(value))
+  {
+  }
+  template <typename... Args, std::enable_if_t<std::is_constructible_v<T, Args...>, int> = 0>
+  constexpr explicit expected(std::in_place_t, Args&&... args)
+      : storage_(detail::expected_value_tag{}, std::forward<Args>(args)...)
+  {
+  }
+  constexpr expected(unexpected<E> const& error) : storage_(detail::expected_error_tag{}, error.error()) {}
+  constexpr expected(unexpected<E>&& error) : storage_(detail::expected_error_tag{}, std::move(error).error()) {}
+  template <typename... Args, std::enable_if_t<std::is_constructible_v<E, Args...>, int> = 0>
+  constexpr explicit expected(unexpect_t, Args&&... args)
+      : storage_(detail::expected_error_tag{}, std::forward<Args>(args)...)
+  {
   }
 
-  template <typename u = T, typename std::enable_if_t<!std::is_default_constructible_v<u>, int> = 0>
-  constexpr expected() = delete;
-
-  constexpr expected(expected const& other) : has_(other.has_)
+  template <typename U = T,
+            std::enable_if_t<!std::is_same_v<std::decay_t<U>, expected> && std::is_constructible_v<T, U>
+                                 && std::is_assignable_v<T&, U>
+                                 && (std::is_nothrow_constructible_v<T, U> || std::is_nothrow_move_constructible_v<T>
+                                     || std::is_nothrow_move_constructible_v<E>),
+                             int> = 0>
+  auto
+  operator=(U&& value) -> expected&
   {
-    if (has_)
-      new (&storage_.value_) T(other.storage_.value_);
-    else
-      new (&storage_.error_) E(other.storage_.error_);
-  }
-
-  constexpr expected(expected&& other) noexcept(std::is_nothrow_move_constructible_v<T>
-                                                && std::is_nothrow_move_constructible_v<E>)
-      : has_(other.has_)
-  {
-    if (has_)
-      new (&storage_.value_) T(std::move(other.storage_.value_));
-    else
-      new (&storage_.error_) E(std::move(other.storage_.error_));
-  }
-
-  template <typename u = T,
-            typename = std::enable_if_t<
-                !std::is_same_v<std::decay_t<u>, expected> && !std::is_same_v<std::decay_t<u>, std::in_place_t>
-                && !std::is_same_v<std::decay_t<u>, unexpected<E>> && std::is_constructible_v<T, u>>>
-  constexpr expected(u&& value, std::enable_if_t<std::is_convertible_v<u, T>, int> /*unused*/ = 0) : has_(true)
-  {
-    new (&storage_.value_) T(std::forward<u>(value));
-  }
-
-  template <typename u = T,
-            typename = std::enable_if_t<!std::is_same_v<std::decay_t<u>, expected>
-                                        && !std::is_same_v<std::decay_t<u>, std::in_place_t>
-                                        && !std::is_same_v<std::decay_t<u>, unexpected<E>>
-                                        && std::is_constructible_v<T, u> && !std::is_convertible_v<u, T>>>
-  constexpr explicit expected(u&& value) : has_(true)
-  {
-    new (&storage_.value_) T(std::forward<u>(value));
-  }
-
-  template <typename... Args, typename = std::enable_if_t<std::is_constructible_v<T, Args...>>>
-  constexpr explicit expected(std::in_place_t /*unused*/, Args&&... args) : has_(true)
-  {
-    new (&storage_.value_) T(std::forward<Args>(args)...);
-  }
-
-  constexpr expected(unexpected<E> const& ue) : has_(false)
-  {
-    new (&storage_.error_) E(ue.error());
-  }
-
-  constexpr expected(unexpected<E>&& ue) : has_(false)
-  {
-    new (&storage_.error_) E(std::move(ue.error()));
-  }
-
-  template <typename... Args>
-  constexpr explicit expected(unexpect_t /*unused*/, Args&&... args) : has_(false)
-  {
-    new (&storage_.error_) E(std::forward<Args>(args)...);
-  }
-
-  // assignment operators
-  constexpr auto
-  operator=(expected const& other) -> expected&
-  {
-    if (this == &other)
-      return *this;
-    this->~expected();
-    new (this) expected(other);
+    storage_.assign_value(std::forward<U>(value));
     return *this;
   }
-
-  constexpr auto
-  operator=(expected&& other) noexcept(std::is_nothrow_move_constructible_v<T>
-                                       && std::is_nothrow_move_constructible_v<E>) -> expected&
+  template <typename G, std::enable_if_t<std::is_constructible_v<E, G const&> && std::is_assignable_v<E&, G const&>
+                                             && (std::is_nothrow_constructible_v<E, G const&>
+                                                 || std::is_nothrow_move_constructible_v<E>
+                                                 || std::is_nothrow_move_constructible_v<T>),
+                                         int> = 0>
+  auto
+  operator=(unexpected<G> const& error) -> expected&
   {
-    if (this == &other)
-      return *this;
-    this->~expected();
-    new (this) expected(std::move(other));
+    storage_.assign_error(error.error());
     return *this;
   }
-
-  template <typename u = T,
-            typename = std::enable_if_t<!std::is_same_v<std::decay_t<u>, expected> && std::is_constructible_v<T, u>>>
-  constexpr auto
-  operator=(u&& value) -> expected&
+  template <typename G,
+            std::enable_if_t<std::is_constructible_v<E, G> && std::is_assignable_v<E&, G>
+                                 && (std::is_nothrow_constructible_v<E, G> || std::is_nothrow_move_constructible_v<E>
+                                     || std::is_nothrow_move_constructible_v<T>),
+                             int> = 0>
+  auto
+  operator=(unexpected<G>&& error) -> expected&
   {
-    if (has_)
-      {
-        storage_.value_.~T();
-        new (&storage_.value_) T(std::forward<u>(value));
-      }
-    else
-      {
-        this->~expected();
-        new (this) expected(std::forward<u>(value));
-      }
+    storage_.assign_error(std::move(error).error());
     return *this;
-  }
-
-  constexpr auto
-  operator=(unexpected<E> const& ue) -> expected&
-  {
-    if (!has_)
-      {
-        storage_.error_ = ue.error();
-      }
-    else
-      {
-        this->~expected();
-        new (this) expected(ue);
-      }
-    return *this;
-  }
-
-  constexpr auto
-  operator=(unexpected<E>&& ue) -> expected&
-  {
-    if (!has_)
-      {
-        storage_.error_ = std::move(ue.error());
-      }
-    else
-      {
-        this->~expected();
-        new (this) expected(std::move(ue));
-      }
-    return *this;
-  }
-
-  ~expected()
-  {
-    if (has_)
-      storage_.value_.~T();
-    else
-      storage_.error_.~E();
-  }
-
-  // observers
-  constexpr auto
-  operator->() const noexcept -> T const*
-  {
-    return &storage_.value_;
-  }
-
-  constexpr auto
-  operator->() noexcept -> T*
-  {
-    return &storage_.value_;
-  }
-
-  constexpr auto
-  operator*() const& noexcept -> T const&
-  {
-    return storage_.value_;
-  }
-
-  constexpr auto
-  operator*() & noexcept -> T&
-  {
-    return storage_.value_;
-  }
-
-  constexpr auto
-  operator*() const&& noexcept -> T const&&
-  {
-    return std::move(storage_.value_);
-  }
-
-  constexpr auto
-  operator*() && noexcept -> T&&
-  {
-    return std::move(storage_.value_);
-  }
-
-  constexpr explicit
-  operator bool() const noexcept
-  {
-    return has_;
   }
 
   [[nodiscard]] constexpr auto
   has_value() const noexcept -> bool
   {
-    return has_;
+    return storage_.has_value();
   }
-
-  [[nodiscard]] constexpr auto
-  value() const& -> T const&
+  constexpr explicit
+  operator bool() const noexcept
   {
-    if (!has_)
-      THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(storage_.error_));
-    return storage_.value_;
+    return has_value();
+  }
+  constexpr auto
+  operator->() noexcept -> T*
+  {
+    return &storage_.value();
+  }
+  constexpr auto
+  operator->() const noexcept -> T const*
+  {
+    return &storage_.value();
+  }
+  constexpr auto
+  operator*() & noexcept -> T&
+  {
+    return storage_.value();
+  }
+  [[nodiscard]] constexpr auto
+  operator*() const& noexcept -> T const&
+  {
+    return storage_.value();
+  }
+  constexpr auto
+  operator*() && noexcept -> T&&
+  {
+    return std::move(storage_).value();
+  }
+  [[nodiscard]] constexpr auto
+  operator*() const&& noexcept -> T const&&
+  {
+    return std::move(storage_).value();
   }
 
-  constexpr auto
+  auto
   value() & -> T&
   {
-    if (!has_)
-      THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(storage_.error_));
-    return storage_.value_;
+    if (!has_value())
+      THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(storage_.error()));
+    return storage_.value();
   }
-
-  [[nodiscard]] constexpr auto
-  value() const&& -> T const&&
+  [[nodiscard]] auto
+  value() const& -> T const&
   {
-    if (!has_)
-      THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(std::move(storage_.error_)));
-    return std::move(storage_.value_);
+    if (!has_value())
+      THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(storage_.error()));
+    return storage_.value();
   }
-
-  constexpr auto
+  auto
   value() && -> T&&
   {
-    if (!has_)
-      THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(std::move(storage_.error_)));
-    return std::move(storage_.value_);
+    if (!has_value())
+      THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(std::move(storage_).error()));
+    return std::move(storage_).value();
   }
-
-  [[nodiscard]] constexpr auto
-  error() const& noexcept -> E const&
+  [[nodiscard]] auto
+  value() const&& -> T const&&
   {
-    return storage_.error_;
+    if (!has_value())
+      THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(std::move(storage_).error()));
+    return std::move(storage_).value();
   }
-
   constexpr auto
   error() & noexcept -> E&
   {
-    return storage_.error_;
+    return storage_.error();
   }
-
   [[nodiscard]] constexpr auto
-  error() const&& noexcept -> E const&&
+  error() const& noexcept -> E const&
   {
-    return std::move(storage_.error_);
+    return storage_.error();
   }
-
   constexpr auto
   error() && noexcept -> E&&
   {
-    return std::move(storage_.error_);
+    return std::move(storage_).error();
   }
-
-#if THREADSCHEDULE_HAS_STD_EXPECTED
-  template <typename u = T, typename g = E,
-            std::enable_if_t<std::is_copy_constructible_v<u> && std::is_copy_constructible_v<g>, int> = 0>
-  constexpr
-  operator std::expected<T, E>() const&
+  [[nodiscard]] constexpr auto
+  error() const&& noexcept -> E const&&
   {
-    if (has_)
-      return std::expected<T, E>(std::in_place, storage_.value_);
-    return std::expected<T, E>(std::unexpect, storage_.error_);
+    return std::move(storage_).error();
   }
 
-  template <typename u = T, typename g = E,
-            std::enable_if_t<std::is_move_constructible_v<u> && std::is_move_constructible_v<g>, int> = 0>
-  constexpr
-  operator std::expected<T, E>() &&
+  template <typename U>
+  auto
+  value_or(U&& fallback) const& -> T
   {
-    if (has_)
-      return std::expected<T, E>(std::in_place, std::move(storage_.value_));
-    return std::expected<T, E>(std::unexpect, std::move(storage_.error_));
+    return has_value() ? storage_.value() : static_cast<T>(std::forward<U>(fallback));
   }
-#endif
-
-  template <typename u>
-  constexpr auto
-  value_or(u&& default_value) const& -> T
+  template <typename U>
+  auto
+  value_or(U&& fallback) && -> T
   {
-    return has_ ? storage_.value_ : static_cast<T>(std::forward<u>(default_value));
+    return has_value() ? std::move(storage_).value() : static_cast<T>(std::forward<U>(fallback));
   }
-
-  template <typename u>
-  constexpr auto
-  value_or(u&& default_value) && -> T
+  template <typename... Args, std::enable_if_t<std::is_nothrow_constructible_v<T, Args...>, int> = 0>
+  auto
+  emplace(Args&&... args) noexcept -> T&
   {
-    return has_ ? std::move(storage_.value_) : static_cast<T>(std::forward<u>(default_value));
+    return storage_.emplace_value(std::forward<Args>(args)...);
   }
-
-  // emplace
-  template <typename... Args>
-  constexpr auto
-  emplace(Args&&... args) -> T&
-  {
-    this->~expected();
-    new (this) expected(std::in_place, std::forward<Args>(args)...);
-    return storage_.value_;
-  }
-
-  // swap
-  constexpr void
+  void
   swap(expected& other) noexcept(std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_constructible_v<E>
                                  && std::is_nothrow_swappable_v<T> && std::is_nothrow_swappable_v<E>)
   {
-    if (has_ && other.has_)
-      {
-        using std::swap;
-        swap(storage_.value_, other.storage_.value_);
-      }
-    else if (!has_ && !other.has_)
-      {
-        using std::swap;
-        swap(storage_.error_, other.storage_.error_);
-      }
-    else
-      {
-        expected temp(std::move(other));
-        other.~expected(); // NOLINT(bugprone-use-after-move): explicit
-                           // lifetime transition for placement new
-        new (&other) expected(std::move(*this));
-        this->~expected();
-        new (this) expected(std::move(temp));
-      }
+    storage_.swap_storage(other.storage_);
   }
 
-  // monadic operations
   template <typename F>
-  constexpr auto
+  auto
   and_then(F&& f) &
   {
-    using u = std::invoke_result_t<F, T&>;
-    if (has_)
-      return std::invoke(std::forward<F>(f), storage_.value_);
-    return u(unexpect, storage_.error_);
+    return and_then_impl(*this, std::forward<F>(f));
   }
-
   template <typename F>
-  constexpr auto
+  auto
   and_then(F&& f) const&
   {
-    using u = std::invoke_result_t<F, T const&>;
-    if (has_)
-      return std::invoke(std::forward<F>(f), storage_.value_);
-    return u(unexpect, storage_.error_);
+    return and_then_impl(*this, std::forward<F>(f));
   }
-
   template <typename F>
-  constexpr auto
+  auto
   and_then(F&& f) &&
   {
-    using u = std::invoke_result_t<F, T&&>;
-    if (has_)
-      return std::invoke(std::forward<F>(f), std::move(storage_.value_));
-    return u(unexpect, std::move(storage_.error_));
+    return and_then_impl(std::move(*this), std::forward<F>(f));
   }
-
   template <typename F>
-  constexpr auto
+  auto
   and_then(F&& f) const&&
   {
-    using u = std::invoke_result_t<F, T const&&>;
-    if (has_)
-      return std::invoke(std::forward<F>(f), std::move(storage_.value_));
-    return u(unexpect, std::move(storage_.error_));
+    return and_then_impl(std::move(*this), std::forward<F>(f));
   }
-
   template <typename F>
-  constexpr auto
+  auto
   or_else(F&& f) &
   {
-    using u = std::invoke_result_t<F, E&>;
-    if (has_)
-      return u(storage_.value_);
-    return std::invoke(std::forward<F>(f), storage_.error_);
+    return or_else_impl(*this, std::forward<F>(f));
   }
-
   template <typename F>
-  constexpr auto
+  auto
   or_else(F&& f) const&
   {
-    using u = std::invoke_result_t<F, E const&>;
-    if (has_)
-      return u(storage_.value_);
-    return std::invoke(std::forward<F>(f), storage_.error_);
+    return or_else_impl(*this, std::forward<F>(f));
   }
-
   template <typename F>
-  constexpr auto
+  auto
   or_else(F&& f) &&
   {
-    using u = std::invoke_result_t<F, E&&>;
-    if (has_)
-      return u(std::move(storage_.value_));
-    return std::invoke(std::forward<F>(f), std::move(storage_.error_));
+    return or_else_impl(std::move(*this), std::forward<F>(f));
   }
-
   template <typename F>
-  constexpr auto
+  auto
   or_else(F&& f) const&&
   {
-    using u = std::invoke_result_t<F, E const&&>;
-    if (has_)
-      return u(std::move(storage_.value_));
-    return std::invoke(std::forward<F>(f), std::move(storage_.error_));
+    return or_else_impl(std::move(*this), std::forward<F>(f));
   }
-
   template <typename F>
-  constexpr auto
+  auto
   transform(F&& f) &
   {
-    using u = std::remove_cv_t<std::invoke_result_t<F, T&>>;
-    if (has_)
-      return expected<u, E>(std::in_place, std::invoke(std::forward<F>(f), storage_.value_));
-    return expected<u, E>(unexpect, storage_.error_);
+    return transform_impl(*this, std::forward<F>(f));
   }
-
   template <typename F>
-  constexpr auto
+  auto
   transform(F&& f) const&
   {
-    using u = std::remove_cv_t<std::invoke_result_t<F, T const&>>;
-    if (has_)
-      return expected<u, E>(std::in_place, std::invoke(std::forward<F>(f), storage_.value_));
-    return expected<u, E>(unexpect, storage_.error_);
+    return transform_impl(*this, std::forward<F>(f));
   }
-
   template <typename F>
-  constexpr auto
+  auto
   transform(F&& f) &&
   {
-    using u = std::remove_cv_t<std::invoke_result_t<F, T&&>>;
-    if (has_)
-      return expected<u, E>(std::in_place, std::invoke(std::forward<F>(f), std::move(storage_.value_)));
-    return expected<u, E>(unexpect, std::move(storage_.error_));
+    return transform_impl(std::move(*this), std::forward<F>(f));
   }
-
   template <typename F>
-  constexpr auto
+  auto
   transform(F&& f) const&&
   {
-    using u = std::remove_cv_t<std::invoke_result_t<F, T const&&>>;
-    if (has_)
-      return expected<u, E>(std::in_place, std::invoke(std::forward<F>(f), std::move(storage_.value_)));
-    return expected<u, E>(unexpect, std::move(storage_.error_));
+    return transform_impl(std::move(*this), std::forward<F>(f));
   }
-
   template <typename F>
-  constexpr auto
+  auto
   transform_error(F&& f) &
   {
-    using g = std::remove_cv_t<std::invoke_result_t<F, E&>>;
-    if (has_)
-      return expected<T, g>(storage_.value_);
-    return expected<T, g>(unexpect, std::invoke(std::forward<F>(f), storage_.error_));
+    return transform_error_impl(*this, std::forward<F>(f));
   }
-
   template <typename F>
-  constexpr auto
+  auto
   transform_error(F&& f) const&
   {
-    using g = std::remove_cv_t<std::invoke_result_t<F, E const&>>;
-    if (has_)
-      return expected<T, g>(storage_.value_);
-    return expected<T, g>(unexpect, std::invoke(std::forward<F>(f), storage_.error_));
+    return transform_error_impl(*this, std::forward<F>(f));
   }
-
   template <typename F>
-  constexpr auto
+  auto
   transform_error(F&& f) &&
   {
-    using g = std::remove_cv_t<std::invoke_result_t<F, E&&>>;
-    if (has_)
-      return expected<T, g>(std::move(storage_.value_));
-    return expected<T, g>(unexpect, std::invoke(std::forward<F>(f), std::move(storage_.error_)));
+    return transform_error_impl(std::move(*this), std::forward<F>(f));
   }
-
   template <typename F>
-  constexpr auto
+  auto
   transform_error(F&& f) const&&
   {
-    using g = std::remove_cv_t<std::invoke_result_t<F, E const&&>>;
-    if (has_)
-      return expected<T, g>(std::move(storage_.value_));
-    return expected<T, g>(unexpect, std::invoke(std::forward<F>(f), std::move(storage_.error_)));
+    return transform_error_impl(std::move(*this), std::forward<F>(f));
   }
 
-  // equality operators
+#if THREADSCHEDULE_HAS_STD_EXPECTED
+  template <typename U = T, typename G = E,
+            std::enable_if_t<std::is_copy_constructible_v<U> && std::is_copy_constructible_v<G>, int> = 0>
+  operator std::expected<T, E>() const&
+  {
+    if (has_value())
+      return std::expected<T, E>(std::in_place, storage_.value());
+    return std::expected<T, E>(std::unexpect, storage_.error());
+  }
+  template <typename U = T, typename G = E,
+            std::enable_if_t<std::is_move_constructible_v<U> && std::is_move_constructible_v<G>, int> = 0>
+  operator std::expected<T, E>() &&
+  {
+    if (has_value())
+      return std::expected<T, E>(std::in_place, std::move(storage_).value());
+    return std::expected<T, E>(std::unexpect, std::move(storage_).error());
+  }
+#endif
+
   template <typename T2, typename E2>
-  constexpr friend auto
+  friend auto
   operator==(expected const& lhs, expected<T2, E2> const& rhs) -> bool
   {
     if (lhs.has_value() != rhs.has_value())
       return false;
-    if (lhs.has_value())
-      return *lhs == *rhs;
-    return lhs.error() == rhs.error();
+    return lhs.has_value() ? *lhs == *rhs : lhs.error() == rhs.error();
   }
-
   template <typename T2, typename E2>
-  constexpr friend auto
+  friend auto
   operator!=(expected const& lhs, expected<T2, E2> const& rhs) -> bool
   {
     return !(lhs == rhs);
   }
-
-  template <typename T2, typename = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
-  constexpr friend auto
-  operator==(expected const& lhs, const T2& rhs) -> bool
+  template <typename T2, std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>, int> = 0>
+  friend auto
+  operator==(expected const& lhs, T2 const& rhs) -> bool
   {
     return lhs.has_value() && *lhs == rhs;
   }
-
-  template <typename T2, typename = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
-  constexpr friend auto
-  operator==(const T2& lhs, expected const& rhs) -> bool
+  template <typename T2, std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>, int> = 0>
+  friend auto
+  operator==(T2 const& lhs, expected const& rhs) -> bool
   {
     return rhs.has_value() && lhs == *rhs;
   }
-
-  template <typename T2, typename = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
-  constexpr friend auto
-  operator!=(expected const& lhs, const T2& rhs) -> bool
+  template <typename T2, std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>, int> = 0>
+  friend auto
+  operator!=(expected const& lhs, T2 const& rhs) -> bool
   {
     return !(lhs == rhs);
   }
-
-  template <typename T2, typename = std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>>>
-  constexpr friend auto
-  operator!=(const T2& lhs, expected const& rhs) -> bool
+  template <typename T2, std::enable_if_t<!std::is_same_v<expected, std::decay_t<T2>>, int> = 0>
+  friend auto
+  operator!=(T2 const& lhs, expected const& rhs) -> bool
   {
     return !(lhs == rhs);
   }
-
   template <typename E2>
-  constexpr friend auto
+  friend auto
   operator==(expected const& lhs, unexpected<E2> const& rhs) -> bool
   {
     return !lhs.has_value() && lhs.error() == rhs.error();
   }
-
   template <typename E2>
-  constexpr friend auto
+  friend auto
   operator==(unexpected<E2> const& lhs, expected const& rhs) -> bool
   {
-    return !rhs.has_value() && lhs.error() == rhs.error();
+    return rhs == lhs;
   }
-
   template <typename E2>
-  constexpr friend auto
+  friend auto
   operator!=(expected const& lhs, unexpected<E2> const& rhs) -> bool
   {
     return !(lhs == rhs);
   }
-
   template <typename E2>
-  constexpr friend auto
+  friend auto
   operator!=(unexpected<E2> const& lhs, expected const& rhs) -> bool
   {
-    return !(lhs == rhs);
+    return !(rhs == lhs);
   }
 
 private:
-  bool has_;
-  union Storage
+  template <typename Self, typename F>
+  static auto
+  and_then_impl(Self&& self, F&& f)
   {
-    Storage() {};
-    ~Storage() {};
-    T value_;
-    E error_;
-  } storage_;
+    using result_type = std::invoke_result_t<F, decltype(*std::forward<Self>(self))>;
+    if (self.has_value())
+      return std::invoke(std::forward<F>(f), *std::forward<Self>(self));
+    return result_type(unexpect, std::forward<Self>(self).error());
+  }
+  template <typename Self, typename F>
+  static auto
+  or_else_impl(Self&& self, F&& f)
+  {
+    using result_type = std::invoke_result_t<F, decltype(std::forward<Self>(self).error())>;
+    if (self.has_value())
+      return result_type(*std::forward<Self>(self));
+    return std::invoke(std::forward<F>(f), std::forward<Self>(self).error());
+  }
+  template <typename Self, typename F>
+  static auto
+  transform_impl(Self&& self, F&& f)
+  {
+    using result_value = std::remove_cv_t<std::invoke_result_t<F, decltype(*std::forward<Self>(self))>>;
+    if (self.has_value())
+      {
+        if constexpr (std::is_void_v<result_value>)
+          {
+            std::invoke(std::forward<F>(f), *std::forward<Self>(self));
+            return expected<void, E>();
+          }
+        else
+          return expected<result_value, E>(std::in_place, std::invoke(std::forward<F>(f), *std::forward<Self>(self)));
+      }
+    return expected<result_value, E>(unexpect, std::forward<Self>(self).error());
+  }
+  template <typename Self, typename F>
+  static auto
+  transform_error_impl(Self&& self, F&& f)
+  {
+    using result_error = std::remove_cv_t<std::invoke_result_t<F, decltype(std::forward<Self>(self).error())>>;
+    if (self.has_value())
+      return expected<T, result_error>(*std::forward<Self>(self));
+    return expected<T, result_error>(unexpect, std::invoke(std::forward<F>(f), std::forward<Self>(self).error()));
+  }
+
+  detail::expected_storage<T, E> storage_;
 };
 
-/**
- * @brief Specialization of expected for operations that produce no value.
- *
- * @c expected<void, E> can be in either a "success" state (has_value() is
- * @c true, no payload) or an "error" state carrying an @p E.  This is
- * useful for functions that can fail but have nothing to return on success.
- *
- * @tparam E The error type.  Defaults to @c std::error_code in the primary
- *           template; here it is explicitly specified by the user.
- *
- * @see expected<T, E>
- */
 template <typename E>
 class expected<void, E>
 {
+  using storage_type = detail::expected_storage<std::monostate, E>;
+
 public:
   using value_type = void;
   using error_type = E;
   using unexpected_type = unexpected<E>;
 
-  constexpr expected() : has_(true) {}
+  constexpr expected() : storage_(detail::expected_value_tag{}) {}
+  expected(expected const&) = default;
+  expected(expected&&) = default;
+  auto operator=(expected const&) -> expected& = default;
+  auto operator=(expected&&) -> expected& = default;
+  ~expected() = default;
 
-  constexpr expected(expected const& other) = default;
-  constexpr expected(expected&& other) = default;
-
-  template <typename... Args>
-  constexpr explicit expected(unexpect_t /*unused*/, Args&&... args) : has_(false), error_(std::forward<Args>(args)...)
+  template <typename... Args, std::enable_if_t<std::is_constructible_v<E, Args...>, int> = 0>
+  constexpr explicit expected(unexpect_t, Args&&... args)
+      : storage_(detail::expected_error_tag{}, std::forward<Args>(args)...)
   {
   }
+  constexpr expected(unexpected<E> const& error) : storage_(detail::expected_error_tag{}, error.error()) {}
+  constexpr expected(unexpected<E>&& error) : storage_(detail::expected_error_tag{}, std::move(error).error()) {}
 
-  constexpr expected(unexpected<E> const& ue) : has_(false), error_(ue.error()) {}
-
-  constexpr expected(unexpected<E>&& ue) : has_(false), error_(std::move(ue.error())) {}
-
-  constexpr auto operator=(expected const& other) -> expected& = default;
-  constexpr auto operator=(expected&& other) -> expected& = default;
-
-  constexpr auto
-  operator=(unexpected<E> const& ue) -> expected&
+  template <typename G, std::enable_if_t<std::is_constructible_v<E, G const&> && std::is_assignable_v<E&, G const&>
+                                             && (std::is_nothrow_constructible_v<E, G const&>
+                                                 || std::is_nothrow_move_constructible_v<E>),
+                                         int> = 0>
+  auto
+  operator=(unexpected<G> const& error) -> expected&
   {
-    has_ = false;
-    error_ = ue.error();
+    storage_.assign_error(error.error());
     return *this;
   }
-
-  constexpr auto
-  operator=(unexpected<E>&& ue) -> expected&
+  template <typename G,
+            std::enable_if_t<std::is_constructible_v<E, G> && std::is_assignable_v<E&, G>
+                                 && (std::is_nothrow_constructible_v<E, G> || std::is_nothrow_move_constructible_v<E>),
+                             int> = 0>
+  auto
+  operator=(unexpected<G>&& error) -> expected&
   {
-    has_ = false;
-    error_ = std::move(ue.error());
+    storage_.assign_error(std::move(error).error());
     return *this;
-  }
-
-  constexpr explicit
-  operator bool() const noexcept
-  {
-    return has_;
   }
 
   [[nodiscard]] constexpr auto
   has_value() const noexcept -> bool
   {
-    return has_;
+    return storage_.has_value();
   }
-
-  constexpr void
+  constexpr explicit
+  operator bool() const noexcept
+  {
+    return has_value();
+  }
+  void
   value() const
   {
-    if (!has_)
-      THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(error_));
+    if (!has_value())
+      THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(storage_.error()));
   }
-
-  [[nodiscard]] constexpr auto
-  error() const& noexcept -> E const&
-  {
-    return error_;
-  }
-
   constexpr auto
   error() & noexcept -> E&
   {
-    return error_;
+    return storage_.error();
   }
-
   [[nodiscard]] constexpr auto
-  error() const&& noexcept -> E const&&
+  error() const& noexcept -> E const&
   {
-    return std::move(error_);
+    return storage_.error();
   }
-
   constexpr auto
   error() && noexcept -> E&&
   {
-    return std::move(error_);
+    return std::move(storage_).error();
+  }
+  [[nodiscard]] constexpr auto
+  error() const&& noexcept -> E const&&
+  {
+    return std::move(storage_).error();
+  }
+  void
+  emplace() noexcept
+  {
+    storage_.emplace_value();
+  }
+  void
+  swap(expected& other) noexcept(std::is_nothrow_move_constructible_v<E> && std::is_nothrow_swappable_v<E>)
+  {
+    storage_.swap_storage(other.storage_);
+  }
+
+  template <typename F>
+  auto
+  and_then(F&& f) &
+  {
+    return and_then_impl(*this, std::forward<F>(f));
+  }
+  template <typename F>
+  auto
+  and_then(F&& f) const&
+  {
+    return and_then_impl(*this, std::forward<F>(f));
+  }
+  template <typename F>
+  auto
+  and_then(F&& f) &&
+  {
+    return and_then_impl(std::move(*this), std::forward<F>(f));
+  }
+  template <typename F>
+  auto
+  and_then(F&& f) const&&
+  {
+    return and_then_impl(std::move(*this), std::forward<F>(f));
+  }
+  template <typename F>
+  auto
+  or_else(F&& f) &
+  {
+    return or_else_impl(*this, std::forward<F>(f));
+  }
+  template <typename F>
+  auto
+  or_else(F&& f) const&
+  {
+    return or_else_impl(*this, std::forward<F>(f));
+  }
+  template <typename F>
+  auto
+  or_else(F&& f) &&
+  {
+    return or_else_impl(std::move(*this), std::forward<F>(f));
+  }
+  template <typename F>
+  auto
+  or_else(F&& f) const&&
+  {
+    return or_else_impl(std::move(*this), std::forward<F>(f));
+  }
+  template <typename F>
+  auto
+  transform(F&& f) &
+  {
+    return transform_impl(*this, std::forward<F>(f));
+  }
+  template <typename F>
+  auto
+  transform(F&& f) const&
+  {
+    return transform_impl(*this, std::forward<F>(f));
+  }
+  template <typename F>
+  auto
+  transform(F&& f) &&
+  {
+    return transform_impl(std::move(*this), std::forward<F>(f));
+  }
+  template <typename F>
+  auto
+  transform(F&& f) const&&
+  {
+    return transform_impl(std::move(*this), std::forward<F>(f));
+  }
+  template <typename F>
+  auto
+  transform_error(F&& f) &
+  {
+    return transform_error_impl(*this, std::forward<F>(f));
+  }
+  template <typename F>
+  auto
+  transform_error(F&& f) const&
+  {
+    return transform_error_impl(*this, std::forward<F>(f));
+  }
+  template <typename F>
+  auto
+  transform_error(F&& f) &&
+  {
+    return transform_error_impl(std::move(*this), std::forward<F>(f));
+  }
+  template <typename F>
+  auto
+  transform_error(F&& f) const&&
+  {
+    return transform_error_impl(std::move(*this), std::forward<F>(f));
   }
 
 #if THREADSCHEDULE_HAS_STD_EXPECTED
-  template <typename g = E, std::enable_if_t<std::is_copy_constructible_v<g>, int> = 0>
-  constexpr
+  template <typename G = E, std::enable_if_t<std::is_copy_constructible_v<G>, int> = 0>
   operator std::expected<void, E>() const&
   {
-    if (has_)
+    if (has_value())
       return std::expected<void, E>();
-    return std::expected<void, E>(std::unexpect, error_);
+    return std::expected<void, E>(std::unexpect, storage_.error());
   }
-
-  template <typename g = E, std::enable_if_t<std::is_move_constructible_v<g>, int> = 0>
-  constexpr
+  template <typename G = E, std::enable_if_t<std::is_move_constructible_v<G>, int> = 0>
   operator std::expected<void, E>() &&
   {
-    if (has_)
+    if (has_value())
       return std::expected<void, E>();
-    return std::expected<void, E>(std::unexpect, std::move(error_));
+    return std::expected<void, E>(std::unexpect, std::move(storage_).error());
   }
 #endif
 
-  constexpr void
-  emplace()
-  {
-    has_ = true;
-  }
-
-  constexpr void
-  swap(expected& other) noexcept(std::is_nothrow_move_constructible_v<E> && std::is_nothrow_swappable_v<E>)
-  {
-    if (has_ && other.has_)
-      {
-        // both have values, nothing to swap
-      }
-    else if (!has_ && !other.has_)
-      {
-        using std::swap;
-        swap(error_, other.error_);
-      }
-    else
-      {
-        std::swap(has_, other.has_);
-        std::swap(error_, other.error_);
-      }
-  }
-
-  // monadic operations
-  template <typename F>
-  constexpr auto
-  and_then(F&& f) &
-  {
-    using u = std::invoke_result_t<F>;
-    if (has_)
-      return std::invoke(std::forward<F>(f));
-    return u(unexpect, error_);
-  }
-
-  template <typename F>
-  constexpr auto
-  and_then(F&& f) const&
-  {
-    using u = std::invoke_result_t<F>;
-    if (has_)
-      return std::invoke(std::forward<F>(f));
-    return u(unexpect, error_);
-  }
-
-  template <typename F>
-  constexpr auto
-  and_then(F&& f) &&
-  {
-    using u = std::invoke_result_t<F>;
-    if (has_)
-      return std::invoke(std::forward<F>(f));
-    return u(unexpect, std::move(error_));
-  }
-
-  template <typename F>
-  constexpr auto
-  and_then(F&& f) const&&
-  {
-    using u = std::invoke_result_t<F>;
-    if (has_)
-      return std::invoke(std::forward<F>(f));
-    return u(unexpect, std::move(error_));
-  }
-
-  template <typename F>
-  constexpr auto
-  or_else(F&& f) &
-  {
-    using u = std::invoke_result_t<F, E&>;
-    if (has_)
-      return u();
-    return std::invoke(std::forward<F>(f), error_);
-  }
-
-  template <typename F>
-  constexpr auto
-  or_else(F&& f) const&
-  {
-    using u = std::invoke_result_t<F, E const&>;
-    if (has_)
-      return u();
-    return std::invoke(std::forward<F>(f), error_);
-  }
-
-  template <typename F>
-  constexpr auto
-  or_else(F&& f) &&
-  {
-    using u = std::invoke_result_t<F, E&&>;
-    if (has_)
-      return u();
-    return std::invoke(std::forward<F>(f), std::move(error_));
-  }
-
-  template <typename F>
-  constexpr auto
-  or_else(F&& f) const&&
-  {
-    using u = std::invoke_result_t<F, E const&&>;
-    if (has_)
-      return u();
-    return std::invoke(std::forward<F>(f), std::move(error_));
-  }
-
-  template <typename F>
-  constexpr auto
-  transform(F&& f) &
-  {
-    using u = std::remove_cv_t<std::invoke_result_t<F>>;
-    if (has_)
-      return expected<u, E>(std::in_place, std::invoke(std::forward<F>(f)));
-    return expected<u, E>(unexpect, error_);
-  }
-
-  template <typename F>
-  constexpr auto
-  transform(F&& f) const&
-  {
-    using u = std::remove_cv_t<std::invoke_result_t<F>>;
-    if (has_)
-      return expected<u, E>(std::in_place, std::invoke(std::forward<F>(f)));
-    return expected<u, E>(unexpect, error_);
-  }
-
-  template <typename F>
-  constexpr auto
-  transform(F&& f) &&
-  {
-    using u = std::remove_cv_t<std::invoke_result_t<F>>;
-    if (has_)
-      return expected<u, E>(std::in_place, std::invoke(std::forward<F>(f)));
-    return expected<u, E>(unexpect, std::move(error_));
-  }
-
-  template <typename F>
-  constexpr auto
-  transform(F&& f) const&&
-  {
-    using u = std::remove_cv_t<std::invoke_result_t<F>>;
-    if (has_)
-      return expected<u, E>(std::in_place, std::invoke(std::forward<F>(f)));
-    return expected<u, E>(unexpect, std::move(error_));
-  }
-
-  template <typename F>
-  constexpr auto
-  transform_error(F&& f) &
-  {
-    using g = std::remove_cv_t<std::invoke_result_t<F, E&>>;
-    if (has_)
-      return expected<void, g>();
-    return expected<void, g>(unexpect, std::invoke(std::forward<F>(f), error_));
-  }
-
-  template <typename F>
-  constexpr auto
-  transform_error(F&& f) const&
-  {
-    using g = std::remove_cv_t<std::invoke_result_t<F, E const&>>;
-    if (has_)
-      return expected<void, g>();
-    return expected<void, g>(unexpect, std::invoke(std::forward<F>(f), error_));
-  }
-
-  template <typename F>
-  constexpr auto
-  transform_error(F&& f) &&
-  {
-    using g = std::remove_cv_t<std::invoke_result_t<F, E&&>>;
-    if (has_)
-      return expected<void, g>();
-    return expected<void, g>(unexpect, std::invoke(std::forward<F>(f), std::move(error_)));
-  }
-
-  template <typename F>
-  constexpr auto
-  transform_error(F&& f) const&&
-  {
-    using g = std::remove_cv_t<std::invoke_result_t<F, E const&&>>;
-    if (has_)
-      return expected<void, g>();
-    return expected<void, g>(unexpect, std::invoke(std::forward<F>(f), std::move(error_)));
-  }
-
-  // equality operators
   template <typename E2>
-  constexpr friend auto
+  friend auto
   operator==(expected const& lhs, expected<void, E2> const& rhs) -> bool
   {
     if (lhs.has_value() != rhs.has_value())
       return false;
-    if (lhs.has_value())
-      return true;
-    return lhs.error() == rhs.error();
+    return lhs.has_value() || lhs.error() == rhs.error();
   }
-
   template <typename E2>
-  constexpr friend auto
+  friend auto
   operator!=(expected const& lhs, expected<void, E2> const& rhs) -> bool
   {
     return !(lhs == rhs);
   }
-
   template <typename E2>
-  constexpr friend auto
+  friend auto
   operator==(expected const& lhs, unexpected<E2> const& rhs) -> bool
   {
     return !lhs.has_value() && lhs.error() == rhs.error();
   }
-
   template <typename E2>
-  constexpr friend auto
+  friend auto
   operator==(unexpected<E2> const& lhs, expected const& rhs) -> bool
   {
-    return !rhs.has_value() && lhs.error() == rhs.error();
+    return rhs == lhs;
   }
-
   template <typename E2>
-  constexpr friend auto
+  friend auto
   operator!=(expected const& lhs, unexpected<E2> const& rhs) -> bool
   {
     return !(lhs == rhs);
   }
-
   template <typename E2>
-  constexpr friend auto
+  friend auto
   operator!=(unexpected<E2> const& lhs, expected const& rhs) -> bool
   {
-    return !(lhs == rhs);
+    return !(rhs == lhs);
   }
 
 private:
-  bool has_;
-  E error_{};
+  template <typename Self, typename F>
+  static auto
+  and_then_impl(Self&& self, F&& f)
+  {
+    using result_type = std::invoke_result_t<F>;
+    if (self.has_value())
+      return std::invoke(std::forward<F>(f));
+    return result_type(unexpect, std::forward<Self>(self).error());
+  }
+  template <typename Self, typename F>
+  static auto
+  or_else_impl(Self&& self, F&& f)
+  {
+    using result_type = std::invoke_result_t<F, decltype(std::forward<Self>(self).error())>;
+    if (self.has_value())
+      return result_type();
+    return std::invoke(std::forward<F>(f), std::forward<Self>(self).error());
+  }
+  template <typename Self, typename F>
+  static auto
+  transform_impl(Self&& self, F&& f)
+  {
+    using result_value = std::remove_cv_t<std::invoke_result_t<F>>;
+    if (self.has_value())
+      {
+        if constexpr (std::is_void_v<result_value>)
+          {
+            std::invoke(std::forward<F>(f));
+            return expected<void, E>();
+          }
+        else
+          return expected<result_value, E>(std::in_place, std::invoke(std::forward<F>(f)));
+      }
+    return expected<result_value, E>(unexpect, std::forward<Self>(self).error());
+  }
+  template <typename Self, typename F>
+  static auto
+  transform_error_impl(Self&& self, F&& f)
+  {
+    using result_error = std::remove_cv_t<std::invoke_result_t<F, decltype(std::forward<Self>(self).error())>>;
+    if (self.has_value())
+      return expected<void, result_error>();
+    return expected<void, result_error>(unexpect, std::invoke(std::forward<F>(f), std::forward<Self>(self).error()));
+  }
+
+  storage_type storage_;
 };
 
-// swap for expected
 template <typename T, typename E>
-constexpr void
+void
 swap(expected<T, E>& lhs, expected<T, E>& rhs) noexcept(noexcept(lhs.swap(rhs)))
 {
   lhs.swap(rhs);
 }
 
 } // namespace threadschedule
+
+#undef THREADSCHEDULE_EXPECTED_THROW

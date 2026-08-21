@@ -56,7 +56,11 @@ are available where a throwing operation is otherwise useful.
 When the standard library provides C++23 `std::expected`, a
 `threadschedule::expected<T, E>` implicitly converts to the matching
 `std::expected<T, E>`. Converting an lvalue copies its active value or error;
-converting an rvalue moves it, including move-only payloads.
+converting an rvalue moves it, including move-only payloads. Copy and move
+operations participate only when the stored types support them. State-changing
+assignment preserves the previous alternative if construction of the new one
+throws, `expected<void, E>` does not construct an inactive `E`, and
+`transform(...)` supports callables returning either a value or `void`.
 
 An accepted task returns a standard future. Exceptions thrown by the task are
 stored in the future and rethrown by `get()`. A callback installed with
@@ -206,6 +210,11 @@ It also accepts `thread_config` as its first constructor argument. There is no
 fallback `jthread` type in C++17.
 
 ## Thread pools
+
+Pool destruction normally joins the worker set according to the configured
+shutdown policy. If the last owner is released by one of the pool's own tasks,
+cleanup is transferred to a separate reaper thread so the current worker is
+not asked to join itself.
 
 ```cpp
 threadschedule::thread_pool_config config;

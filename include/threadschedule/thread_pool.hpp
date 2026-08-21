@@ -147,16 +147,7 @@ public:
   {
     if (this != &other)
       {
-        if (impl_)
-          {
-            try
-              {
-                impl_->shutdown(detail::to_native(config_.get_shutdown_policy()));
-              }
-            catch (...)
-              {
-              }
-          }
+        dispose_impl();
         config_ = std::move(other.config_);
         impl_ = std::move(other.impl_);
       }
@@ -183,15 +174,7 @@ public:
    */
   ~thread_pool()
   {
-    if (!impl_)
-      return;
-    try
-      {
-        impl_->shutdown(detail::to_native(config_.get_shutdown_policy()));
-      }
-    catch (...)
-      {
-      }
+    dispose_impl();
   }
 
   /**
@@ -387,6 +370,53 @@ public:
   }
 
 private:
+  void
+  dispose_impl() noexcept
+  {
+    if (!impl_)
+      return;
+
+    auto const policy = detail::to_native(config_.get_shutdown_policy());
+    if (!impl_->is_current_worker())
+      {
+        try
+          {
+            impl_->shutdown(policy);
+          }
+        catch (...)
+          {
+          }
+        impl_.reset();
+        return;
+      }
+
+    // The backend remains in use until the current task returns. Transfer its
+    // ownership to a reaper thread, which can safely join every worker.
+    auto* backend = impl_.release();
+    try
+      {
+        std::thread reaper(
+            [backend, policy]() noexcept
+              {
+                std::unique_ptr<detail::thread_pool_backend> owner(backend);
+                try
+                  {
+                    owner->shutdown(policy);
+                  }
+                catch (...)
+                  {
+                  }
+              });
+        reaper.detach();
+      }
+    catch (...)
+      {
+        // No thread can safely reclaim a backend that is executing this
+        // destructor. Keeping it alive is the only non-terminating fallback.
+        (void)backend;
+      }
+  }
+
   thread_pool_config config_;
   std::unique_ptr<detail::thread_pool_backend> impl_;
 };

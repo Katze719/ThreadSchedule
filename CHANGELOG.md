@@ -26,6 +26,8 @@
   explicitly named `*_or_throw` operations make the alternate policy visible.
 - Kept `expected` library-owned in every language mode and added implicit conversion to matching C++23 `std::expected`
   specializations, including rvalue conversion of move-only values and errors.
+- Made `expected` state changes exception-safe, aligned copy/move traits with the stored types, avoided constructing an
+  inactive error in `expected<void, E>`, and supported `void` results from both `transform` specializations.
 
 ### Threads and scheduling
 
@@ -86,6 +88,8 @@
 - Hardened pool lifecycle behavior: self-wait and self-shutdown report `resource_deadlock_would_occur`, moved-from objects
   remain safely inspectable, dropped tasks release futures and captures, worker-construction failures unwind, and concurrent
   shutdown/submission paths preserve accepted work according to the selected policy.
+- Made destruction of the last `thread_pool` owner from one of its own tasks hand cleanup to a reaper thread instead of
+  terminating when the backend attempts to join the current worker.
 - Corrected timed shutdown so submission closes before waiting and corrected scheduled timed waits so queue mutation during
   shutdown cannot invalidate the active deadline.
 - Made advanced batch submission consume single-pass input ranges exactly once, while diagnosing the forward-iterator

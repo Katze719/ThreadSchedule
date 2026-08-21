@@ -765,6 +765,35 @@ TEST(V3Api, SubmissionErrorsUseExpectedByDefault)
   EXPECT_THROW(pool.submit_or_throw([] {}), std::system_error);
 }
 
+TEST(V3Api, PoolMayReleaseItsLastOwnerFromAWorker)
+{
+  auto pool = std::make_shared<threadschedule::thread_pool>(threadschedule::worker_count{ 1 });
+  std::weak_ptr<threadschedule::thread_pool> observer = pool;
+  std::promise<void> started;
+  auto started_future = started.get_future();
+  std::promise<void> release;
+  auto release_future = release.get_future().share();
+  std::promise<void> completed;
+  auto completed_future = completed.get_future();
+
+  auto posted = pool->post(
+      [keep_alive = pool, &started, release_future, &completed]() mutable
+        {
+          started.set_value();
+          release_future.wait();
+          keep_alive.reset();
+          completed.set_value();
+        });
+  ASSERT_TRUE(posted.has_value());
+  ASSERT_EQ(started_future.wait_for(2s), std::future_status::ready);
+
+  pool.reset();
+  release.set_value();
+
+  EXPECT_EQ(completed_future.wait_for(2s), std::future_status::ready);
+  EXPECT_TRUE(observer.expired());
+}
+
 TEST(V3Api, AdvancedPoolsRemainAvailable)
 {
   static_assert(!std::is_constructible_v<threadschedule::advanced::work_stealing_pool, std::size_t>);
