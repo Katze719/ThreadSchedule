@@ -601,6 +601,8 @@ struct external_registry_binding_state
 
   thread_registry_backend* registry{ nullptr };
   std::shared_ptr<thread_registry_backend> owner;
+  std::shared_ptr<external_registry_binding_state> previous;
+  bool active{ true };
 };
 
 #if defined(THREADSCHEDULE_RUNTIME)

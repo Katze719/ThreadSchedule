@@ -813,6 +813,31 @@ TEST(PoolBackendTest, ScheduledShutdownCancelsAndReleasesPendingTasks)
   EXPECT_TRUE(weak_payload.expired());
 }
 
+TEST(PoolBackendTest, ScheduledConcurrentShutdownIsRaceFree)
+{
+  for (int iteration = 0; iteration < 32; ++iteration)
+    {
+      scheduled_pool_backend scheduler(1);
+      std::atomic<int> ready{ 0 };
+      std::atomic<bool> start{ false };
+      auto shutdown = [&]
+        {
+          ready.fetch_add(1, std::memory_order_release);
+          while (!start.load(std::memory_order_acquire))
+            std::this_thread::yield();
+          scheduler.shutdown();
+        };
+
+      std::thread first(shutdown);
+      std::thread second(shutdown);
+      while (ready.load(std::memory_order_acquire) != 2)
+        std::this_thread::yield();
+      start.store(true, std::memory_order_release);
+      first.join();
+      second.join();
+    }
+}
+
 TEST(PoolBackendTest, ScheduledPeriodicCallableDoesNotRunConcurrently)
 {
   scheduled_pool_backend scheduler(2);

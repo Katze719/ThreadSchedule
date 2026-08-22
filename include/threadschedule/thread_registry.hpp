@@ -370,7 +370,7 @@ public:
     owner_ = registry.owned_;
     state_ = std::make_shared<detail::external_registry_binding_state>(owner_);
     registry.track_binding(state_);
-    previous_state_ = detail::runtime_exchange_external_registry_state(state_);
+    state_->previous = detail::runtime_exchange_external_registry_state(state_);
   }
 
   ~global_registry_binding()
@@ -382,8 +382,7 @@ public:
   auto operator=(global_registry_binding const&) -> global_registry_binding& = delete;
 
   global_registry_binding(global_registry_binding&& other) noexcept
-      : owner_(std::move(other.owner_)), state_(std::move(other.state_)),
-        previous_state_(std::move(other.previous_state_))
+      : owner_(std::move(other.owner_)), state_(std::move(other.state_))
   {
   }
 
@@ -395,7 +394,6 @@ public:
         reset();
         owner_ = std::move(other.owner_);
         state_ = std::move(other.state_);
-        previous_state_ = std::move(other.previous_state_);
       }
     return *this;
   }
@@ -405,15 +403,22 @@ private:
   reset() noexcept
   {
     if (state_)
-      detail::runtime_set_external_registry_state(previous_state_);
+      {
+        state_->active = false;
+        if (detail::runtime_external_registry_state() == state_)
+          {
+            auto previous = state_->previous;
+            while (previous && !previous->active)
+              previous = previous->previous;
+            detail::runtime_set_external_registry_state(std::move(previous));
+          }
+      }
     owner_.reset();
     state_.reset();
-    previous_state_.reset();
   }
 
   std::shared_ptr<detail::thread_registry_backend> owner_;
   std::shared_ptr<detail::external_registry_binding_state> state_;
-  std::shared_ptr<detail::external_registry_binding_state> previous_state_;
 };
 
 /** @brief RAII registration of the calling thread in a portable registry. */

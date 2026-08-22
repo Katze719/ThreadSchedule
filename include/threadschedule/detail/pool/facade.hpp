@@ -15,6 +15,7 @@
 #include <future>
 #include <memory>
 #include <system_error>
+#include <thread>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -45,6 +46,53 @@ struct has_stolen_tasks<T, std::void_t<decltype(std::declval<T const&>().stolen_
 };
 
 template <typename Backend>
+void
+dispose_pool_backend(std::unique_ptr<Backend>& backend) noexcept
+{
+  if (!backend)
+    return;
+
+  if (!backend->is_current_worker())
+    {
+      try
+        {
+          backend->shutdown(shutdown_policy_backend::drain);
+        }
+      catch (...)
+        {
+        }
+      backend.reset();
+      return;
+    }
+
+  // The backend is still executing the callback that destroys its facade.
+  // Transfer ownership until a different thread can safely join every worker.
+  auto* pending = backend.release();
+  try
+    {
+      std::thread reaper(
+          [pending]() noexcept
+            {
+              std::unique_ptr<Backend> owner(pending);
+              try
+                {
+                  owner->shutdown(shutdown_policy_backend::drain);
+                }
+              catch (...)
+                {
+                }
+            });
+      reaper.detach();
+    }
+  catch (...)
+    {
+      // Destroying the backend on this worker would terminate the process.
+      // Keeping it alive is the only non-terminating fallback.
+      (void)pending;
+    }
+}
+
+template <typename Backend>
 class submitting_pool_facade
 {
 public:
@@ -55,8 +103,17 @@ public:
 
   submitting_pool_facade(submitting_pool_facade const&) = delete;
   auto operator=(submitting_pool_facade const&) -> submitting_pool_facade& = delete;
-  submitting_pool_facade(submitting_pool_facade&&) noexcept = default;
-  auto operator=(submitting_pool_facade&&) noexcept -> submitting_pool_facade& = default;
+  submitting_pool_facade(submitting_pool_facade&& other) noexcept : impl_(std::move(other.impl_)) {}
+  auto
+  operator=(submitting_pool_facade&& other) noexcept -> submitting_pool_facade&
+  {
+    if (this != &other)
+      {
+        dispose_pool_backend(impl_);
+        impl_ = std::move(other.impl_);
+      }
+    return *this;
+  }
 
   template <typename F, typename... Args>
   auto
@@ -214,7 +271,10 @@ public:
   }
 
 protected:
-  ~submitting_pool_facade() = default;
+  ~submitting_pool_facade()
+  {
+    dispose_pool_backend(impl_);
+  }
 
 private:
   std::unique_ptr<Backend> impl_;
@@ -231,8 +291,17 @@ public:
 
   lightweight_pool_facade(lightweight_pool_facade const&) = delete;
   auto operator=(lightweight_pool_facade const&) -> lightweight_pool_facade& = delete;
-  lightweight_pool_facade(lightweight_pool_facade&&) noexcept = default;
-  auto operator=(lightweight_pool_facade&&) noexcept -> lightweight_pool_facade& = default;
+  lightweight_pool_facade(lightweight_pool_facade&& other) noexcept : impl_(std::move(other.impl_)) {}
+  auto
+  operator=(lightweight_pool_facade&& other) noexcept -> lightweight_pool_facade&
+  {
+    if (this != &other)
+      {
+        dispose_pool_backend(impl_);
+        impl_ = std::move(other.impl_);
+      }
+    return *this;
+  }
 
   template <typename F, typename... Args>
   auto
@@ -303,7 +372,10 @@ public:
   }
 
 protected:
-  ~lightweight_pool_facade() = default;
+  ~lightweight_pool_facade()
+  {
+    dispose_pool_backend(impl_);
+  }
 
 private:
   std::unique_ptr<Backend> impl_;

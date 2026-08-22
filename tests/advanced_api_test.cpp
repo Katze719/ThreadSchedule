@@ -320,6 +320,36 @@ TEST(AdvancedApi, SpecializedPoolsSubmitAndShutdown)
 
 template <typename Pool>
 void
+exercise_pool_last_owner_release()
+{
+  auto pool = std::make_shared<Pool>(threadschedule::worker_count{ 1 });
+  std::weak_ptr<Pool> observer = pool;
+  std::promise<void> completed;
+  auto completed_future = completed.get_future();
+
+  auto posted = pool->post(
+      [keep_alive = pool, &completed]() mutable
+        {
+          keep_alive.reset();
+          completed.set_value();
+        });
+  ASSERT_TRUE(posted.has_value());
+  pool.reset();
+
+  EXPECT_EQ(completed_future.wait_for(2s), std::future_status::ready);
+  EXPECT_TRUE(observer.expired());
+}
+
+TEST(AdvancedApi, PoolFacadesMayReleaseTheirLastOwnerFromAWorker)
+{
+  exercise_pool_last_owner_release<advanced::raw_thread_pool>();
+  exercise_pool_last_owner_release<advanced::work_stealing_pool>();
+  exercise_pool_last_owner_release<advanced::polling_pool>();
+  exercise_pool_last_owner_release<advanced::lightweight_pool>();
+}
+
+template <typename Pool>
+void
 exercise_scheduled_pool()
 {
   Pool pool(threadschedule::worker_count{ 1 });

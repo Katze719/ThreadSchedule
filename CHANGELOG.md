@@ -74,6 +74,8 @@
   worker queue but had not started.
 - Made `scheduled_pool` and specialized scheduled-pool destruction from one of their own callbacks transfer cleanup to a
   reaper thread, matching the safe last-owner behavior of `thread_pool`.
+- Serialized scheduler lifecycle inspection with shutdown, eliminating a data race when multiple callers stop a scheduled
+  pool concurrently.
 - Synchronized worker startup with optional registry registration so configured worker names cannot be overwritten after
   pool construction, and kept registry metadata aligned with later worker renames.
 - Added the canonical `thread_pool` facade. `submit()` and `post()` are non-throwing submission operations; their throwing
@@ -98,6 +100,7 @@
   shutdown/submission paths preserve accepted work according to the selected policy.
 - Made destruction of the last `thread_pool` owner from one of its own tasks hand cleanup to a reaper thread instead of
   terminating when the backend attempts to join the current worker.
+- Extended safe last-owner destruction to the advanced raw, work-stealing, polling, and lightweight pool facades.
 - Corrected timed shutdown so submission closes before waiting and corrected scheduled timed waits so queue mutation during
   shutdown cannot invalidate the active deadline.
 - Made advanced batch submission consume single-pass input ranges exactly once, while diagnosing the forward-iterator
@@ -116,6 +119,8 @@
   guarded native control object so stale, exited, unregistered, or replaced entries cannot be configured.
 - Kept global binding ownership valid when a bound registry is move-assigned, including nested bindings, and made registry
   helpers reject moved-from registry objects instead of dereferencing empty backend storage.
+- Kept the moved binding installed when active `global_registry_binding` objects are move-assigned, and made out-of-order
+  binding destruction skip predecessors whose scopes have already ended.
 - Moved registry composition to `advanced::composite_thread_registry` and cgroup attachment to the advanced Linux surface.
 - Kept the optional `ThreadSchedule::Runtime`, but changed its C++ ABI and made it opt-in by default. It now exports only the
   internal registry-storage hooks and `current_build_mode()`; all participating binaries must be rebuilt with the same v3

@@ -396,8 +396,7 @@ public:
   [[nodiscard]] auto
   is_current_context() const noexcept -> bool
   {
-    return pool_.is_current_worker()
-           || (scheduler_thread_.joinable() && thread_info::get_thread_id() == scheduler_tid_);
+    return pool_.is_current_worker() || current_scheduler == this;
   }
 
   /**
@@ -433,11 +432,14 @@ public:
 
     condition_.notify_one();
 
-    if (scheduler_thread_.joinable())
-      {
-        scheduler_thread_.join();
-        scheduler_tid_ = native_thread_id{};
-      }
+    {
+      std::lock_guard<std::mutex> scheduler_lock(scheduler_mutex_);
+      if (scheduler_thread_.joinable())
+        {
+          scheduler_thread_.join();
+          scheduler_tid_ = native_thread_id{};
+        }
+    }
 
     pool_.shutdown(policy);
   }
@@ -463,6 +465,9 @@ public:
   [[nodiscard]] auto
   scheduler_thread_info() const -> std::optional<thread_info>
   {
+    if (current_scheduler == this)
+      return thread_info(thread_info::get_thread_id());
+    std::lock_guard<std::mutex> scheduler_lock(scheduler_mutex_);
     if (!scheduler_thread_.joinable() || scheduler_tid_ == native_thread_id{})
       return std::nullopt;
     return thread_info(scheduler_tid_);
@@ -497,9 +502,12 @@ private:
   std::condition_variable condition_;
   std::atomic<bool> stop_;
   std::recursive_mutex shutdown_mutex_;
+  mutable std::mutex scheduler_mutex_;
 
   std::multimap<time_point, scheduled_task_info> scheduled_tasks_;
   std::atomic<uint64_t> next_task_id_;
+
+  inline static thread_local scheduled_pool_backend_base* current_scheduler = nullptr;
 
   void
   start_scheduler()
@@ -510,8 +518,10 @@ private:
     scheduler_thread_ = detail::thread_backend(
         [this, started = std::move(scheduler_started)]() mutable
           {
+            current_scheduler = this;
             started.set_value(thread_info::get_thread_id());
             scheduler_loop();
+            current_scheduler = nullptr;
           });
 
     scheduler_tid_ = scheduler_ready.get();

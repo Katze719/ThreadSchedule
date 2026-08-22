@@ -1108,6 +1108,65 @@ TEST(V3Api, NestedBindingTracksMoveAssignedOuterRegistry)
   EXPECT_TRUE(outer.unregister_current_thread().has_value());
 }
 
+TEST(V3Api, MoveAssigningActiveBindingKeepsMovedBindingInstalled)
+{
+  threadschedule::thread_registry baseline;
+  threadschedule::thread_registry first;
+  threadschedule::thread_registry second;
+  ASSERT_TRUE(baseline.register_current_thread("baseline", "v3").has_value());
+  ASSERT_TRUE(first.register_current_thread("first", "v3").has_value());
+  ASSERT_TRUE(second.register_current_thread("second", "v3").has_value());
+
+  threadschedule::global_registry_binding baseline_binding(baseline);
+  {
+    threadschedule::global_registry_binding first_binding(first);
+    threadschedule::global_registry_binding second_binding(second);
+    first_binding = std::move(second_binding);
+
+    auto snapshot = threadschedule::global_registry().snapshot();
+    ASSERT_TRUE(snapshot.has_value());
+    ASSERT_EQ(snapshot->size(), 1u);
+    EXPECT_EQ(snapshot->front().name, "second");
+  }
+
+  auto restored = threadschedule::global_registry().snapshot();
+  ASSERT_TRUE(restored.has_value());
+  ASSERT_EQ(restored->size(), 1u);
+  EXPECT_EQ(restored->front().name, "baseline");
+  EXPECT_TRUE(second.unregister_current_thread().has_value());
+  EXPECT_TRUE(first.unregister_current_thread().has_value());
+  EXPECT_TRUE(baseline.unregister_current_thread().has_value());
+}
+
+TEST(V3Api, DestroyingBindingsOutOfOrderSkipsInactivePredecessors)
+{
+  threadschedule::thread_registry baseline;
+  threadschedule::thread_registry first;
+  threadschedule::thread_registry second;
+  ASSERT_TRUE(baseline.register_current_thread("baseline", "v3").has_value());
+  ASSERT_TRUE(first.register_current_thread("first", "v3").has_value());
+  ASSERT_TRUE(second.register_current_thread("second", "v3").has_value());
+
+  threadschedule::global_registry_binding baseline_binding(baseline);
+  auto first_binding = std::make_unique<threadschedule::global_registry_binding>(first);
+  auto second_binding = std::make_unique<threadschedule::global_registry_binding>(second);
+  first_binding.reset();
+
+  auto current = threadschedule::global_registry().snapshot();
+  ASSERT_TRUE(current.has_value());
+  ASSERT_EQ(current->size(), 1u);
+  EXPECT_EQ(current->front().name, "second");
+
+  second_binding.reset();
+  auto restored = threadschedule::global_registry().snapshot();
+  ASSERT_TRUE(restored.has_value());
+  ASSERT_EQ(restored->size(), 1u);
+  EXPECT_EQ(restored->front().name, "baseline");
+  EXPECT_TRUE(second.unregister_current_thread().has_value());
+  EXPECT_TRUE(first.unregister_current_thread().has_value());
+  EXPECT_TRUE(baseline.unregister_current_thread().has_value());
+}
+
 TEST(V3Api, HelpersRejectMovedFromRegistry)
 {
   threadschedule::thread_registry source;
