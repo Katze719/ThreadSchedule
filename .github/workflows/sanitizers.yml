@@ -9,8 +9,10 @@ on:
 
 jobs:
   sanitizers:
-    name: ${{ matrix.sanitizer }} (GCC 14, C++20)
+    name: ${{ matrix.sanitizer }} (GCC 16, C++20)
     runs-on: ubuntu-24.04
+    container:
+      image: gcc:16.2.0@sha256:8d466d9001805b81ecc280645889c368ae28e75724e7ecba03a0336deda0faac
     strategy:
       fail-fast: false
       matrix:
@@ -27,14 +29,16 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Install dependencies
+      env:
+        DEBIAN_FRONTEND: noninteractive
       run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake ninja-build g++-14
+        apt-get update
+        apt-get install -y --no-install-recommends cmake ninja-build
 
     - name: Configure CMake
       env:
-        CC: gcc-14
-        CXX: g++-14
+        CC: gcc
+        CXX: g++
       run: |
         cmake -B build -G Ninja \
           -DCMAKE_BUILD_TYPE=RelWithDebInfo \
