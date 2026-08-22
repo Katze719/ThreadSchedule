@@ -151,9 +151,9 @@ public:
    */
   template <typename F, typename... Args>
   auto
-  try_submit(F&& f, Args&&... args) -> expected<std::future<std::invoke_result_t<F, Args...>>, std::error_code>
+  try_submit(F&& f, Args&&... args) -> expected<std::future<bind_result_t<F, Args...>>, std::error_code>
   {
-    using return_type = std::invoke_result_t<F, Args...>;
+    using return_type = bind_result_t<F, Args...>;
 
     auto task = std::make_shared<std::packaged_task<return_type()>>(
         detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
@@ -177,7 +177,7 @@ public:
    */
   template <typename F, typename... Args>
   auto
-  submit(F&& f, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>
+  submit(F&& f, Args&&... args) -> std::future<bind_result_t<F, Args...>>
   {
     auto result = try_submit(std::forward<F>(f), std::forward<Args>(args)...);
     if (!result.has_value())
@@ -381,7 +381,7 @@ public:
   {
     if (is_current_worker())
       detail::throw_worker_deadlock();
-    std::lock_guard<std::recursive_mutex> shutdown_lock(shutdown_mutex_);
+    std::lock_guard<std::recursive_timed_mutex> shutdown_lock(shutdown_mutex_);
     std::queue<queued_task> discarded;
     {
       std::lock_guard<std::mutex> lock(queue_mutex_);
@@ -426,7 +426,11 @@ public:
     if (is_current_worker())
       detail::throw_worker_deadlock();
     auto const deadline = shutdown_deadline_after(timeout);
-    std::lock_guard<std::recursive_mutex> shutdown_lock(shutdown_mutex_);
+    std::unique_lock<std::recursive_timed_mutex> shutdown_lock(shutdown_mutex_, std::defer_lock);
+    if (deadline == std::chrono::steady_clock::time_point::max())
+      shutdown_lock.lock();
+    else if (!shutdown_lock.try_lock_until(deadline))
+      return false;
 
     std::unique_lock<std::mutex> lock(queue_mutex_);
     if (stop_)
@@ -562,7 +566,7 @@ private:
   mutable std::mutex queue_mutex_;
   std::condition_variable condition_;
   std::condition_variable task_finished_condition_;
-  std::recursive_mutex shutdown_mutex_;
+  std::recursive_timed_mutex shutdown_mutex_;
   std::atomic<bool> stop_;
   bool shutdown_completed_all_{ true };
   std::chrono::steady_clock::time_point shutdown_completed_at_{};

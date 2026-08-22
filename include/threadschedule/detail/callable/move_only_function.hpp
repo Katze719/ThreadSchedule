@@ -59,17 +59,23 @@ class move_only_function<R(Args...), InlineSize>
       {
         static constexpr operations value{ [](void* storage, Args&&... args) -> R
                                              {
-                                               auto& callable = **static_cast<F**>(storage);
+                                               auto& callable = **std::launder(static_cast<F**>(storage));
                                                if constexpr (std::is_void_v<R>)
                                                  std::invoke(callable, std::forward<Args>(args)...);
                                                else
                                                  return std::invoke(callable, std::forward<Args>(args)...);
                                              },
-                                           [](void* storage) noexcept { delete *static_cast<F**>(storage); },
+                                           [](void* storage) noexcept
+                                             {
+                                               auto pointer = std::launder(static_cast<F**>(storage));
+                                               delete *pointer;
+                                               *pointer = nullptr;
+                                             },
                                            [](void* destination, void* source) noexcept
                                              {
-                                               *static_cast<F**>(destination) = *static_cast<F**>(source);
-                                               *static_cast<F**>(source) = nullptr;
+                                               auto source_pointer = std::launder(static_cast<F**>(source));
+                                               ::new (destination) F*(*source_pointer);
+                                               *source_pointer = nullptr;
                                              } };
         return &value;
       }
@@ -89,7 +95,7 @@ public:
     if constexpr (stores_inline<Value>)
       ::new (storage_) Value(std::forward<F>(function));
     else
-      *reinterpret_cast<Value**>(storage_) = new Value(std::forward<F>(function));
+      ::new (storage_) Value*(new Value(std::forward<F>(function)));
   }
 
   move_only_function(move_only_function const&) = delete;

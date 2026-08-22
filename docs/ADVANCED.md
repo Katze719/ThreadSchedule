@@ -35,7 +35,8 @@ statistics use the public `pool_statistics` value type. The canonical
 `thread_pool` remains the recommended default.
 
 The asynchronous specialized pools provide `shutdown_for(milliseconds)` for a timed drain. Non-positive timeouts expire
-immediately. Positive timeouts that exceed the representable `steady_clock` deadline saturate at
+immediately. The deadline also covers waiting for another concurrent shutdown operation to release lifecycle ownership.
+Positive timeouts that exceed the representable `steady_clock` deadline saturate at
 `steady_clock::time_point::max()` instead of overflowing.
 
 ## Native scheduling

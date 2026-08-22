@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../detail/callable/bind.hpp"
 #include "../detail/pool/backend.hpp"
 #include "../result.hpp"
 #include "../worker_count.hpp"
@@ -21,13 +22,13 @@ public:
   }
   template <typename F, typename... Args>
   static auto
-  submit(F&& function, Args&&... args) -> result<std::future<std::invoke_result_t<F, Args...>>>
+  submit(F&& function, Args&&... args) -> result<std::future<detail::bind_result_t<F, Args...>>>
   {
     return backend::try_submit(std::forward<F>(function), std::forward<Args>(args)...);
   }
   template <typename F, typename... Args>
   static auto
-  submit_or_throw(F&& function, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>
+  submit_or_throw(F&& function, Args&&... args) -> std::future<detail::bind_result_t<F, Args...>>
   {
     auto submitted = submit(std::forward<F>(function), std::forward<Args>(args)...);
     if (!submitted)

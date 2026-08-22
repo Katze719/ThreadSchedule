@@ -12,6 +12,7 @@
  */
 
 #include "../../expected.hpp"
+#include "../callable/bind.hpp"
 #include "backend.hpp"
 #include "worker_context_guard.hpp"
 #include <functional>
@@ -48,7 +49,7 @@ public:
 
   template <typename F, typename... Args>
   auto
-  submit(F&& f, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>
+  submit(F&& f, Args&&... args) -> std::future<bind_result_t<F, Args...>>
   {
     auto result = try_submit(std::forward<F>(f), std::forward<Args>(args)...);
     if (!result.has_value())
@@ -58,9 +59,10 @@ public:
 
   template <typename F, typename... Args>
   auto
-  try_submit(F&& f, Args&&... args) -> expected<std::future<std::invoke_result_t<F, Args...>>, std::error_code>
+  try_submit(F&& f, Args&&... args) -> expected<std::future<bind_result_t<F, Args...>>, std::error_code>
   {
-    using return_type = std::invoke_result_t<F, Args...>;
+    using return_type = bind_result_t<F, Args...>;
+    auto bound = bind_args(std::forward<F>(f), std::forward<Args>(args)...);
     if (stop_)
       return unexpected(std::make_error_code(std::errc::operation_canceled));
 
@@ -70,12 +72,12 @@ public:
       {
         if constexpr (std::is_void_v<return_type>)
           {
-            std::invoke(std::forward<F>(f), std::forward<Args>(args)...);
+            bound();
             p.set_value();
           }
         else
           {
-            p.set_value(std::invoke(std::forward<F>(f), std::forward<Args>(args)...));
+            p.set_value(bound());
           }
       }
     catch (...)
@@ -98,11 +100,12 @@ public:
   auto
   try_post(F&& f, Args&&... args) -> expected<void, std::error_code>
   {
+    auto bound = bind_args(std::forward<F>(f), std::forward<Args>(args)...);
     if (stop_)
       return unexpected(std::make_error_code(std::errc::operation_canceled));
     try
       {
-        std::invoke(std::forward<F>(f), std::forward<Args>(args)...);
+        bound();
       }
     catch (...)
       {

@@ -269,7 +269,7 @@ public:
   {
     if (is_current_worker())
       detail::throw_worker_deadlock();
-    std::lock_guard<std::recursive_mutex> shutdown_lock(shutdown_mutex_);
+    std::lock_guard<std::recursive_timed_mutex> shutdown_lock(shutdown_mutex_);
     std::queue<detail::move_only_function<void(), TaskSize - sizeof(void*)>> discarded;
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -311,7 +311,11 @@ public:
     if (is_current_worker())
       detail::throw_worker_deadlock();
     auto const deadline = shutdown_deadline_after(timeout);
-    std::lock_guard<std::recursive_mutex> shutdown_lock(shutdown_mutex_);
+    std::unique_lock<std::recursive_timed_mutex> shutdown_lock(shutdown_mutex_, std::defer_lock);
+    if (deadline == std::chrono::steady_clock::time_point::max())
+      shutdown_lock.lock();
+    else if (!shutdown_lock.try_lock_until(deadline))
+      return false;
     std::unique_lock<std::mutex> lock(mutex_);
     if (stop_)
       return shutdown_completed_all_ && shutdown_completed_at_ <= deadline;
@@ -406,7 +410,7 @@ private:
   std::mutex mutex_;
   std::condition_variable condition_;
   std::condition_variable drain_condition_;
-  std::recursive_mutex shutdown_mutex_;
+  std::recursive_timed_mutex shutdown_mutex_;
   std::atomic<bool> stop_{ false };
   bool shutdown_completed_all_{ true };
   std::chrono::steady_clock::time_point shutdown_completed_at_{};
@@ -453,7 +457,10 @@ private:
         catch (...)
           {
           }
-        active_tasks_.fetch_sub(1, std::memory_order_relaxed);
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          active_tasks_.fetch_sub(1, std::memory_order_relaxed);
+        }
         drain_condition_.notify_all();
       }
   }

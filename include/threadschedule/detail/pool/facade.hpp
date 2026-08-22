@@ -117,17 +117,17 @@ public:
 
   template <typename F, typename... Args>
   auto
-  submit(F&& function, Args&&... args) -> result<std::future<std::invoke_result_t<F, Args...>>>
+  submit(F&& function, Args&&... args) -> result<std::future<bind_result_t<F, Args...>>>
   {
     if (!impl_)
       return unexpected(std::make_error_code(std::errc::operation_canceled));
-    return try_result([&]() -> result<std::future<std::invoke_result_t<F, Args...>>>
+    return try_result([&]() -> result<std::future<bind_result_t<F, Args...>>>
                         { return impl_->try_submit(std::forward<F>(function), std::forward<Args>(args)...); });
   }
 
   template <typename F, typename... Args>
   auto
-  submit_or_throw(F&& function, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>
+  submit_or_throw(F&& function, Args&&... args) -> std::future<bind_result_t<F, Args...>>
   {
     auto submitted = submit(std::forward<F>(function), std::forward<Args>(args)...);
     if (!submitted)

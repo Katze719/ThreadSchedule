@@ -21,7 +21,7 @@ namespace
 {
 template <typename Pool>
 auto
-concurrent_shutdown_for_reports_timeout() -> bool
+concurrent_shutdown_for_respects_timeout() -> bool
 {
   Pool pool(1);
   std::promise<void> started;
@@ -42,14 +42,16 @@ concurrent_shutdown_for_reports_timeout() -> bool
   std::thread releaser(
       [&]
         {
-          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          std::this_thread::sleep_for(std::chrono::milliseconds(250));
           release.set_value();
         });
+  auto const before = std::chrono::steady_clock::now();
   bool const drained = pool.shutdown_for(std::chrono::milliseconds(10));
+  auto const elapsed = std::chrono::steady_clock::now() - before;
 
   releaser.join();
   first_shutdown.join();
-  return drained;
+  return !drained && elapsed < std::chrono::milliseconds(150);
 }
 
 template <typename Pool>
@@ -438,11 +440,24 @@ TEST(PoolBackendTest, ShutdownForTimedDrain)
   EXPECT_EQ(count.load(), 5);
 }
 
-TEST(PoolBackendTest, ConcurrentShutdownForReportsTimeout)
+TEST(PoolBackendTest, ConcurrentShutdownForRespectsTimeout)
 {
-  EXPECT_FALSE(concurrent_shutdown_for_reports_timeout<thread_pool_backend>());
-  EXPECT_FALSE(concurrent_shutdown_for_reports_timeout<work_stealing_pool_backend>());
-  EXPECT_FALSE(concurrent_shutdown_for_reports_timeout<lightweight_pool_backend>());
+  EXPECT_TRUE(concurrent_shutdown_for_respects_timeout<thread_pool_backend>());
+  EXPECT_TRUE(concurrent_shutdown_for_respects_timeout<work_stealing_pool_backend>());
+  EXPECT_TRUE(concurrent_shutdown_for_respects_timeout<lightweight_pool_backend>());
+}
+
+TEST(PoolBackendTest, LightweightShutdownForCannotLoseFinalTaskWakeup)
+{
+  for (int iteration = 0; iteration < 128; ++iteration)
+    {
+      lightweight_pool_backend pool(1);
+      std::atomic<bool> completed{ false };
+      pool.post([&completed] { completed.store(true, std::memory_order_release); });
+
+      EXPECT_TRUE(pool.shutdown_for(std::chrono::milliseconds::max()));
+      EXPECT_TRUE(completed.load(std::memory_order_acquire));
+    }
 }
 
 TEST(PoolBackendTest, ShutdownForStopsNewSubmissionsBeforeWaiting)

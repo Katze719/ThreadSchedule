@@ -70,6 +70,14 @@
 
 ### Pools and scheduled work
 
+- Fixed a lost wake-up in `lightweight_pool::shutdown_for()` that could delay a finite timed shutdown until its deadline
+  or block an effectively unbounded shutdown indefinitely as the final active task completed.
+- Made concurrent advanced-pool `shutdown_for()` calls apply their deadline while waiting for another shutdown operation,
+  rather than first blocking indefinitely on lifecycle serialization.
+- Aligned every pool submission result type with the actual one-shot invocation of its stored, decayed callable and
+  arguments, including reference-overloaded callables, and made `inline_pool` use the same storage semantics.
+- Began and preserved the heap-pointer object lifetime explicitly in the C++17 `move_only_function` fallback.
+- Distributed work-stealing batch submissions across worker queues round-robin after each successful enqueue.
 - Rejected unrepresentable delayed and periodic deadlines with `value_too_large` and replaced unchecked `steady_clock`
   arithmetic that could overflow and execute a maximally delayed task immediately.
 - Saturated oversized advanced-pool `shutdown_for` timeouts at `steady_clock::time_point::max()` instead of overflowing

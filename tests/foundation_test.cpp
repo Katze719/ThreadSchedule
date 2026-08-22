@@ -81,6 +81,15 @@ TEST(FoundationTest, MoveOnlyFunctionSupportsEmptySmallLargeAndOverAlignedTarget
   function_type large = large_callable{};
   EXPECT_EQ(large(1), 43);
 
+  function_type moved_large(std::move(large));
+  // NOLINTNEXTLINE(bugprone-use-after-move)
+  EXPECT_FALSE(large);
+  EXPECT_EQ(moved_large(2), 44);
+  large = large_callable{};
+  EXPECT_EQ(large(3), 45);
+  moved_large.reset();
+  EXPECT_FALSE(moved_large);
+
   auto tiny_storage = threadschedule::detail::make_move_only_function<int(), 1>([]() { return 42; });
   EXPECT_EQ(tiny_storage(), 42);
 

@@ -33,6 +33,24 @@ struct has_native_handle_member<T, std::void_t<decltype(std::declval<T&>().nativ
 {
 };
 
+namespace
+{
+struct ref_overloaded_submission
+{
+  auto
+  operator()(int&) -> int
+  {
+    return 1;
+  }
+
+  auto
+  operator()(int&& value) -> std::string
+  {
+    return "stored-rvalue-" + std::to_string(value);
+  }
+};
+} // namespace
+
 TEST(V3Api, CoreObjectsConstructDirectly)
 {
   std::atomic<bool> ran{ false };
@@ -50,6 +68,30 @@ TEST(V3Api, CoreObjectsConstructDirectly)
 
   threadschedule::thread_registry registry;
   EXPECT_TRUE(registry.empty());
+}
+
+TEST(V3Api, PoolSubmissionResultMatchesStoredInvocation)
+{
+  threadschedule::thread_pool pool(threadschedule::worker_count{ 1 });
+  int value = 7;
+
+  auto submitted = pool.submit(ref_overloaded_submission{}, value);
+  static_assert(std::is_same_v<decltype(submitted), threadschedule::result<std::future<std::string>>>);
+  ASSERT_TRUE(submitted.has_value());
+  EXPECT_EQ(submitted->get(), "stored-rvalue-7");
+  EXPECT_EQ(value, 7);
+
+  threadschedule::advanced::inline_pool inline_pool;
+  auto inline_submitted = inline_pool.submit(ref_overloaded_submission{}, value);
+  static_assert(std::is_same_v<decltype(inline_submitted), threadschedule::result<std::future<std::string>>>);
+  ASSERT_TRUE(inline_submitted.has_value());
+  EXPECT_EQ(inline_submitted->get(), "stored-rvalue-7");
+
+  auto by_reference = pool.submit([](int& referenced) { return ++referenced; }, std::ref(value));
+  static_assert(std::is_same_v<decltype(by_reference), threadschedule::result<std::future<int>>>);
+  ASSERT_TRUE(by_reference.has_value());
+  EXPECT_EQ(by_reference->get(), 8);
+  EXPECT_EQ(value, 8);
 }
 
 TEST(V3Api, ThreadConfigurationConstructor)

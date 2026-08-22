@@ -193,7 +193,7 @@ public:
   {
     if (is_current_worker())
       detail::throw_worker_deadlock();
-    std::lock_guard<std::recursive_mutex> shutdown_lock(shutdown_mutex_);
+    std::lock_guard<std::recursive_timed_mutex> shutdown_lock(shutdown_mutex_);
     if (stop_.exchange(true, std::memory_order_acq_rel))
       return;
     shutdown_completed_all_ = finish_shutdown(policy);
@@ -216,7 +216,11 @@ public:
     if (is_current_worker())
       detail::throw_worker_deadlock();
     auto const deadline = shutdown_deadline_after(timeout);
-    std::lock_guard<std::recursive_mutex> shutdown_lock(shutdown_mutex_);
+    std::unique_lock<std::recursive_timed_mutex> shutdown_lock(shutdown_mutex_, std::defer_lock);
+    if (deadline == std::chrono::steady_clock::time_point::max())
+      shutdown_lock.lock();
+    else if (!shutdown_lock.try_lock_until(deadline))
+      return false;
 
     if (stop_.exchange(true, std::memory_order_acq_rel))
       return shutdown_completed_all_ && shutdown_completed_at_ <= deadline;
@@ -250,15 +254,15 @@ public:
    * @param  f   Callable to execute.
    * @param  args Arguments forwarded to @p f.
    * @return @c expected<std::future<R>, std::error_code> where
-   *         @c R = @c std::invoke_result_t<F, Args...>.
+   *         @c R is the result of invoking the stored, decayed callable and arguments.
    *
    * @see submit() for the throwing variant.
    */
   template <typename F, typename... Args>
   auto
-  try_submit(F&& f, Args&&... args) -> expected<std::future<std::invoke_result_t<F, Args...>>, std::error_code>
+  try_submit(F&& f, Args&&... args) -> expected<std::future<bind_result_t<F, Args...>>, std::error_code>
   {
-    using return_type = std::invoke_result_t<F, Args...>;
+    using return_type = bind_result_t<F, Args...>;
 
     auto task = std::make_shared<std::packaged_task<return_type()>>(
         detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
@@ -320,7 +324,7 @@ public:
    */
   template <typename F, typename... Args>
   auto
-  submit(F&& f, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>
+  submit(F&& f, Args&&... args) -> std::future<bind_result_t<F, Args...>>
   {
     auto result = try_submit(std::forward<F>(f), std::forward<Args>(args)...);
     if (!result.has_value())
@@ -455,6 +459,7 @@ public:
                 if (worker_queues_[queue_idx]->push(std::move(queued)))
                   {
                     enqueued = true;
+                    queue_idx = (queue_idx + 1) % num_threads_;
                     break;
                   }
                 outstanding_tasks_.fetch_sub(1, std::memory_order_acq_rel);
@@ -702,7 +707,7 @@ private:
   std::queue<queued_task> overflow_tasks_;
   mutable std::mutex overflow_mutex_;
   mutable std::shared_mutex submission_mutex_;
-  std::recursive_mutex shutdown_mutex_;
+  std::recursive_timed_mutex shutdown_mutex_;
 
   std::atomic<bool> stop_;
   std::atomic<bool> submissions_quiesced_{ false };

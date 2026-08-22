@@ -236,6 +236,10 @@ if (auto waited = pool.wait(); !waited)
 ```
 
 `submit` returns `result<std::future<T>>`; `post` returns `result<void>`.
+Like `std::thread`, pool submission stores decayed copies of the callable and
+arguments and invokes those stored objects as rvalues. The future's value type
+is determined from that stored invocation; use `std::ref` when reference
+semantics are required.
 Destruction uses the configured shutdown policy. `drain` completes accepted
 work, while `drop_pending` discards work that has not started.
 Calling `shutdown()` uses that same configured policy; the

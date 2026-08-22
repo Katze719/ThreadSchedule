@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../detail/callable/bind.hpp"
 #include "../detail/pool/inline_pool_backend.hpp"
 #include "../detail/pool/shutdown.hpp"
 #include "../detail/pool/worker_context_guard.hpp"
@@ -23,14 +24,14 @@ public:
 
   template <typename F, typename... Args>
   auto
-  submit(F&& function, Args&&... args) -> result<std::future<std::invoke_result_t<F, Args...>>>
+  submit(F&& function, Args&&... args) -> result<std::future<detail::bind_result_t<F, Args...>>>
   {
     return impl_.try_submit(std::forward<F>(function), std::forward<Args>(args)...);
   }
 
   template <typename F, typename... Args>
   auto
-  submit_or_throw(F&& function, Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>
+  submit_or_throw(F&& function, Args&&... args) -> std::future<detail::bind_result_t<F, Args...>>
   {
     auto submitted = submit(std::forward<F>(function), std::forward<Args>(args)...);
     if (!submitted)
