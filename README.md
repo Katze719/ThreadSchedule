@@ -23,6 +23,16 @@ Operations whose normal failure mode should not require exceptions return
 The tested compiler versions are the compatibility contract. See
 [Compatibility](docs/COMPATIBILITY.md) for the current matrix.
 
+### GCC 14 ThreadSanitizer limitation
+
+GCC 14's ThreadSanitizer can incorrectly report
+`unlock of an unlocked mutex (or by a wrong thread)` when a pool uses
+`shutdown_for(...)`. libstdc++ acquires the timed mutex through
+`pthread_mutex_clocklock`, which GCC 14's TSan does not fully intercept, but it
+does observe the later unlock. This is a sanitizer false positive rather than
+an unmatched unlock in ThreadSchedule. The sanitizer CI therefore uses GCC 16,
+where the same tests pass cleanly.
+
 ## Install
 
 The recommended source integration uses CMake FetchContent:
