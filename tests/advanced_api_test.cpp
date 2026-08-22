@@ -324,6 +324,34 @@ TEST(AdvancedApi, SpecializedPoolsSubmitAndShutdown)
 
 template <typename Pool>
 void
+expect_parallel_for_each_rejects_shutdown_pool()
+{
+  Pool pool(threadschedule::worker_count{ 1 });
+  ASSERT_TRUE(pool.shutdown().has_value());
+  std::array<int, 3> values{ 1, 2, 3 };
+  auto result = pool.parallel_for_each(values.begin(), values.end(), [](int& value) { value *= 10; });
+  ASSERT_FALSE(result.has_value());
+  EXPECT_EQ(result.error(), std::make_error_code(std::errc::operation_canceled));
+  EXPECT_EQ(values, (std::array<int, 3>{ 1, 2, 3 }));
+}
+
+TEST(AdvancedApi, ParallelForEachReportsCancellationAfterShutdown)
+{
+  expect_parallel_for_each_rejects_shutdown_pool<advanced::raw_thread_pool>();
+  expect_parallel_for_each_rejects_shutdown_pool<advanced::work_stealing_pool>();
+  expect_parallel_for_each_rejects_shutdown_pool<advanced::polling_pool>();
+
+  advanced::inline_pool inline_pool;
+  ASSERT_TRUE(inline_pool.shutdown().has_value());
+  std::array<int, 3> values{ 1, 2, 3 };
+  auto result = inline_pool.parallel_for_each(values.begin(), values.end(), [](int& value) { value *= 10; });
+  ASSERT_FALSE(result.has_value());
+  EXPECT_EQ(result.error(), std::make_error_code(std::errc::operation_canceled));
+  EXPECT_EQ(values, (std::array<int, 3>{ 1, 2, 3 }));
+}
+
+template <typename Pool>
+void
 exercise_pool_last_owner_release()
 {
   auto pool = std::make_shared<Pool>(threadschedule::worker_count{ 1 });

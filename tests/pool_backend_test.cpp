@@ -110,6 +110,43 @@ shutdown_for_blocked_task(std::chrono::milliseconds timeout) -> bool
   release.set_value();
   return shutdown.get();
 }
+
+template <typename Pool>
+auto
+shutdown_for_returns_while_active_task_finishes() -> bool
+{
+  Pool pool(1);
+  std::atomic<bool> started{ false };
+  std::atomic<bool> release{ false };
+  pool.post(
+      [&]
+        {
+          started.store(true, std::memory_order_release);
+          while (!release.load(std::memory_order_acquire))
+            std::this_thread::yield();
+        });
+  while (!started.load(std::memory_order_acquire))
+    std::this_thread::yield();
+  auto pending_capture = std::make_shared<int>(42);
+  std::weak_ptr<int> pending_observer = pending_capture;
+  pool.post([pending_capture] {});
+  pending_capture.reset();
+
+  std::thread releaser(
+      [&]
+        {
+          std::this_thread::sleep_for(std::chrono::milliseconds(250));
+          release.store(true, std::memory_order_release);
+        });
+  auto const before = std::chrono::steady_clock::now();
+  bool const drained = pool.shutdown_for(std::chrono::milliseconds(10));
+  auto const elapsed = std::chrono::steady_clock::now() - before;
+  bool const pending_discarded = pending_observer.expired();
+
+  releaser.join();
+  pool.shutdown();
+  return !drained && elapsed < std::chrono::milliseconds(150) && pending_discarded;
+}
 } // namespace
 
 // ==================== Backend try_submit / try_post ====================
@@ -445,6 +482,13 @@ TEST(PoolBackendTest, ConcurrentShutdownForRespectsTimeout)
   EXPECT_TRUE(concurrent_shutdown_for_respects_timeout<thread_pool_backend>());
   EXPECT_TRUE(concurrent_shutdown_for_respects_timeout<work_stealing_pool_backend>());
   EXPECT_TRUE(concurrent_shutdown_for_respects_timeout<lightweight_pool_backend>());
+}
+
+TEST(PoolBackendTest, ShutdownForDoesNotJoinActiveTasksAfterDeadline)
+{
+  EXPECT_TRUE(shutdown_for_returns_while_active_task_finishes<thread_pool_backend>());
+  EXPECT_TRUE(shutdown_for_returns_while_active_task_finishes<work_stealing_pool_backend>());
+  EXPECT_TRUE(shutdown_for_returns_while_active_task_finishes<lightweight_pool_backend>());
 }
 
 TEST(PoolBackendTest, LightweightShutdownForCannotLoseFinalTaskWakeup)
@@ -1139,6 +1183,23 @@ TEST(PoolBackendTest, InlinePoolParallelForEach)
   std::vector<int> data = { 1, 2, 3, 4, 5 };
   pool.parallel_for_each(data.begin(), data.end(), [](int& v) { v *= 10; });
   EXPECT_EQ(data, (std::vector<int>{ 10, 20, 30, 40, 50 }));
+}
+
+TEST(PoolBackendTest, InlinePoolParallelForEachRejectsWorkAfterShutdown)
+{
+  inline_pool_backend pool;
+  pool.shutdown();
+  std::vector<int> data = { 1, 2, 3 };
+  try
+    {
+      pool.parallel_for_each(data.begin(), data.end(), [](int& value) { value *= 10; });
+      FAIL() << "parallel_for_each unexpectedly accepted work after shutdown";
+    }
+  catch (std::system_error const& error)
+    {
+      EXPECT_EQ(error.code(), std::make_error_code(std::errc::operation_canceled));
+    }
+  EXPECT_EQ(data, (std::vector<int>{ 1, 2, 3 }));
 }
 
 // ==================== task_group ====================

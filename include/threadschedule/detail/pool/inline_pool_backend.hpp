@@ -153,6 +153,9 @@ public:
   parallel_for_each(Iterator begin, Iterator end, F&& func)
   {
     static_assert(detail::is_forward_iterator_v<Iterator>, "parallel_for_each requires at least a forward iterator");
+    if (stop_)
+      throw std::system_error(std::make_error_code(std::errc::operation_canceled),
+                              "inline_pool_backend::parallel_for_each");
     for (auto it = begin; it != end; ++it)
       func(*it);
   }

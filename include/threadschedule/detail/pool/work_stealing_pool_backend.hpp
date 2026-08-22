@@ -194,15 +194,17 @@ public:
     if (is_current_worker())
       detail::throw_worker_deadlock();
     std::lock_guard<std::recursive_timed_mutex> shutdown_lock(shutdown_mutex_);
-    if (stop_.exchange(true, std::memory_order_acq_rel))
+    if (workers_.empty())
       return;
-    shutdown_completed_all_ = finish_shutdown(policy);
+    stop_.store(true, std::memory_order_release);
+    bool const completed_all = finish_shutdown(policy);
+    shutdown_completed_all_ = shutdown_completed_all_ && completed_all;
     shutdown_completed_at_ = std::chrono::steady_clock::now();
   }
 
   /**
    * @brief Attempt a timed drain: finish as many tasks as possible within
-   *        @p timeout, then discard queued work and wait for running tasks.
+   *        @p timeout, then discard queued work.
    *
    * New submissions are rejected before the timed wait begins.
    * Running C++ callables cannot be stopped safely, so this function can
@@ -222,13 +224,19 @@ public:
     else if (!shutdown_lock.try_lock_until(deadline))
       return false;
 
-    if (stop_.exchange(true, std::memory_order_acq_rel))
+    if (workers_.empty())
       return shutdown_completed_all_ && shutdown_completed_at_ <= deadline;
 
-    {
-      std::unique_lock<std::shared_mutex> submission_lock(submission_mutex_);
-      submissions_quiesced_.store(true, std::memory_order_release);
-    }
+    stop_.store(true, std::memory_order_release);
+    if (!submissions_quiesced_.load(std::memory_order_acquire))
+      {
+        std::unique_lock<std::shared_timed_mutex> submission_lock(submission_mutex_, std::defer_lock);
+        if (deadline == std::chrono::steady_clock::time_point::max())
+          submission_lock.lock();
+        else if (!submission_lock.try_lock_until(deadline))
+          return false;
+        submissions_quiesced_.store(true, std::memory_order_release);
+      }
     wakeup_condition_.notify_all();
 
     std::unique_lock<std::mutex> lock(completion_mutex_);
@@ -236,10 +244,25 @@ public:
         lock, deadline, [this] { return outstanding_tasks_.load(std::memory_order_acquire) == 0; });
     lock.unlock();
 
-    shutdown_completed_all_
-        = finish_shutdown(drained ? shutdown_policy_backend::drain : shutdown_policy_backend::drop_pending);
-    shutdown_completed_at_ = std::chrono::steady_clock::now();
-    return drained;
+    if (!drained)
+      {
+        size_t const dropped_tasks = discard_pending_tasks();
+        shutdown_completed_all_ = shutdown_completed_all_ && dropped_tasks == 0;
+      }
+
+    wakeup_condition_.notify_all();
+    completion_condition_.notify_all();
+
+    if (deadline == std::chrono::steady_clock::time_point::max())
+      {
+        for (auto& worker : workers_)
+          if (worker.joinable())
+            worker.join();
+        workers_.clear();
+      }
+    if (drained && shutdown_completed_at_ == std::chrono::steady_clock::time_point{})
+      shutdown_completed_at_ = std::chrono::steady_clock::now();
+    return drained && shutdown_completed_all_;
   }
 
   /**
@@ -270,7 +293,7 @@ public:
     std::future<return_type> result = task->get_future();
     queued_task queued([task]() { (*task)(); });
 
-    std::shared_lock<std::shared_mutex> submission_lock(submission_mutex_);
+    std::shared_lock<std::shared_timed_mutex> submission_lock(submission_mutex_);
 
     if (stop_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
@@ -364,7 +387,7 @@ public:
     queued_task bound(
         detail::make_move_only_function<void()>(detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...)));
 
-    std::shared_lock<std::shared_mutex> submission_lock(submission_mutex_);
+    std::shared_lock<std::shared_timed_mutex> submission_lock(submission_mutex_);
 
     if (stop_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
@@ -439,7 +462,7 @@ public:
 
     size_t const batch_size = prepared.size();
 
-    std::shared_lock<std::shared_mutex> submission_lock(submission_mutex_);
+    std::shared_lock<std::shared_timed_mutex> submission_lock(submission_mutex_);
 
     if (stop_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::operation_canceled));
@@ -706,7 +729,7 @@ private:
 
   std::queue<queued_task> overflow_tasks_;
   mutable std::mutex overflow_mutex_;
-  mutable std::shared_mutex submission_mutex_;
+  mutable std::shared_timed_mutex submission_mutex_;
   std::recursive_timed_mutex shutdown_mutex_;
 
   std::atomic<bool> stop_;
@@ -734,19 +757,14 @@ private:
   inline static thread_local work_stealing_pool_backend* current_pool = nullptr;
 
   auto
-  finish_shutdown(shutdown_policy_backend policy) -> bool
+  discard_pending_tasks() -> size_t
   {
     size_t dropped_tasks = 0;
     std::queue<queued_task> discarded_overflow;
     {
-      std::unique_lock<std::shared_mutex> submission_lock(submission_mutex_);
-      submissions_quiesced_.store(true, std::memory_order_release);
       std::lock_guard<std::mutex> lock(overflow_mutex_);
-      if (policy == shutdown_policy_backend::drop_pending)
-        {
-          dropped_tasks += overflow_tasks_.size();
-          overflow_tasks_.swap(discarded_overflow);
-        }
+      dropped_tasks += overflow_tasks_.size();
+      overflow_tasks_.swap(discarded_overflow);
     }
 
     if (dropped_tasks != 0)
@@ -764,23 +782,33 @@ private:
         discarded_overflow.swap(empty);
       }
 
-    if (policy == shutdown_policy_backend::drop_pending)
+    for (auto& queue : worker_queues_)
       {
-        for (auto& queue : worker_queues_)
+        queued_task discarded;
+        while (queue->steal(discarded))
           {
-            queued_task discarded;
-            while (queue->steal(discarded))
-              {
-                ++dropped_tasks;
-                {
-                  std::lock_guard<std::mutex> lock(completion_mutex_);
-                  outstanding_tasks_.fetch_sub(1, std::memory_order_acq_rel);
-                }
-                completion_condition_.notify_all();
-                discarded = queued_task{};
-              }
+            ++dropped_tasks;
+            {
+              std::lock_guard<std::mutex> lock(completion_mutex_);
+              outstanding_tasks_.fetch_sub(1, std::memory_order_acq_rel);
+            }
+            completion_condition_.notify_all();
+            discarded = queued_task{};
           }
       }
+
+    return dropped_tasks;
+  }
+
+  auto
+  finish_shutdown(shutdown_policy_backend policy) -> bool
+  {
+    {
+      std::unique_lock<std::shared_timed_mutex> submission_lock(submission_mutex_);
+      submissions_quiesced_.store(true, std::memory_order_release);
+    }
+
+    size_t const dropped_tasks = policy == shutdown_policy_backend::drop_pending ? discard_pending_tasks() : size_t(0);
 
     wakeup_condition_.notify_all();
 
@@ -810,10 +838,19 @@ private:
         return;
       }
 
-    thread_local std::mt19937 gen = []()
+    thread_local std::mt19937 gen = [worker_id]()
       {
-        std::random_device device;
-        return std::mt19937(device());
+        try
+          {
+            std::random_device device;
+            return std::mt19937(device());
+          }
+        catch (...)
+          {
+            auto const seed = static_cast<std::mt19937::result_type>(
+                std::mt19937::default_seed ^ static_cast<std::mt19937::result_type>(worker_id));
+            return std::mt19937(seed);
+          }
       }();
 
     queued_task task;

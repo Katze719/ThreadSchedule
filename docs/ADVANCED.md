@@ -37,7 +37,12 @@ statistics use the public `pool_statistics` value type. The canonical
 The asynchronous specialized pools provide `shutdown_for(milliseconds)` for a timed drain. Non-positive timeouts expire
 immediately. The deadline also covers waiting for another concurrent shutdown operation to release lifecycle ownership.
 Positive timeouts that exceed the representable `steady_clock` deadline saturate at
-`steady_clock::time_point::max()` instead of overflowing.
+`steady_clock::time_point::max()` instead of overflowing. Once a finite timeout expires, queued work is discarded without
+joining an already-running C++ callable; that callable finishes asynchronously. A later blocking `shutdown()` or pool
+destruction joins the remaining workers.
+
+The lightweight pool's default callable slot is exactly 64 bytes, including its dispatch pointer. On 64-bit platforms this
+leaves 56 bytes of inline storage; larger or over-aligned callables use the heap fallback.
 
 ## Native scheduling
 

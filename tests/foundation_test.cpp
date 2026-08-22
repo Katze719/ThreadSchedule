@@ -46,6 +46,15 @@ struct alignas(64) over_aligned_callable
   }
 };
 
+struct member_target
+{
+  auto
+  function(int value) -> int
+  {
+    return value;
+  }
+};
+
 } // namespace
 
 TEST(FoundationTest, ScopeExitRunsExactlyOnceUnlessReleased)
@@ -109,6 +118,26 @@ TEST(FoundationTest, MoveOnlyFunctionPropagatesTargetExceptions)
 {
   threadschedule::detail::move_only_function<void()> function = [] { throw std::runtime_error("boom"); };
   EXPECT_THROW(function(), std::runtime_error);
+}
+
+TEST(FoundationTest, MoveOnlyFunctionUsesExactLightweightTaskSlotAndRejectsNullTargets)
+{
+  using task_slot = threadschedule::detail::move_only_function<void(), 64 - sizeof(void*)>;
+  static_assert(sizeof(task_slot) == 64);
+  static_assert(alignof(task_slot) == alignof(void*));
+
+  using function_pointer = int (*)(int);
+  function_pointer null_function = nullptr;
+  threadschedule::detail::move_only_function<int(int)> function(null_function);
+  EXPECT_FALSE(function);
+  EXPECT_THROW((void)function(1), std::bad_function_call);
+
+  using member_pointer = decltype(&member_target::function);
+  member_pointer null_member = nullptr;
+  threadschedule::detail::move_only_function<int(member_target&, int)> member(null_member);
+  EXPECT_FALSE(member);
+  member_target target;
+  EXPECT_THROW((void)member(target, 1), std::bad_function_call);
 }
 
 TEST(FoundationTest, TryResultMapsKnownAndUnknownExceptions)

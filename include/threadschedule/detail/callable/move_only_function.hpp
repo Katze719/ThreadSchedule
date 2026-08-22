@@ -29,9 +29,8 @@ class move_only_function<R(Args...), InlineSize>
   };
 
   template <typename F>
-  static constexpr bool stores_inline
-      = InlineSize != 0 && sizeof(F) <= storage_size && alignof(F) <= alignof(std::max_align_t)
-        && std::is_nothrow_move_constructible_v<F>;
+  static constexpr bool stores_inline = InlineSize != 0 && sizeof(F) <= storage_size && alignof(F) <= alignof(void*)
+                                        && std::is_nothrow_move_constructible_v<F>;
 
   template <typename F>
   static auto
@@ -91,6 +90,10 @@ public:
                              int> = 0>
   move_only_function(F&& function) // NOLINT(google-explicit-constructor)
   {
+    if constexpr (std::is_pointer_v<Value> || std::is_member_pointer_v<Value>)
+      if (function == nullptr)
+        return;
+
     operations_ = table<Value>();
     if constexpr (stores_inline<Value>)
       ::new (storage_) Value(std::forward<F>(function));
@@ -160,7 +163,7 @@ public:
 
 private:
   operations const* operations_{ nullptr };
-  alignas(std::max_align_t) unsigned char storage_[storage_size]{};
+  alignas(void*) unsigned char storage_[storage_size]{};
 };
 
 template <typename Signature, std::size_t InlineSize = 3 * sizeof(void*), typename Callable>

@@ -63,8 +63,9 @@ namespace threadschedule::detail
  *   protected by one mutex + condition_variable.
  * - **Workers**: @ref detail::thread_backend instances so that thread naming,
  * CPU affinity, and scheduling policy can be configured after construction.
- * - **SBO**: Callables up to @c TaskSize - 8 bytes are stored inline
- *   (no heap allocation). Larger callables fall back to the heap.
+ * - **SBO**: Callables up to @c TaskSize - sizeof(void*) bytes with pointer
+ *   alignment are stored inline (no heap allocation). Larger or over-aligned
+ *   callables fall back to the heap.
  *
  * @par What is @e not included (by design)
  * - No @c std::future / @c std::packaged_task (use @c submit() on other
@@ -91,20 +92,18 @@ namespace threadschedule::detail
  * all workers. It blocks until every queued task has been executed.
  *
  * @par Choosing @c TaskSize
- * The default of 64 bytes (one x86 cache line) works well for lambdas
+ * The default callable slot is exactly 64 bytes (one x86 cache line) and works well for lambdas
  * capturing up to ~7 pointers. If your tasks capture more state, increase
  * @c TaskSize to avoid the heap fallback:
  * @code
- *   lightweight_pool_backend_base<128> pool(4);   // 120 bytes of inline
- * storage
+ *   lightweight_pool_backend_base<128> pool(4);   // 120 inline bytes on 64-bit
  * @endcode
  *
  * @par Copyability / movability
  * Not copyable, not movable.
  *
- * @tparam TaskSize Total size in bytes reserved for each callable slot
- *         slot (default 64). Usable inline buffer = @c TaskSize - 8 bytes
- *         on 64-bit platforms.
+ * @tparam TaskSize Exact total size in bytes of each callable slot (default
+ *         64). Usable inline buffer = @c TaskSize - sizeof(void*).
  *
  * @see lightweight_pool_backend (alias for @c
  * lightweight_pool_backend_base<64>), scheduled_lightweight_pool_backend
@@ -113,6 +112,12 @@ namespace threadschedule::detail
 template <size_t TaskSize = 64>
 class lightweight_pool_backend_base
 {
+  static_assert(TaskSize >= 2 * sizeof(void*), "TaskSize must hold the operation pointer and heap fallback pointer");
+  static_assert(TaskSize % alignof(void*) == 0, "TaskSize must be a multiple of pointer alignment");
+
+  using queued_task = detail::move_only_function<void(), TaskSize - sizeof(void*)>;
+  static_assert(sizeof(queued_task) == TaskSize, "TaskSize must equal the complete callable storage size");
+
 public:
   /**
    * @brief Construct a lightweight pool with @p num_threads workers.
@@ -183,8 +188,7 @@ public:
   auto
   try_post(F&& f, Args&&... args) -> expected<void, std::error_code>
   {
-    detail::move_only_function<void(), TaskSize - sizeof(void*)> task(
-        detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
+    queued_task task(detail::bind_args(std::forward<F>(f), std::forward<Args>(args)...));
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (stop_)
@@ -222,7 +226,7 @@ public:
   auto
   try_post_batch(Iterator begin, Iterator end) -> expected<void, std::error_code>
   {
-    std::vector<detail::move_only_function<void(), TaskSize - sizeof(void*)>> prepared;
+    std::vector<queued_task> prepared;
     prepared.reserve(detail::multipass_range_size(begin, end));
     for (auto it = begin; it != end; ++it)
       prepared.emplace_back(*it);
@@ -270,20 +274,21 @@ public:
     if (is_current_worker())
       detail::throw_worker_deadlock();
     std::lock_guard<std::recursive_timed_mutex> shutdown_lock(shutdown_mutex_);
-    std::queue<detail::move_only_function<void(), TaskSize - sizeof(void*)>> discarded;
+    if (workers_.empty())
+      return;
+    std::queue<queued_task> discarded;
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      if (stop_)
-        return;
-      stop_ = true;
-      if (policy == shutdown_policy_backend::drop_pending)
+      if (!stop_)
+        stop_ = true;
+      if (policy == shutdown_policy_backend::drop_pending && !tasks_.empty())
         tasks_.swap(discarded);
     }
-    shutdown_completed_all_ = discarded.empty();
+    shutdown_completed_all_ = shutdown_completed_all_ && discarded.empty();
     condition_.notify_all();
     drain_condition_.notify_all();
     {
-      std::queue<detail::move_only_function<void(), TaskSize - sizeof(void*)>> empty;
+      std::queue<queued_task> empty;
       discarded.swap(empty);
     }
     for (auto& w : workers_)
@@ -299,7 +304,8 @@ public:
    * @brief Attempt a timed drain.
    *
    * Waits up to @p timeout for all tasks to complete, then discards queued
-   * work and waits for any already-running tasks.
+   * work. Already-running tasks finish asynchronously and are joined by a
+   * later blocking shutdown or by destruction.
    *
    * New submissions are rejected before the timed wait begins.
    * @return @c true if all tasks completed within the deadline,
@@ -317,29 +323,34 @@ public:
     else if (!shutdown_lock.try_lock_until(deadline))
       return false;
     std::unique_lock<std::mutex> lock(mutex_);
-    if (stop_)
+    if (workers_.empty())
       return shutdown_completed_all_ && shutdown_completed_at_ <= deadline;
-    stop_ = true;
+    if (!stop_)
+      stop_ = true;
     condition_.notify_all();
     bool const drained = drain_condition_.wait_until(
         lock, deadline, [this] { return tasks_.empty() && active_tasks_.load(std::memory_order_acquire) == 0; });
-    std::queue<detail::move_only_function<void(), TaskSize - sizeof(void*)>> discarded;
+    std::queue<queued_task> discarded;
     if (!drained)
       tasks_.swap(discarded);
-    shutdown_completed_all_ = discarded.empty();
+    shutdown_completed_all_ = shutdown_completed_all_ && discarded.empty();
     lock.unlock();
     condition_.notify_all();
     drain_condition_.notify_all();
     {
-      std::queue<detail::move_only_function<void(), TaskSize - sizeof(void*)>> empty;
+      std::queue<queued_task> empty;
       discarded.swap(empty);
     }
-    for (auto& worker : workers_)
-      if (worker.joinable())
-        worker.join();
-    workers_.clear();
-    shutdown_completed_at_ = std::chrono::steady_clock::now();
-    return drained;
+    if (deadline == std::chrono::steady_clock::time_point::max())
+      {
+        for (auto& worker : workers_)
+          if (worker.joinable())
+            worker.join();
+        workers_.clear();
+      }
+    if (drained && shutdown_completed_at_ == std::chrono::steady_clock::time_point{})
+      shutdown_completed_at_ = std::chrono::steady_clock::now();
+    return drained && shutdown_completed_all_;
   }
 
   /// @}
@@ -406,7 +417,7 @@ private:
   bool register_workers_;
   detail::worker_startup_latch startup_;
   std::vector<detail::thread_backend> workers_;
-  std::queue<detail::move_only_function<void(), TaskSize - sizeof(void*)>> tasks_;
+  std::queue<queued_task> tasks_;
   std::mutex mutex_;
   std::condition_variable condition_;
   std::condition_variable drain_condition_;
@@ -435,7 +446,7 @@ private:
       }
     while (true)
       {
-        detail::move_only_function<void(), TaskSize - sizeof(void*)> task;
+        queued_task task;
         {
           std::unique_lock<std::mutex> lock(mutex_);
           condition_.wait(lock, [this] { return stop_ || !tasks_.empty(); });

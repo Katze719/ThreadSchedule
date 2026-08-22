@@ -70,6 +70,13 @@
 
 ### Pools and scheduled work
 
+- Made finite advanced-pool `shutdown_for()` calls honor the deadline without joining an already-running callable; queued
+  work is discarded at expiry and a later blocking shutdown or destruction joins the remaining workers.
+- Made the lightweight pool's advertised 64-byte task slot exactly 64 bytes (56 bytes of inline storage on 64-bit targets)
+  instead of 80 bytes, with compile-time layout checks for custom slot sizes.
+- Made `parallel_for_each` consistently reject work after shutdown with `operation_canceled`, including `inline_pool`, and
+  protected work-stealing worker startup from `random_device` failures.
+- Made null function and member-function pointers construct an empty `move_only_function`, matching `std::function`.
 - Fixed a lost wake-up in `lightweight_pool::shutdown_for()` that could delay a finite timed shutdown until its deadline
   or block an effectively unbounded shutdown indefinitely as the final active task completed.
 - Made concurrent advanced-pool `shutdown_for()` calls apply their deadline while waiting for another shutdown operation,

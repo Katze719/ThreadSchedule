@@ -238,12 +238,15 @@ parallel_for_each_chunked(Pool& pool, Iterator begin, Iterator end, F&& func, si
           auto chunk_end = it;
           std::advance(chunk_end, this_chunk);
 
-          futures.push_back(pool.submit(
+          auto submitted = pool.try_submit(
               [it, chunk_end, &func]()
                 {
                   for (auto cur = it; cur != chunk_end; ++cur)
                     func(*cur);
-                }));
+                });
+          if (!submitted)
+            throw std::system_error(submitted.error(), "parallel_for_each submission failed");
+          futures.push_back(std::move(submitted.value()));
 
           it = chunk_end;
         }

@@ -382,16 +382,17 @@ public:
     if (is_current_worker())
       detail::throw_worker_deadlock();
     std::lock_guard<std::recursive_timed_mutex> shutdown_lock(shutdown_mutex_);
+    if (workers_.empty())
+      return;
     std::queue<queued_task> discarded;
     {
       std::lock_guard<std::mutex> lock(queue_mutex_);
-      if (stop_)
-        return;
-      stop_ = true;
-      if (policy == shutdown_policy_backend::drop_pending)
+      if (!stop_)
+        stop_ = true;
+      if (policy == shutdown_policy_backend::drop_pending && !tasks_.empty())
         tasks_.swap(discarded);
     }
-    shutdown_completed_all_ = discarded.empty();
+    shutdown_completed_all_ = shutdown_completed_all_ && discarded.empty();
 
     condition_.notify_all();
     task_finished_condition_.notify_all();
@@ -412,7 +413,7 @@ public:
 
   /**
    * @brief Attempt a timed drain: finish as many tasks as possible within
-   *        @p timeout, then discard queued work and wait for running tasks.
+   *        @p timeout, then discard queued work.
    *
    * New submissions are rejected before the timed wait begins.
    * Running C++ callables cannot be stopped safely, so this function can
@@ -433,16 +434,17 @@ public:
       return false;
 
     std::unique_lock<std::mutex> lock(queue_mutex_);
-    if (stop_)
+    if (workers_.empty())
       return shutdown_completed_all_ && shutdown_completed_at_ <= deadline;
-    stop_ = true;
+    if (!stop_)
+      stop_ = true;
     condition_.notify_all();
     bool const drained = task_finished_condition_.wait_until(
         lock, deadline, [this] { return tasks_.empty() && active_tasks_.load(std::memory_order_acquire) == 0; });
     std::queue<queued_task> discarded;
     if (!drained)
       tasks_.swap(discarded);
-    shutdown_completed_all_ = discarded.empty();
+    shutdown_completed_all_ = shutdown_completed_all_ && discarded.empty();
     lock.unlock();
 
     condition_.notify_all();
@@ -451,12 +453,16 @@ public:
       std::queue<queued_task> empty;
       discarded.swap(empty);
     }
-    for (auto& worker : workers_)
-      if (worker.joinable())
-        worker.join();
-    workers_.clear();
-    shutdown_completed_at_ = std::chrono::steady_clock::now();
-    return drained;
+    if (deadline == std::chrono::steady_clock::time_point::max())
+      {
+        for (auto& worker : workers_)
+          if (worker.joinable())
+            worker.join();
+        workers_.clear();
+      }
+    if (drained && shutdown_completed_at_ == std::chrono::steady_clock::time_point{})
+      shutdown_completed_at_ = std::chrono::steady_clock::now();
+    return drained && shutdown_completed_all_;
   }
 
   /// @}
