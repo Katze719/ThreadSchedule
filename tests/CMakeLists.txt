@@ -68,6 +68,7 @@ set(THREADSCHEDULE_SELF_CONTAINED_HEADERS
     threadschedule/detail/callable/move_only_function.hpp
     threadschedule/detail/scope_exit.hpp
     threadschedule/detail/try_result.hpp
+    threadschedule/detail/time.hpp
     threadschedule/detail/unique_handle.hpp
     threadschedule/detail/scheduling/native.hpp
     threadschedule/detail/thread/control.hpp
@@ -82,6 +83,7 @@ set(THREADSCHEDULE_SELF_CONTAINED_HEADERS
     threadschedule/detail/registry/thread_registry_backend.hpp
     threadschedule/detail/pool/backend.hpp
     threadschedule/detail/pool/callbacks.hpp
+    threadschedule/detail/pool/deadline.hpp
     threadschedule/detail/pool/facade.hpp
     threadschedule/detail/pool/global_pool_backend.hpp
     threadschedule/detail/pool/indefinite_wait.hpp
@@ -100,7 +102,6 @@ set(THREADSCHEDULE_SELF_CONTAINED_HEADERS
     threadschedule/detail/scheduled/scheduled_cancellation_state.hpp
     threadschedule/detail/scheduled/scheduled_pool_backend_base.hpp
     threadschedule/detail/scheduled/scheduled_task_backend.hpp
-    threadschedule/detail/scheduled/time.hpp
 )
 
 foreach(header IN LISTS THREADSCHEDULE_SELF_CONTAINED_HEADERS)

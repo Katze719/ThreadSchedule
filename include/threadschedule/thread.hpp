@@ -30,7 +30,12 @@ class thread
 public:
   /** @brief Construct an empty, non-joinable thread object. */
   thread() = default;
-  /** @brief Take ownership of an existing std::thread. */
+  /**
+   * @brief Take ownership of an existing std::thread.
+   *
+   * @note On Linux, nice control reports @c operation_not_supported because
+   *       an external thread's kernel TID cannot be recovered portably.
+   */
   explicit thread(std::thread&& value) noexcept : impl_(std::move(value)) {}
   /**
    * @brief Start a thread from callable and arguments.

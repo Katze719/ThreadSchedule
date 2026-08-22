@@ -172,7 +172,8 @@ native.join();
 
 On Linux, portable nice control needs a known identity. Core `thread_view` deliberately has no native-ID constructor;
 nice operations on an external `std::thread` therefore return `operation_not_supported`. Native identity and handles belong
-to the explicit advanced surface.
+to the explicit advanced surface. The same limitation applies when `thread` or C++20 `jthread` takes ownership of an
+already-running standard thread.
 
 In C++20, replace `JThreadWrapper` with `jthread`. It follows `std::jthread` callable rules, including stop-token injection.
 In C++17 no `jthread` name exists; the 2.4 fallback alias to `ThreadWrapper` was removed.

@@ -31,7 +31,12 @@ class jthread
 public:
   /** @brief Construct an empty, non-joinable jthread wrapper. */
   jthread() noexcept = default;
-  /** @brief Take ownership of an existing std::jthread. */
+  /**
+   * @brief Take ownership of an existing std::jthread.
+   *
+   * @note On Linux, nice control reports @c operation_not_supported because
+   *       an external thread's kernel TID cannot be recovered portably.
+   */
   explicit jthread(std::jthread&& value) noexcept : impl_(std::move(value)) {}
   /**
    * @brief Start jthread from callable and arguments.

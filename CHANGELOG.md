@@ -57,6 +57,8 @@
   succeeds. The error-returning factory reports the configuration error; the direct constructor throws `system_error`.
 - Added per-thread nice control plus exact nice and portable priority readback. Linux uses the requested nice value; MSVC and MinGW use a
   bounded Win32 thread-priority mapping that does not select `TIME_CRITICAL` for portable requests.
+- Documented that Linux nice control is unavailable for `thread`, `jthread`, and `thread_view` objects created from
+  already-running standard threads because their kernel TID cannot be recovered portably.
 - Made priority readback consistent across `thread`, `jthread`, `thread_view`, `this_thread`, and registry-backed views.
   Linux `SCHED_IDLE` reads as the effective lowest priority/nice 19, while policies without meaningful nice semantics
   report `operation_not_supported`.
@@ -70,6 +72,8 @@
 
 - Rejected unrepresentable delayed and periodic deadlines with `value_too_large` and replaced unchecked `steady_clock`
   arithmetic that could overflow and execute a maximally delayed task immediately.
+- Saturated oversized advanced-pool `shutdown_for` timeouts at `steady_clock::time_point::max()` instead of overflowing
+  during conversion from milliseconds; non-positive timeouts expire immediately.
 - Made scheduled-task handles observe `drop_pending` when a due task had already moved from the scheduler queue into the
   worker queue but had not started.
 - Made `scheduled_pool` and specialized scheduled-pool destruction from one of their own callbacks transfer cleanup to a

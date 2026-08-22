@@ -10,6 +10,7 @@
 #include "../callable/bind.hpp"
 #include "../callable/move_only_function.hpp"
 #include "callbacks.hpp"
+#include "deadline.hpp"
 #include "shutdown_policy_backend.hpp"
 #include "worker_context_guard.hpp"
 #include "worker_count.hpp"
@@ -309,7 +310,7 @@ public:
   {
     if (is_current_worker())
       detail::throw_worker_deadlock();
-    auto const deadline = std::chrono::steady_clock::now() + timeout;
+    auto const deadline = shutdown_deadline_after(timeout);
     std::lock_guard<std::recursive_mutex> shutdown_lock(shutdown_mutex_);
     std::unique_lock<std::mutex> lock(mutex_);
     if (stop_)

@@ -67,21 +67,36 @@ class thread_view
 
 public:
 #if defined(__cpp_lib_jthread) && __cpp_lib_jthread >= 201911L
-  /** @brief Create a view over an existing std::thread. */
+  /**
+   * @brief Create a view over an existing std::thread.
+   *
+   * @note On Linux, nice control reports @c operation_not_supported because
+   *       an external thread's kernel TID cannot be recovered portably.
+   */
   explicit thread_view(std::thread& value) noexcept : impl_(std::in_place_type<std_thread_view>, value) {}
   /** @brief Create a view over a threadschedule::thread. */
   explicit thread_view(thread& value) noexcept
       : impl_(std::in_place_type<std_thread_view>, value.impl_.get(), value.impl_.native_id())
   {
   }
-  /** @brief Create a view over an existing std::jthread. */
+  /**
+   * @brief Create a view over an existing std::jthread.
+   *
+   * @note On Linux, nice control reports @c operation_not_supported because
+   *       an external thread's kernel TID cannot be recovered portably.
+   */
   explicit thread_view(std::jthread& value) noexcept : impl_(std::in_place_type<jthread_view>, value) {}
   /** @brief Create a view over a threadschedule::jthread. */
   explicit thread_view(jthread& value) noexcept : impl_(std::in_place_type<jthread_view>, value.impl_, value.native_id_)
   {
   }
 #else
-  /** @brief Create a view over an existing std::thread. */
+  /**
+   * @brief Create a view over an existing std::thread.
+   *
+   * @note On Linux, nice control reports @c operation_not_supported because
+   *       an external thread's kernel TID cannot be recovered portably.
+   */
   explicit thread_view(std::thread& value) noexcept : impl_(value) {}
   /** @brief Create a view over a threadschedule::thread. */
   explicit thread_view(thread& value) noexcept : impl_(value.impl_.get(), value.impl_.native_id()) {}

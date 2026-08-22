@@ -34,6 +34,10 @@ like the core pools. Throwing operations are explicitly named
 statistics use the public `pool_statistics` value type. The canonical
 `thread_pool` remains the recommended default.
 
+The asynchronous specialized pools provide `shutdown_for(milliseconds)` for a timed drain. Non-positive timeouts expire
+immediately. Positive timeouts that exceed the representable `steady_clock` deadline saturate at
+`steady_clock::time_point::max()` instead of overflowing.
+
 ## Native scheduling
 
 `advanced::native_handle(thread)` and its C++20 `jthread` overload provide the

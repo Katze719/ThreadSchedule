@@ -293,7 +293,9 @@ exercise_submitting_pool()
   Pool pool(threadschedule::worker_count{ 1 });
   auto future = pool.submit_or_throw([] { return 42; });
   EXPECT_EQ(future.get(), 42);
-  pool.shutdown();
+  auto stopped = pool.shutdown_for(std::chrono::milliseconds::max());
+  ASSERT_TRUE(stopped.has_value()) << stopped.error().message();
+  EXPECT_TRUE(stopped.value());
 }
 
 TEST(AdvancedApi, SpecializedPoolsSubmitAndShutdown)
@@ -305,7 +307,9 @@ TEST(AdvancedApi, SpecializedPoolsSubmitAndShutdown)
   advanced::lightweight_pool lightweight(threadschedule::worker_count{ 1 });
   std::atomic<int> value{ 0 };
   lightweight.post([&value] { value.store(7, std::memory_order_release); });
-  lightweight.shutdown();
+  auto stopped = lightweight.shutdown_for(std::chrono::milliseconds::max());
+  ASSERT_TRUE(stopped.has_value()) << stopped.error().message();
+  EXPECT_TRUE(stopped.value());
   EXPECT_EQ(value.load(std::memory_order_acquire), 7);
 
   advanced::inline_pool inline_pool;

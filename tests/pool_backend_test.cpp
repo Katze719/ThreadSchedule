@@ -9,6 +9,7 @@
 #include <threadschedule/advanced/pools.hpp>
 #include <threadschedule/advanced/task_group.hpp>
 #include <threadschedule/advanced/testing/chaos_controller.hpp>
+#include <threadschedule/detail/pool/deadline.hpp>
 #include <threadschedule/threadschedule.hpp>
 #include <vector>
 
@@ -82,6 +83,30 @@ shutdown_for_stops_new_submissions() -> bool
 
   release.set_value();
   return rejected && shutdown.get();
+}
+
+template <typename Pool>
+auto
+shutdown_for_blocked_task(std::chrono::milliseconds timeout) -> bool
+{
+  Pool pool(1);
+  std::promise<void> started;
+  std::promise<void> release;
+  auto release_ready = release.get_future().share();
+  pool.post(
+      [&]
+        {
+          started.set_value();
+          release_ready.wait();
+        });
+  started.get_future().wait();
+
+  auto shutdown = std::async(std::launch::async, [&pool, timeout] { return pool.shutdown_for(timeout); });
+  while (pool.try_post([] {}).has_value())
+    std::this_thread::yield();
+
+  release.set_value();
+  return shutdown.get();
 }
 } // namespace
 
@@ -440,6 +465,24 @@ TEST(PoolBackendTest, ShutdownForZeroSucceedsAfterCompletedShutdown)
   lightweight_pool_backend lightweight(1);
   lightweight.shutdown();
   EXPECT_TRUE(lightweight.shutdown_for(std::chrono::milliseconds(0)));
+}
+
+TEST(PoolBackendTest, ShutdownForHandlesExtremeTimeoutsWithoutOverflow)
+{
+  EXPECT_TRUE(shutdown_for_blocked_task<thread_pool_backend>(std::chrono::milliseconds::max()));
+  EXPECT_TRUE(shutdown_for_blocked_task<work_stealing_pool_backend>(std::chrono::milliseconds::max()));
+  EXPECT_TRUE(shutdown_for_blocked_task<lightweight_pool_backend>(std::chrono::milliseconds::max()));
+}
+
+TEST(PoolBackendTest, ShutdownDeadlineSaturatesExtremeTimeouts)
+{
+  EXPECT_EQ(shutdown_deadline_after(std::chrono::milliseconds::max()), std::chrono::steady_clock::time_point::max());
+
+  auto const before = std::chrono::steady_clock::now();
+  auto const deadline = shutdown_deadline_after(std::chrono::milliseconds::min());
+  auto const after = std::chrono::steady_clock::now();
+  EXPECT_GE(deadline, before);
+  EXPECT_LE(deadline, after);
 }
 
 TEST(PoolBackendTest, WorkerShutdownIsRejectedWithoutCorruptingPool)

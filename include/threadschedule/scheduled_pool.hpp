@@ -7,8 +7,8 @@
 
 #include "detail/pool/shutdown.hpp"
 #include "detail/scheduled/backend.hpp"
-#include "detail/scheduled/time.hpp"
 #include "detail/thread/control.hpp"
+#include "detail/time.hpp"
 #include "scheduled_task.hpp"
 #include "shutdown_policy.hpp"
 #include "task_error.hpp"

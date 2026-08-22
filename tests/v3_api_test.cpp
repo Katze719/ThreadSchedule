@@ -307,6 +307,43 @@ TEST(V3Api, ThreadViewWithoutPortableIdentityRejectsLinuxNiceControl)
   ASSERT_FALSE(unsupported.has_value());
   EXPECT_EQ(unsupported.error(), std::make_error_code(std::errc::operation_not_supported));
 }
+
+TEST(V3Api, ThreadAdoptingStdThreadRejectsLinuxNiceControl)
+{
+  std::promise<void> release;
+  auto ready = release.get_future().share();
+  std::thread value([ready] { ready.wait(); });
+  threadschedule::thread adopted(std::move(value));
+
+  auto unsupported = adopted.set_nice(threadschedule::nice_value{ 10 });
+
+  release.set_value();
+  auto joined = adopted.join();
+  ASSERT_FALSE(unsupported.has_value());
+  EXPECT_EQ(unsupported.error(), std::make_error_code(std::errc::operation_not_supported));
+  EXPECT_TRUE(joined.has_value());
+}
+
+#  if defined(__cpp_lib_jthread) && __cpp_lib_jthread >= 201911L
+TEST(V3Api, JthreadAdoptingStdJthreadRejectsLinuxNiceControl)
+{
+  std::jthread value(
+      [](std::stop_token stop)
+        {
+          while (!stop.stop_requested())
+            std::this_thread::yield();
+        });
+  threadschedule::jthread adopted(std::move(value));
+
+  auto unsupported = adopted.set_nice(threadschedule::nice_value{ 10 });
+
+  EXPECT_TRUE(adopted.request_stop());
+  auto joined = adopted.join();
+  ASSERT_FALSE(unsupported.has_value());
+  EXPECT_EQ(unsupported.error(), std::make_error_code(std::errc::operation_not_supported));
+  EXPECT_TRUE(joined.has_value());
+}
+#  endif
 #endif
 
 TEST(V3Api, EmptyThreadReportsJoinAndDetachErrors)
