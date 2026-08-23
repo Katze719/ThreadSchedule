@@ -1146,6 +1146,43 @@ TEST(PoolBackendTest, ChaosControllerThreadCanBeConfigured)
   EXPECT_EQ(info->name, "chaos_cfg");
 }
 
+TEST(PoolBackendTest, ChaosControllerDestructionInterruptsLongInterval)
+{
+  chaos_config cfg;
+  cfg.interval = std::chrono::hours(1);
+  cfg.shuffle_affinity = false;
+
+  auto const started = std::chrono::steady_clock::now();
+  {
+    chaos_controller chaos(cfg, [](registered_thread const&) { return false; });
+  }
+  EXPECT_LT(std::chrono::steady_clock::now() - started, std::chrono::seconds(1));
+}
+
+TEST(PoolBackendTest, ChaosControllerCapturesPredicateException)
+{
+  auto_register_current_thread registration("chaos_throw", "test");
+  chaos_config cfg;
+  cfg.interval = std::chrono::milliseconds(1);
+  cfg.shuffle_affinity = false;
+
+  chaos_controller chaos(cfg,
+                         [](registered_thread const& entry)
+                           {
+                             if (entry.name == "chaos_throw")
+                               throw std::runtime_error("chaos predicate failed");
+                             return false;
+                           });
+
+  auto const deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  while (!chaos.failure() && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+  auto failure = chaos.failure();
+  ASSERT_TRUE(failure);
+  EXPECT_THROW(std::rethrow_exception(failure), std::runtime_error);
+}
+
 // ==================== inline_pool_backend ====================
 
 TEST(PoolBackendTest, InlinePoolSubmit)

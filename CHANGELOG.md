@@ -125,6 +125,11 @@
 - Made advanced batch submission consume single-pass input ranges exactly once, while diagnosing the forward-iterator
   requirement of chunked `parallel_for_each` at compile time. `task_group::wait()` now includes child tasks submitted to
   the same group by work it is already tracking.
+- Prevented `task_group` fork/wait deadlocks on saturated pools by executing recursive and same-worker child submissions
+  inline, and rejected direct waits from a task tracked by that group with `resource_deadlock_would_occur`.
+- Made `chaos_controller` destruction interrupt long wait intervals, captured predicate failures instead of terminating
+  the process, and added a fallback seed when `random_device` is unavailable.
+- Clarified that `thread_pool::size()` reports its configured worker count after shutdown and returns zero only after move.
 
 ### Registry and runtime
 

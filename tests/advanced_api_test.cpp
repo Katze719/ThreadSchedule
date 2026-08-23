@@ -227,6 +227,52 @@ TEST(AdvancedApi, TaskGroupWaitIncludesTasksSpawnedByTrackedTasks)
   releaser.join();
 }
 
+TEST(AdvancedApi, TaskGroupCreatedInsideSingleWorkerExecutesChildrenWithoutDeadlock)
+{
+  advanced::raw_thread_pool pool(threadschedule::worker_count{ 1 });
+  auto outer = pool.submit(
+      [&pool]
+        {
+          advanced::task_group<advanced::raw_thread_pool> group(pool);
+          bool child_ran = false;
+          auto submitted = group.submit([&child_ran] { child_ran = true; });
+          if (!submitted)
+            return false;
+          group.wait();
+          return child_ran;
+        });
+
+  ASSERT_TRUE(outer.has_value());
+  ASSERT_EQ(outer->wait_for(1s), std::future_status::ready);
+  EXPECT_TRUE(outer->get());
+}
+
+TEST(AdvancedApi, TaskGroupRejectsWaitingFromItsOwnTrackedTask)
+{
+  advanced::raw_thread_pool pool(threadschedule::worker_count{ 1 });
+  advanced::task_group<advanced::raw_thread_pool> group(pool);
+  std::promise<std::error_code> observed;
+  auto observed_future = observed.get_future();
+
+  auto submitted = group.submit(
+      [&]
+        {
+          try
+            {
+              group.wait();
+              observed.set_value({});
+            }
+          catch (std::system_error const& error)
+            {
+              observed.set_value(error.code());
+            }
+        });
+
+  ASSERT_TRUE(submitted.has_value());
+  EXPECT_EQ(observed_future.get(), std::make_error_code(std::errc::resource_deadlock_would_occur));
+  group.wait();
+}
+
 TEST(AdvancedApi, ErrorHandledTaskAcceptsLvalueCallable)
 {
   auto handler = std::make_shared<advanced::error_handler>();

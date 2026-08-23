@@ -8,8 +8,12 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <cstdint>
+#include <exception>
 #include <functional>
 #include <future>
+#include <mutex>
 #include <optional>
 #include <random>
 #include <thread>
@@ -41,9 +45,19 @@ public:
     worker_ = thread(
         [this, predicate = std::move(predicate), started = std::move(started)]() mutable
           {
+            running_.store(true, std::memory_order_release);
             started.set_value(
                 detail::thread_id_access::make(static_cast<std::uint64_t>(detail::current_native_thread_id())));
-            run_loop(predicate);
+            try
+              {
+                run_loop(predicate);
+              }
+            catch (...)
+              {
+                std::lock_guard<std::mutex> lock(failure_mutex_);
+                failure_ = std::current_exception();
+              }
+            running_.store(false, std::memory_order_release);
           });
     worker_id_ = ready.get();
     (void)worker_.set_name("ts_chaos_ctl");
@@ -52,6 +66,7 @@ public:
   ~chaos_controller()
   {
     stop_.store(true, std::memory_order_release);
+    wakeup_.notify_one();
     if (worker_.joinable())
       (void)worker_.join();
   }
@@ -64,7 +79,7 @@ public:
   [[nodiscard]] auto
   thread_info() const -> std::optional<registered_thread>
   {
-    if (!worker_.joinable() || !worker_id_)
+    if (!worker_.joinable() || !worker_id_ || !running_.load(std::memory_order_acquire))
       return std::nullopt;
     auto name = worker_.get_name();
     return registered_thread{ *worker_id_, worker_.get_id(), name.value_or(std::string{}), "chaos", true };
@@ -73,23 +88,49 @@ public:
   auto
   configure_thread(thread_config const& config) -> result<void>
   {
-    if (!worker_.joinable())
+    if (!worker_.joinable() || !running_.load(std::memory_order_acquire))
       return unexpected(std::make_error_code(std::errc::no_such_process));
     return worker_.configure(config);
   }
 
+  /** @brief Return an exception that stopped the controller, if any. */
+  [[nodiscard]] auto
+  failure() const -> std::exception_ptr
+  {
+    std::lock_guard<std::mutex> lock(failure_mutex_);
+    return failure_;
+  }
+
 private:
+  [[nodiscard]] static auto
+  make_random_engine() noexcept -> std::mt19937
+  {
+    auto seed = static_cast<std::uint32_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+    seed ^= static_cast<std::uint32_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
+    try
+      {
+        std::random_device device;
+        seed ^= device();
+      }
+    catch (...)
+      {
+      }
+    return std::mt19937(seed);
+  }
+
   template <typename Predicate>
   void
   run_loop(Predicate& predicate)
   {
-    std::mt19937 random(std::random_device{}());
+    auto random = make_random_engine();
     while (!stop_.load(std::memory_order_acquire))
       {
         auto entries = global_registry().snapshot();
         if (entries)
           perturb(*entries, predicate, random);
-        std::this_thread::sleep_for(config_.interval);
+
+        std::unique_lock<std::mutex> lock(wait_mutex_);
+        wakeup_.wait_for(lock, config_.interval, [this] { return stop_.load(std::memory_order_acquire); });
       }
   }
 
@@ -130,6 +171,11 @@ private:
 
   chaos_config config_;
   std::atomic<bool> stop_{ false };
+  std::atomic<bool> running_{ false };
+  mutable std::mutex failure_mutex_;
+  std::exception_ptr failure_;
+  std::mutex wait_mutex_;
+  std::condition_variable wakeup_;
   thread worker_;
   std::optional<thread_id> worker_id_;
 };

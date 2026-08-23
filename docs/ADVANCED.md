@@ -140,7 +140,19 @@ advanced pool facades. Their `submit` operation follows the common
 `result<std::future<T>>` contract.
 
 `task_group::wait()` also waits for child work submitted to the same group by
-an already tracked task. Batch submission accepts single-pass input iterators;
+an already tracked task. Recursive submissions from a tracked task, and
+submissions made while already running on a worker of a pool that exposes
+`is_current_worker()`, execute inline so a saturated pool cannot deadlock on
+its grouped children. Calling `wait()` from a task tracked by that same group
+is rejected with `resource_deadlock_would_occur`.
+
+`chaos_controller` destruction interrupts its configured wait interval. An
+exception thrown by its predicate stops the controller instead of escaping
+the background thread; `failure()` exposes the captured exception. Random
+engine initialization falls back to a time/thread seed if `random_device`
+is unavailable.
+
+Batch submission accepts single-pass input iterators;
 `parallel_for_each` requires at least forward iterators because worker chunks
 retain iterator pairs until execution completes.
 

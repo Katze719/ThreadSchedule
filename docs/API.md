@@ -246,7 +246,8 @@ Calling `shutdown()` uses that same configured policy; the
 `shutdown(shutdown_policy)` overload explicitly overrides it for that call.
 After a move, the source pool has size zero. Submission, waiting, and worker
 configuration return `operation_canceled`; shutdown remains an idempotent
-success.
+success. A shutdown pool retains its configured `size()` even though its
+workers have already been joined.
 
 Calling `wait()` or `shutdown()` from one of the same pool's worker tasks is
 rejected with `std::errc::resource_deadlock_would_occur`. Releasing the last

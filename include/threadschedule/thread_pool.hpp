@@ -362,7 +362,7 @@ public:
           });
   }
 
-  /** @brief Return current worker count (0 if moved-from/shutdown backend). */
+  /** @brief Return configured worker count (0 if moved-from; retained after shutdown). */
   [[nodiscard]] auto
   size() const noexcept -> std::size_t
   {
