@@ -273,6 +273,50 @@ TEST(AdvancedApi, TaskGroupRejectsWaitingFromItsOwnTrackedTask)
   group.wait();
 }
 
+TEST(AdvancedApi, TaskGroupDestructionOnPoolWorkerWaitsForTrackedWork)
+{
+  using group_type = advanced::task_group<advanced::raw_thread_pool>;
+
+  advanced::raw_thread_pool pool(threadschedule::worker_count{ 2 });
+  auto group = std::make_unique<group_type>(pool);
+  auto* group_pointer = group.get();
+  std::promise<void> parent_started;
+  auto parent_ready = parent_started.get_future();
+  std::promise<void> release_parent;
+  auto parent_release = release_parent.get_future().share();
+  std::promise<void> destruction_started;
+  auto destruction_ready = destruction_started.get_future();
+  std::atomic<bool> child_ran{ false };
+
+  auto submitted = group->submit(
+      [group_pointer, &parent_started, parent_release, &child_ran]
+        {
+          parent_started.set_value();
+          parent_release.wait();
+          auto child = group_pointer->submit([&child_ran] { child_ran.store(true); });
+          if (!child)
+            throw std::system_error(child.error());
+        });
+  ASSERT_TRUE(submitted.has_value());
+  parent_ready.wait();
+
+  group_pointer = group.release();
+  auto destroyed = pool.submit(
+      [group_pointer, &destruction_started]
+        {
+          destruction_started.set_value();
+          delete group_pointer;
+        });
+  ASSERT_TRUE(destroyed.has_value());
+  destruction_ready.wait();
+  EXPECT_EQ(destroyed->wait_for(30ms), std::future_status::timeout);
+
+  release_parent.set_value();
+  ASSERT_EQ(destroyed->wait_for(1s), std::future_status::ready);
+  EXPECT_NO_THROW(destroyed->get());
+  EXPECT_TRUE(child_ran.load());
+}
+
 TEST(AdvancedApi, ErrorHandledTaskAcceptsLvalueCallable)
 {
   auto handler = std::make_shared<advanced::error_handler>();

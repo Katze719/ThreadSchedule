@@ -13,10 +13,10 @@
 
 #include "../result.hpp"
 
-#include <chrono>
 #include <exception>
 #include <functional>
 #include <future>
+#include <memory>
 #include <mutex>
 #include <system_error>
 #include <type_traits>
@@ -81,8 +81,12 @@ namespace threadschedule::advanced
 template <typename Pool>
 class task_group
 {
+  struct context_token
+  {
+  };
+
 public:
-  explicit task_group(Pool& pool) : pool_(pool) {}
+  explicit task_group(Pool& pool) : pool_(pool), token_(std::make_shared<context_token>()) {}
 
   task_group(task_group const&) = delete;
   auto operator=(task_group const&) -> task_group& = delete;
@@ -109,13 +113,14 @@ public:
   submit(F&& f)
   {
     using function_type = std::decay_t<F>;
-    auto grouped = [this, function = function_type(std::forward<F>(f))]() mutable
+    auto token = token_;
+    auto grouped = [token, function = function_type(std::forward<F>(f))]() mutable
       {
-        context_guard guard(current_group_, this);
+        context_guard guard(current_group_, token.get());
         std::invoke(std::move(function));
       };
 
-    if (current_group_ == this || ::threadschedule::detail::task_group_is_current_worker(pool_))
+    if (current_group_ == token.get() || ::threadschedule::detail::task_group_is_current_worker(pool_))
       return run_inline(std::move(grouped));
     return track(pool_.submit(std::move(grouped)));
   }
@@ -124,7 +129,7 @@ private:
   class context_guard
   {
   public:
-    context_guard(task_group*& slot, task_group* current) noexcept : slot_(slot), previous_(slot)
+    context_guard(context_token*& slot, context_token* current) noexcept : slot_(slot), previous_(slot)
     {
       slot_ = current;
     }
@@ -138,8 +143,8 @@ private:
     auto operator=(context_guard const&) -> context_guard& = delete;
 
   private:
-    task_group*& slot_;
-    task_group* previous_;
+    context_token*& slot_;
+    context_token* previous_;
   };
 
   template <typename F>
@@ -181,9 +186,7 @@ public:
   void
   wait()
   {
-    if (current_group_ == this)
-      throw_worker_wait_error();
-    if (::threadschedule::detail::task_group_is_current_worker(pool_) && has_unfinished_tasks())
+    if (current_group_ == token_.get())
       throw_worker_wait_error();
 
     std::exception_ptr first_error;
@@ -226,16 +229,6 @@ public:
   }
 
 private:
-  [[nodiscard]] auto
-  has_unfinished_tasks() const -> bool
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    for (auto const& future : futures_)
-      if (future.wait_for(std::chrono::milliseconds::zero()) != std::future_status::ready)
-        return true;
-    return false;
-  }
-
   [[noreturn]] static void
   throw_worker_wait_error()
   {
@@ -243,8 +236,9 @@ private:
                             "task_group::wait from a tracked pool task");
   }
 
-  inline static thread_local task_group* current_group_ = nullptr;
+  inline static thread_local context_token* current_group_ = nullptr;
   Pool& pool_;
+  std::shared_ptr<context_token> token_;
   mutable std::mutex mutex_;
   std::vector<std::future<void>> futures_;
 };
