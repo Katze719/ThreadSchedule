@@ -233,7 +233,7 @@ threadschedule::jthread worker([](std::stop_token stop) {
     while (!stop.stop_requested())
         do_work();
 });
-worker.request_stop();
+(void)worker.request_stop();
 #endif
 ```
 
@@ -289,8 +289,13 @@ privileges on Linux. Native scheduling remains available through
 ```cpp
 #include <threadschedule/advanced.hpp>
 
-threadschedule::advanced::work_stealing_pool pool(8);
+threadschedule::advanced::work_stealing_pool pool(
+    threadschedule::worker_count{8});
 auto future = pool.submit(expensive_work);
+if (!future)
+    report(future.error());
+else
+    use(future->get());
 ```
 
 On Linux, an unregistered process thread can also be found by its exact
