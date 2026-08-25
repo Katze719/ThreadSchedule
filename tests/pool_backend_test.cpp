@@ -547,31 +547,40 @@ TEST(PoolBackendTest, ShutdownDeadlineSaturatesExtremeTimeouts)
 TEST(PoolBackendTest, WorkerShutdownIsRejectedWithoutCorruptingPool)
 {
   thread_pool_backend regular(1);
-  auto regular_attempt = regular.submit([&regular] { regular.shutdown(shutdown_policy_backend::drain); });
-  try
-    {
-      regular_attempt.get();
-      FAIL() << "worker shutdown unexpectedly succeeded";
-    }
-  catch (std::system_error const& error)
-    {
-      EXPECT_EQ(error.code(), std::make_error_code(std::errc::resource_deadlock_would_occur));
-    }
+  std::promise<std::error_code> regular_error;
+  regular.post(
+      [&]
+        {
+          try
+            {
+              regular.shutdown(shutdown_policy_backend::drain);
+              regular_error.set_value({});
+            }
+          catch (std::system_error const& error)
+            {
+              regular_error.set_value(error.code());
+            }
+        });
+  EXPECT_EQ(regular_error.get_future().get(), std::make_error_code(std::errc::resource_deadlock_would_occur));
   EXPECT_EQ(regular.submit([] { return 1; }).get(), 1);
   regular.shutdown();
 
   work_stealing_pool_backend work_stealing(1);
-  auto stealing_attempt
-      = work_stealing.submit([&work_stealing] { work_stealing.shutdown(shutdown_policy_backend::drain); });
-  try
-    {
-      stealing_attempt.get();
-      FAIL() << "worker shutdown unexpectedly succeeded";
-    }
-  catch (std::system_error const& error)
-    {
-      EXPECT_EQ(error.code(), std::make_error_code(std::errc::resource_deadlock_would_occur));
-    }
+  std::promise<std::error_code> work_stealing_error;
+  work_stealing.post(
+      [&]
+        {
+          try
+            {
+              work_stealing.shutdown(shutdown_policy_backend::drain);
+              work_stealing_error.set_value({});
+            }
+          catch (std::system_error const& error)
+            {
+              work_stealing_error.set_value(error.code());
+            }
+        });
+  EXPECT_EQ(work_stealing_error.get_future().get(), std::make_error_code(std::errc::resource_deadlock_would_occur));
   EXPECT_EQ(work_stealing.submit([] { return 2; }).get(), 2);
   work_stealing.shutdown();
 

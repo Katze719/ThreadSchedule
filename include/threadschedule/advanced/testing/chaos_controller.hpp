@@ -65,7 +65,10 @@ public:
 
   ~chaos_controller()
   {
-    stop_.store(true, std::memory_order_release);
+    {
+      std::lock_guard<std::mutex> lock(wait_mutex_);
+      stop_.store(true, std::memory_order_release);
+    }
     wakeup_.notify_one();
     if (worker_.joinable())
       (void)worker_.join();

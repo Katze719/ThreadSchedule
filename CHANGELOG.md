@@ -129,8 +129,8 @@
   inline, and rejected direct waits from a task tracked by that group with `resource_deadlock_would_occur`.
 - Fixed a heap-use-after-free when a `task_group` was destroyed by another worker while tracked work was still submitting
   child tasks; destruction now waits for that work, and task wrappers retain a lifetime-independent context token.
-- Made `chaos_controller` destruction interrupt long wait intervals, captured predicate failures instead of terminating
-  the process, and added a fallback seed when `random_device` is unavailable.
+- Made `chaos_controller` destruction reliably interrupt long wait intervals without a lost wake-up, captured predicate
+  failures instead of terminating the process, and added a fallback seed when `random_device` is unavailable.
 - Clarified that `thread_pool::size()` reports its configured worker count after shutdown and returns zero only after move.
 
 ### Registry and runtime
