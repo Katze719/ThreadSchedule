@@ -1,0 +1,373 @@
+{
+  "schema_version": 1,
+  "kind": "thread_cost_summary",
+  "metadata_version": 1,
+  "system": {
+    "cpu": "AMD Ryzen 5 5600X 6-Core Processor",
+    "os": "Linux 7.2.7-200.fc44.x86_64 x86_64",
+    "measured_at_utc": "2026-09-29T19:05:19Z"
+  },
+  "inputs": {
+    "timing": "thread-timing.json",
+    "allocations": "thread-allocations.json"
+  },
+  "timing": {
+    "kind": "timing",
+    "metadata": {
+      "build_type": "Release",
+      "clock": "std::chrono::steady_clock",
+      "clock_period_ns": 1.0,
+      "compiler": "GCC 16.2.1 20260819 (Red Hat 16.2.1-2)",
+      "compiler_flags": "  -O3 -DNDEBUG  ",
+      "cpp_standard": 201703,
+      "cpu": "AMD Ryzen 5 5600X 6-Core Processor",
+      "hardware_concurrency": 12,
+      "measured_at_utc": "2026-09-29T19:05:19Z",
+      "os": "Linux 7.2.7-200.fc44.x86_64 x86_64",
+      "standard_library": "libstdc++ 20260819"
+    },
+    "parameters": {
+      "configuration_name": "ts-bench",
+      "percentile_method": "nearest-rank",
+      "samples": 2000,
+      "warmup": 200,
+      "work_iterations": 4194304,
+      "work_samples": 30,
+      "work_seed": 13060561834861
+    },
+    "scenarios": [
+      {
+        "configured": false,
+        "id": "std_thread",
+        "label": "std::thread",
+        "metrics": {
+          "creation_ns": {
+            "median": 13114.5,
+            "p95": 19576.0
+          },
+          "entry_ns": {
+            "median": 16210.0,
+            "p95": 24436.0
+          },
+          "lifecycle_ns": {
+            "median": 23023.0,
+            "p95": 35897.0
+          },
+          "ready_ns": {
+            "median": 16270.0,
+            "p95": 24526.0
+          },
+          "work_ns_per_iteration": {
+            "median": 2.273157835006714,
+            "p95": 2.3744096755981445
+          }
+        },
+        "status": "ok"
+      },
+      {
+        "configured": false,
+        "id": "ts_thread",
+        "label": "ts::thread",
+        "metrics": {
+          "creation_ns": {
+            "median": 20839.0,
+            "p95": 31950.0
+          },
+          "entry_ns": {
+            "median": 17353.0,
+            "p95": 27161.0
+          },
+          "lifecycle_ns": {
+            "median": 21090.0,
+            "p95": 37871.0
+          },
+          "ready_ns": {
+            "median": 17403.0,
+            "p95": 27261.0
+          },
+          "work_ns_per_iteration": {
+            "median": 2.261871337890625,
+            "p95": 2.311798095703125
+          }
+        },
+        "status": "ok"
+      },
+      {
+        "configured": false,
+        "id": "ts_create",
+        "label": "ts::thread::create",
+        "metrics": {
+          "creation_ns": {
+            "median": 20193.0,
+            "p95": 31459.0
+          },
+          "entry_ns": {
+            "median": 16721.5,
+            "p95": 26530.0
+          },
+          "lifecycle_ns": {
+            "median": 20398.5,
+            "p95": 37260.0
+          },
+          "ready_ns": {
+            "median": 16762.0,
+            "p95": 26570.0
+          },
+          "work_ns_per_iteration": {
+            "median": 2.262692928314209,
+            "p95": 2.3231751918792725
+          }
+        },
+        "status": "ok"
+      },
+      {
+        "configured": true,
+        "id": "std_thread_named",
+        "label": "std::thread + this_thread::set_name",
+        "metrics": {
+          "creation_ns": {
+            "median": 13184.5,
+            "p95": 20228.0
+          },
+          "entry_ns": {
+            "median": 16291.0,
+            "p95": 24646.0
+          },
+          "lifecycle_ns": {
+            "median": 24516.0,
+            "p95": 37851.0
+          },
+          "ready_ns": {
+            "median": 17738.5,
+            "p95": 26720.0
+          },
+          "work_ns_per_iteration": {
+            "median": 2.2744356393814087,
+            "p95": 2.342451810836792
+          }
+        },
+        "status": "ok"
+      },
+      {
+        "configured": true,
+        "id": "ts_thread_named",
+        "label": "ts::thread(config)",
+        "metrics": {
+          "creation_ns": {
+            "median": 34240.0,
+            "p95": 52198.0
+          },
+          "entry_ns": {
+            "median": 37776.0,
+            "p95": 57488.0
+          },
+          "lifecycle_ns": {
+            "median": 45199.5,
+            "p95": 70432.0
+          },
+          "ready_ns": {
+            "median": 37836.0,
+            "p95": 57538.0
+          },
+          "work_ns_per_iteration": {
+            "median": 2.2698734998703003,
+            "p95": 2.331028938293457
+          }
+        },
+        "status": "ok"
+      },
+      {
+        "configured": true,
+        "id": "ts_create_named",
+        "label": "ts::thread::create(config)",
+        "metrics": {
+          "creation_ns": {
+            "median": 34139.0,
+            "p95": 52379.0
+          },
+          "entry_ns": {
+            "median": 37681.0,
+            "p95": 57618.0
+          },
+          "lifecycle_ns": {
+            "median": 45114.0,
+            "p95": 70903.0
+          },
+          "ready_ns": {
+            "median": 37760.0,
+            "p95": 57678.0
+          },
+          "work_ns_per_iteration": {
+            "median": 2.26148784160614,
+            "p95": 2.340301990509033
+          }
+        },
+        "status": "ok"
+      }
+    ],
+    "schema_version": 1,
+    "sizes": [
+      {
+        "alignment": 8,
+        "bytes": 8,
+        "type": "std::thread"
+      },
+      {
+        "alignment": 8,
+        "bytes": 24,
+        "type": "ts::thread"
+      },
+      {
+        "alignment": 8,
+        "bytes": 24,
+        "type": "ts::thread_view"
+      },
+      {
+        "alignment": 8,
+        "bytes": 32,
+        "type": "ts::result<ts::thread>"
+      }
+    ]
+  },
+  "allocations": {
+    "kind": "allocations",
+    "metadata": {
+      "build_type": "Release",
+      "clock": "std::chrono::steady_clock",
+      "clock_period_ns": 1.0,
+      "compiler": "GCC 16.2.1 20260819 (Red Hat 16.2.1-2)",
+      "compiler_flags": "  -O3 -DNDEBUG  ",
+      "cpp_standard": 201703,
+      "cpu": "AMD Ryzen 5 5600X 6-Core Processor",
+      "hardware_concurrency": 12,
+      "measured_at_utc": "2026-09-29T19:05:22Z",
+      "os": "Linux 7.2.7-200.fc44.x86_64 x86_64",
+      "standard_library": "libstdc++ 20260819"
+    },
+    "parameters": {
+      "samples": 2000,
+      "warmup": 200
+    },
+    "scenarios": [
+      {
+        "configured": false,
+        "id": "std_thread",
+        "label": "std::thread",
+        "metrics": {
+          "allocated_bytes": {
+            "median": 16.0,
+            "p95": 16.0
+          },
+          "allocations": {
+            "median": 1.0,
+            "p95": 1.0
+          }
+        },
+        "status": "ok"
+      },
+      {
+        "configured": false,
+        "id": "ts_thread",
+        "label": "ts::thread",
+        "metrics": {
+          "allocated_bytes": {
+            "median": 152.0,
+            "p95": 152.0
+          },
+          "allocations": {
+            "median": 2.0,
+            "p95": 2.0
+          }
+        },
+        "status": "ok"
+      },
+      {
+        "configured": false,
+        "id": "ts_create",
+        "label": "ts::thread::create",
+        "metrics": {
+          "allocated_bytes": {
+            "median": 152.0,
+            "p95": 152.0
+          },
+          "allocations": {
+            "median": 2.0,
+            "p95": 2.0
+          }
+        },
+        "status": "ok"
+      },
+      {
+        "configured": true,
+        "id": "std_thread_named",
+        "label": "std::thread + this_thread::set_name",
+        "metrics": {
+          "allocated_bytes": {
+            "median": 16.0,
+            "p95": 16.0
+          },
+          "allocations": {
+            "median": 1.0,
+            "p95": 1.0
+          }
+        },
+        "status": "ok"
+      },
+      {
+        "configured": true,
+        "id": "ts_thread_named",
+        "label": "ts::thread(config)",
+        "metrics": {
+          "allocated_bytes": {
+            "median": 288.0,
+            "p95": 288.0
+          },
+          "allocations": {
+            "median": 3.0,
+            "p95": 3.0
+          }
+        },
+        "status": "ok"
+      },
+      {
+        "configured": true,
+        "id": "ts_create_named",
+        "label": "ts::thread::create(config)",
+        "metrics": {
+          "allocated_bytes": {
+            "median": 288.0,
+            "p95": 288.0
+          },
+          "allocations": {
+            "median": 3.0,
+            "p95": 3.0
+          }
+        },
+        "status": "ok"
+      }
+    ],
+    "schema_version": 1,
+    "sizes": [
+      {
+        "alignment": 8,
+        "bytes": 8,
+        "type": "std::thread"
+      },
+      {
+        "alignment": 8,
+        "bytes": 24,
+        "type": "ts::thread"
+      },
+      {
+        "alignment": 8,
+        "bytes": 24,
+        "type": "ts::thread_view"
+      },
+      {
+        "alignment": 8,
+        "bytes": 32,
+        "type": "ts::result<ts::thread>"
+      }
+    ]
+  }
+}

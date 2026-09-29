@@ -29,8 +29,8 @@ GCC 14's ThreadSanitizer can incorrectly report
 `unlock of an unlocked mutex (or by a wrong thread)` when a pool uses
 `shutdown_for(...)`. libstdc++ acquires the timed mutex through
 `pthread_mutex_clocklock`, which GCC 14's TSan does not fully intercept, but it
-does observe the later unlock. This is a sanitizer false positive rather than
-an unmatched unlock in ThreadSchedule. The sanitizer CI therefore uses GCC 16,
+does observe the later unlock. This is a sanitizer false positive rather than an
+unmatched unlock in ThreadSchedule. The sanitizer CI therefore uses GCC 16,
 where the same tests pass cleanly.
 
 ## Install
@@ -77,9 +77,9 @@ conan create . --build=missing
 ```
 
 Windows Vista compatibility mode is available when older platform targeting is
-required. It reduces Windows feature usage to avoid Win7+ only paths.
-This mode is currently not tested on real Vista hardware and may be unstable.
-Validation is limited because no active Vista test machine is available.
+required. It reduces Windows feature usage to avoid Win7+ only paths. This mode
+is currently not tested on real Vista hardware and may be unstable. Validation
+is limited because no active Vista test machine is available.
 
 ```bash
 cmake -S . -B build -DTHREADSCHEDULE_WINDOWS_VISTA_COMPAT=ON
@@ -112,22 +112,24 @@ int main()
 }
 ```
 
-The complete
-[getting-started project](examples/getting_started/CMakeLists.txt) includes its
-own `CMakeLists.txt` and is tested against a freshly installed package.
+The complete [getting-started project](examples/getting_started/CMakeLists.txt)
+includes its own `CMakeLists.txt` and is tested against a freshly installed
+package.
 
 ## Choose the right type
 
-| Need | Start with |
-| --- | --- |
-| Own one thread | `thread` |
-| Own one cooperatively cancellable C++20 thread | `jthread` |
-| Configure the calling thread | `this_thread` |
-| Submit general-purpose work | `thread_pool` |
-| Run delayed or periodic work | `scheduled_pool` |
-| Discover and control registered threads | `thread_registry` |
-| Find unregistered Linux threads by OS name | `advanced::thread_by_name_view` |
-| Select a specialized pool or native control | `advanced::*` |
+| Need                                                           | Start with                      |
+| -------------------------------------------------------------- | ------------------------------- |
+| Own one thread                                                 | `thread`                        |
+| Run short-lived work where thread startup cost matters         | `std::thread`                   |
+| Configure or query an existing thread without taking ownership | `thread_view`                   |
+| Own one cooperatively cancellable C++20 thread                 | `jthread`                       |
+| Configure the calling thread                                   | `this_thread`                   |
+| Submit general-purpose work                                    | `thread_pool`                   |
+| Run delayed or periodic work                                   | `scheduled_pool`                |
+| Discover and control registered threads                        | `thread_registry`               |
+| Find unregistered Linux threads by OS name                     | `advanced::thread_by_name_view` |
+| Select a specialized pool or native control                    | `advanced::*`                   |
 
 Include `<threadschedule/threadschedule.hpp>` for the complete core. Include
 `<threadschedule/advanced.hpp>` only when the workload requires native or
@@ -151,22 +153,22 @@ convenient complete core umbrella.
 
 ThreadSchedule keeps failure channels explicit:
 
-| Operation | Failure channel |
-| --- | --- |
-| Direct construction | May throw `std::system_error`, like standard types |
-| `create(...)` | Returns `expected<T, std::error_code>` |
-| Configuration and shutdown | Return `expected<void, std::error_code>` |
-| `thread_pool::submit(...)` | Submission error in `expected`; task exception in the future |
-| `thread_pool::post(...)` | Submission error in `expected`; task exception via the configured error callback |
-| Explicit `*_or_throw` operation | Throws `std::system_error` on failure |
+| Operation                       | Failure channel                                                                  |
+| ------------------------------- | -------------------------------------------------------------------------------- |
+| Direct construction             | May throw `std::system_error`, like standard types                               |
+| `create(...)`                   | Returns `expected<T, std::error_code>`                                           |
+| Configuration and shutdown      | Return `expected<void, std::error_code>`                                         |
+| `thread_pool::submit(...)`      | Submission error in `expected`; task exception in the future                     |
+| `thread_pool::post(...)`        | Submission error in `expected`; task exception via the configured error callback |
+| Explicit `*_or_throw` operation | Throws `std::system_error` on failure                                            |
 
 Always inspect an `expected` before dereferencing it. A task submitted with
-`post()` has no future; call `set_error_callback(...)` on the pool config if
-its exceptions must be observed.
+`post()` has no future; call `set_error_callback(...)` on the pool config if its
+exceptions must be observed.
 
 `threadschedule::thread` owns a `std::thread` but deliberately joins a joinable
-thread on destruction. Destruction and move assignment can therefore block.
-Call `join()`, `detach()`, or `release()` explicitly when that timing matters.
+thread on destruction. Destruction and move assignment can therefore block. Call
+`join()`, `detach()`, or `release()` explicitly when that timing matters.
 
 ## Threads and configuration
 
@@ -219,10 +221,9 @@ if (auto result = threadschedule::this_thread::set_priority(
     report(result.error());
 ```
 
-`this_thread` also provides `configure`, `set_nice`, `get_priority`,
-`set_name`, and `get_name`. Affinity readback reports the logical CPU indices
-the process is actually allowed to use, which is safer than assuming CPU 0 is
-available.
+`this_thread` also provides `configure`, `set_nice`, `get_priority`, `set_name`,
+and `get_name`. Affinity readback reports the logical CPU indices the process is
+actually allowed to use, which is safer than assuming CPU 0 is available.
 
 Under C++20, `jthread` mirrors standard callable forwarding and stop-token
 injection:
@@ -238,6 +239,215 @@ threadschedule::jthread worker([](std::stop_token stop) {
 ```
 
 See the compile-tested [jthread example](examples/jthread_example.cpp).
+
+### Short-lived threads and startup cost
+
+Starting a `threadschedule::thread` adds bookkeeping and synchronization
+compared with constructing `std::thread` directly, even without a
+`thread_config`. For short-lived threads where startup cost matters, prefer
+`std::thread`. When you need to configure or query it, use a non-owning
+`threadschedule::thread_view`:
+
+```cpp
+#include <threadschedule/thread_view.hpp>
+
+#include <future>
+#include <iostream>
+#include <thread>
+
+namespace ts = threadschedule;
+
+int
+main()
+{
+  std::promise<void> start;
+  auto ready = start.get_future();
+  int answer = 0;
+
+  std::thread worker(
+      [&]
+        {
+          ready.wait(); // Keep the thread alive until configuration is complete.
+          answer = 42;  // Short-lived work.
+        });
+
+  ts::thread_view view(worker);
+  auto named = view.set_name("short-worker");
+
+  // Release and join even if naming failed; the work can still run.
+  start.set_value();
+  worker.join();
+
+  if (!named)
+    {
+      std::cerr << "Could not name the thread: " << named.error().message() << '\n';
+      return 1;
+    }
+  std::cout << "answer: " << answer << '\n';
+}
+```
+
+The view never owns, joins, or keeps the thread alive. Keep the referenced
+`std::thread` object valid and prevent the worker from exiting while applying
+configuration. The example's future provides that synchronization and ensures
+naming is attempted before the short work starts; it also adds overhead of its
+own. Without configuration, omit the view and the start gate. This pattern is
+not a guarantee that configuration plus synchronization will be faster than
+`threadschedule::thread` for every workload.
+
+On Linux, a view over an external `std::thread` cannot recover its kernel TID,
+so nice and portable priority controls report `operation_not_supported`. Use
+`threadschedule::this_thread` inside the worker for those settings.
+
+See the compile-tested
+[short-lived thread example](examples/short_lived_thread_example.cpp).
+
+If you control the worker's callable, configure the calling thread directly with
+`ts::this_thread` before doing the work. This also works inside a plain
+`std::thread`, including portable priority control on Linux, and needs no
+external start gate:
+
+```cpp
+#include <threadschedule/this_thread.hpp>
+
+#include <iostream>
+#include <system_error>
+#include <thread>
+
+namespace ts = threadschedule;
+
+int
+main()
+{
+  std::error_code configuration_error;
+  int answer = 0;
+
+  std::thread worker(
+      [&]
+        {
+          if (auto configured = ts::this_thread::set_priority(ts::priority_level::low); !configured)
+            {
+              configuration_error = configured.error();
+              return;
+            }
+          answer = 42; // Short-lived work, after successful configuration.
+        });
+
+  worker.join();
+
+  if (configuration_error)
+    {
+      std::cerr << "Could not configure the thread: " << configuration_error.message() << '\n';
+      return 1;
+    }
+  std::cout << "answer: " << answer << '\n';
+}
+```
+
+`join()` synchronizes access to the result and configuration error. If the OS
+rejects the priority setting, the worker skips the work and the caller reports
+the error after joining. See the compile-tested
+[`this_thread` example](examples/this_thread_example.cpp).
+
+### Measured thread costs
+
+The following local measurements compare direct construction and `create()` with
+`std::thread`, both without configuration and with the name `ts-bench`. The
+factory measurement includes checking the result and moving the thread into an
+empty owner. The configured standard thread names itself through `this_thread`
+before starting its work.
+
+<!-- thread-benchmark-results:start -->
+
+Measured on 2026-09-29T19:05:19Z: **AMD Ryzen 5 5600X 6-Core Processor**, Linux
+7.2.7-200.fc44.x86_64 x86_64. Compiler: GCC 16.2.1 20260819 (Red Hat 16.2.1-2);
+standard library: libstdc++ 20260819; Language: C++17; build: Release. CMake
+compiler flags: `-O3 -DNDEBUG`.
+
+200 warmup rounds, 2,000 startup samples and 30 running-work samples per
+variant; 4,194,304 iterations per work sample. Allocations: 200 warmup rounds
+and 2,000 measured cycles per variant.
+
+Each timing cell is **median / p95**; parentheses show the median ratio to the
+`std::thread` baseline with the same configuration. Startup times are in **µs**.
+
+**Without configuration**
+
+| Variant            |             Creation µs |      First user code µs | Ready after configuration µs |        Create + join µs |
+| ------------------ | ----------------------: | ----------------------: | ---------------------------: | ----------------------: |
+| std::thread        | 13.114 / 19.576 (1.00×) | 16.210 / 24.436 (1.00×) |      16.270 / 24.526 (1.00×) | 23.023 / 35.897 (1.00×) |
+| ts::thread         | 20.839 / 31.950 (1.59×) | 17.353 / 27.161 (1.07×) |      17.403 / 27.261 (1.07×) | 21.090 / 37.871 (0.92×) |
+| ts::thread::create | 20.193 / 31.459 (1.54×) | 16.721 / 26.530 (1.03×) |      16.762 / 26.570 (1.03×) | 20.398 / 37.260 (0.89×) |
+
+**With name configuration (`ts-bench`)**
+
+| Variant                             |             Creation µs |      First user code µs | Ready after configuration µs |        Create + join µs |
+| ----------------------------------- | ----------------------: | ----------------------: | ---------------------------: | ----------------------: |
+| std::thread + this_thread::set_name | 13.184 / 20.228 (1.00×) | 16.291 / 24.646 (1.00×) |      17.738 / 26.720 (1.00×) | 24.516 / 37.851 (1.00×) |
+| ts::thread(config)                  | 34.240 / 52.198 (2.60×) | 37.776 / 57.488 (2.32×) |      37.836 / 57.538 (2.13×) | 45.200 / 70.432 (1.84×) |
+| ts::thread::create(config)          | 34.139 / 52.379 (2.59×) | 37.681 / 57.618 (2.31×) |      37.760 / 57.678 (2.13×) | 45.114 / 70.903 (1.84×) |
+
+**Work inside an already running thread**
+
+| Variant                             | Name configured | ns/iteration: median / p95 (ratio) |
+| ----------------------------------- | --------------- | ---------------------------------: |
+| std::thread                         | no              |              2.273 / 2.374 (1.00×) |
+| ts::thread                          | no              |              2.262 / 2.312 (1.00×) |
+| ts::thread::create                  | no              |              2.263 / 2.323 (1.00×) |
+| std::thread + this_thread::set_name | yes             |              2.274 / 2.342 (1.00×) |
+| ts::thread(config)                  | yes             |              2.270 / 2.331 (1.00×) |
+| ts::thread::create(config)          | yes             |              2.261 / 2.340 (0.99×) |
+
+**Object storage** (bytes; excludes dynamic allocations and OS thread stacks)
+
+| Type                     | `sizeof` | `alignof` |
+| ------------------------ | -------: | --------: |
+| `std::thread`            |        8 |         8 |
+| `ts::thread`             |       24 |         8 |
+| `ts::thread_view`        |       24 |         8 |
+| `ts::result<ts::thread>` |       32 |         8 |
+
+**C++ heap allocations per complete create/join cycle**
+
+| Variant                             | Name configured | Allocation count: median / p95 (ratio) | Requested bytes: median / p95 (ratio) |
+| ----------------------------------- | --------------- | -------------------------------------: | ------------------------------------: |
+| std::thread                         | no              |                  1.000 / 1.000 (1.00×) |               16.000 / 16.000 (1.00×) |
+| ts::thread                          | no              |                  2.000 / 2.000 (2.00×) |             152.000 / 152.000 (9.50×) |
+| ts::thread::create                  | no              |                  2.000 / 2.000 (2.00×) |             152.000 / 152.000 (9.50×) |
+| std::thread + this_thread::set_name | yes             |                  1.000 / 1.000 (1.00×) |               16.000 / 16.000 (1.00×) |
+| ts::thread(config)                  | yes             |                  3.000 / 3.000 (3.00×) |            288.000 / 288.000 (18.00×) |
+| ts::thread::create(config)          | yes             |                  3.000 / 3.000 (3.00×) |            288.000 / 288.000 (18.00×) |
+
+Callable entry and constructor return can occur in either order; the startup
+columns are independent elapsed times from the same start point. For the named
+`std::thread`, first user code precedes `ts::this_thread::set_name()`; readiness
+follows successful configuration. Factory creation includes its success check
+and the move into an empty thread object.
+
+Running work excludes startup, configuration and join. Small differences may
+reflect measurement noise; these numbers describe this system and this
+integer-arithmetic workload, not a general speed guarantee. Allocation
+instrumentation counts C++ `new` requests in a separate executable; it excludes
+OS thread stacks and allocations made directly by the OS or C library. Requested
+bytes are cumulative, not peak or retained memory. No Windows results are
+inferred from this run.
+
+<!-- thread-benchmark-results:end -->
+
+The implementation does not perform repeated wrapper operations inside user
+code. Its additional startup state remains allocated while the callable runs;
+the allocation table measures cumulative requested bytes rather than retained
+memory.
+
+See the [benchmark instructions](benchmarks/README.md) to reproduce the
+measurements and the [recorded results](docs/benchmarks/thread_costs.json).
+
+```bash
+cmake -S . -B build-thread-bench -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=17 \
+  -DTHREADSCHEDULE_BUILD_BENCHMARKS=ON
+cmake --build build-thread-bench --target run_thread_benchmarks
+```
 
 ## Thread pools
 
@@ -280,8 +490,8 @@ auto realtime = threadschedule::schedule::realtime_fifo(
 ```
 
 The five `priority_level` values are the simplest cross-platform choice.
-Negative nice values and realtime policies normally require elevated
-privileges on Linux. Native scheduling remains available through
+Negative nice values and realtime policies normally require elevated privileges
+on Linux. Native scheduling remains available through
 `threadschedule::advanced`.
 
 ## Advanced usage
@@ -299,8 +509,8 @@ else
 ```
 
 On Linux, an unregistered process thread can also be found by its exact
-kernel-visible name. A singular lookup rejects duplicate names; use
-`find_all()` when duplicates are intentional:
+kernel-visible name. A singular lookup rejects duplicate names; use `find_all()`
+when duplicates are intentional:
 
 ```cpp
 auto worker = threadschedule::advanced::thread_by_name_view::create("io-worker");
@@ -313,8 +523,8 @@ else if (auto lowered = worker->set_priority(
 ```
 
 The view remembers the Linux TID and its start-time generation, so exited or
-recycled targets report `no_such_process`. This native lookup cannot fully
-close the race between the last identity check and a TID-based syscall; use
+recycled targets report `no_such_process`. This native lookup cannot fully close
+the race between the last identity check and a TID-based syscall; use
 `thread_registry` when target lifetime must be coupled to control operations.
 
 The advanced namespace is public and follows semantic versioning. See
@@ -323,9 +533,9 @@ future combinators, task groups, chaos testing, and lower-level error handling.
 
 ## Optional shared registry runtime
 
-Header-only mode owns one registry per linked image. Applications that need
-one registry shared by an executable and compatible DSOs can link the optional
-C++ runtime:
+Header-only mode owns one registry per linked image. Applications that need one
+registry shared by an executable and compatible DSOs can link the optional C++
+runtime:
 
 ```cmake
 set(THREADSCHEDULE_RUNTIME ON)

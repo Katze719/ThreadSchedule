@@ -45,6 +45,7 @@ compile_commands.json
 CMakeUserPresets.json
 
 .cache/
+__pycache__/
 build/
 build_*/
 build-*/

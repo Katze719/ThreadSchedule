@@ -1,5 +1,16 @@
 # Changelog
 
+## v3.0.1
+
+### Threads and scheduling
+
+- Added reproducible C++17 thread-cost benchmarks comparing `std::thread`, direct `thread` construction, and `create()`,
+  with and without naming. README results cover startup, callable entry, running work, object sizes, and separately
+  instrumented C++ allocation counts and bytes.
+- Documented the additional startup cost of `thread` and recommended `std::thread` for short-lived work, with a
+  compile-tested examples for external `thread_view` configuration with synchronized worker lifetime and direct
+  `this_thread` configuration inside a `std::thread`.
+
 ## v3.0.0
 
 > Version 3.0.0 is a deliberate, source-breaking API reset with a smaller portable core, explicit error handling, and a

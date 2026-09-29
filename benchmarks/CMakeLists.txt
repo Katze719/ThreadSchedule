@@ -1,6 +1,49 @@
 # ThreadSchedule Benchmarks Suite
 # Comprehensive benchmarking for all thread pool implementations with real-world scenarios
 
+# Thread cost measurements keep the selected C++ standard (C++17 minimum) and
+# ordinary build-type flags. Allocation interception is linked only into its
+# separate executable, never into the timing benchmark.
+set(thread_benchmark_flags "${CMAKE_CXX_FLAGS}")
+foreach(configuration DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+    string(APPEND thread_benchmark_flags
+        " $<$<CONFIG:${configuration}>:${CMAKE_CXX_FLAGS_${configuration}}>")
+endforeach()
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/thread-benchmark-$<CONFIG>/thread_benchmark_build.hpp"
+    CONTENT "#pragma once\n#define THREAD_BENCH_BUILD_TYPE \"$<CONFIG>\"\n#define THREAD_BENCH_COMPILER_FLAGS R\"tsflags(${thread_benchmark_flags})tsflags\"\n"
+)
+
+add_executable(thread_benchmarks thread_benchmarks.cpp)
+add_executable(thread_allocation_benchmarks thread_allocation_benchmarks.cpp)
+foreach(target thread_benchmarks thread_allocation_benchmarks)
+    target_link_libraries(${target} PRIVATE ThreadSchedule::ThreadSchedule nlohmann_json::nlohmann_json)
+    target_compile_features(${target} PRIVATE cxx_std_17)
+    target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/thread-benchmark-$<CONFIG>")
+endforeach()
+
+add_custom_target(run_thread_benchmarks
+    COMMAND thread_benchmarks --output "${CMAKE_CURRENT_BINARY_DIR}/thread-timing.json"
+    COMMAND thread_allocation_benchmarks --output "${CMAKE_CURRENT_BINARY_DIR}/thread-allocations.json"
+    DEPENDS thread_benchmarks thread_allocation_benchmarks
+    COMMENT "Measuring thread startup, running work, and allocations sequentially"
+)
+
+if(THREADSCHEDULE_BUILD_TESTS)
+    add_test(NAME ThreadBenchmarkSelfTest COMMAND thread_benchmarks --self-test)
+    add_test(NAME ThreadAllocationSelfTest COMMAND thread_allocation_benchmarks --self-test)
+    add_test(NAME ThreadBenchmarkSmoke COMMAND thread_benchmarks
+             --warmup 2 --samples 8 --work-samples 3 --work-iterations 10000)
+    add_test(NAME ThreadAllocationSmoke COMMAND thread_allocation_benchmarks --warmup 2 --samples 8)
+    set_tests_properties(ThreadBenchmarkSelfTest ThreadAllocationSelfTest ThreadBenchmarkSmoke ThreadAllocationSmoke
+                         PROPERTIES TIMEOUT 60)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME ThreadBenchmarkReportTests
+                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_thread_report.py)
+    endif()
+endif()
+
 # Core thread pool benchmarks
 add_executable(threadpool_basic_benchmarks threadpool_benchmarks.cpp)
 add_executable(threadpool_throughput_benchmarks throughput_benchmarks.cpp)
@@ -94,9 +137,10 @@ add_custom_target(run_real_world_benchmarks
 )
 
 add_custom_target(run_all_benchmarks
+    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target run_thread_benchmarks
     COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target run_core_benchmarks
     COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target run_real_world_benchmarks
-    DEPENDS ${ALL_BENCHMARK_TARGETS}
+    DEPENDS ${ALL_BENCHMARK_TARGETS} thread_benchmarks thread_allocation_benchmarks
     COMMENT "Running complete ThreadSchedule benchmark suite (explicit target, not part of normal build)"
 )
 

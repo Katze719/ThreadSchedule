@@ -1,0 +1,64 @@
+name: Thread Benchmark Checks
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: Thread benchmarks / ${{ matrix.compiler }} / C++${{ matrix.standard }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        standard: [17, 20]
+        include:
+          - { compiler: gcc, os: ubuntu-24.04 }
+          - { compiler: msvc, os: windows-2022 }
+          - { compiler: mingw, os: windows-2022 }
+        compiler: [gcc, msvc, mingw]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Enable MSVC
+        if: matrix.compiler == 'msvc'
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Enable MinGW
+        if: matrix.compiler == 'mingw'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja mingw-w64-x86_64-python
+      - name: Configure Linux and MSVC
+        if: matrix.compiler != 'mingw'
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_STANDARD=${{ matrix.standard }}
+          -DTHREADSCHEDULE_BUILD_BENCHMARKS=ON
+          -DTHREADSCHEDULE_BUILD_TESTS=ON
+      - name: Configure MinGW
+        if: matrix.compiler == 'mingw'
+        shell: msys2 {0}
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_STANDARD=${{ matrix.standard }}
+          -DTHREADSCHEDULE_BUILD_BENCHMARKS=ON
+          -DTHREADSCHEDULE_BUILD_TESTS=ON
+      - name: Build and check Linux and MSVC
+        if: matrix.compiler != 'mingw'
+        run: |
+          cmake --build build --target thread_benchmarks thread_allocation_benchmarks --parallel 2
+          ctest --test-dir build --output-on-failure -R "^Thread(Benchmark|Allocation)"
+      - name: Build and check MinGW
+        if: matrix.compiler == 'mingw'
+        shell: msys2 {0}
+        run: |
+          cmake --build build --target thread_benchmarks thread_allocation_benchmarks --parallel 2
+          ctest --test-dir build --output-on-failure -R '^Thread(Benchmark|Allocation)'

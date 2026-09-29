@@ -38,6 +38,8 @@ are supported only through the explicitly named `advanced` surface.
 | Need | Type |
 | --- | --- |
 | One owning thread | `thread` |
+| Short-lived work where thread startup cost matters | `std::thread` |
+| Configure or query an existing thread without ownership | `thread_view` |
 | Cooperative cancellation under C++20 | `jthread` |
 | Configure the calling thread | `this_thread` |
 | General-purpose task execution | `thread_pool` |
@@ -119,6 +121,35 @@ non-joinable thread returns `std::errc::invalid_argument`. `thread_view`
 configures an existing `std::thread` or `threadschedule::thread` without taking
 ownership. Under C++20 it also accepts `std::jthread` and
 `threadschedule::jthread`.
+
+### Short-lived threads
+
+`thread` performs additional startup bookkeeping and synchronization compared
+with direct `std::thread` construction, including when no configuration is
+provided. Prefer `std::thread` for short-lived threads where startup cost
+matters, and use `thread_view` when configuration or queries are needed.
+Constructing a view does not start another thread or perform the owning
+thread's startup handshake.
+
+The caller owns the lifetime and synchronization: keep the referenced thread
+object valid, prevent the worker from exiting during control operations, and
+join or detach through the original owner. `joinable()` alone does not prove
+that the worker is still running. If configuration must happen before the
+work, hold the worker at a start gate until configuration finishes. That gate
+and the configuration operations have their own cost.
+
+The [README example](../README.md#short-lived-threads-and-startup-cost) and
+the compile-tested [short-lived thread example](../examples/short_lived_thread_example.cpp)
+show `std::thread` with `thread_view::set_name()` and a future-based start gate.
+On Linux, external standard-thread views cannot use nice or portable priority
+controls because the kernel TID is unavailable; use `this_thread` inside the
+worker for those settings.
+
+When you control the callable, calling `this_thread::set_priority()` inside
+the `std::thread` before doing the work avoids an external start gate. The
+compile-tested [`this_thread` example](../examples/this_thread_example.cpp)
+shows this pattern, including configuration failure handling and reading the
+result after `join()`.
 
 ### Thread configuration
 

@@ -36,6 +36,12 @@ add_executable(thread_configuration_example thread_configuration_example.cpp)
 target_link_libraries(thread_configuration_example
                       ThreadSchedule::ThreadSchedule)
 
+add_executable(short_lived_thread_example short_lived_thread_example.cpp)
+target_link_libraries(short_lived_thread_example ThreadSchedule::ThreadSchedule)
+
+add_executable(this_thread_example this_thread_example.cpp)
+target_link_libraries(this_thread_example ThreadSchedule::ThreadSchedule)
+
 if(NOT WIN32)
     add_executable(thread_by_name_view_example thread_by_name_view_example.cpp)
     target_link_libraries(thread_by_name_view_example
