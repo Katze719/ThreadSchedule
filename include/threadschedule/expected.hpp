@@ -5,6 +5,8 @@
  * @brief Stable library-owned expected implementation for ThreadSchedule APIs.
  */
 
+#include "detail/lifetime.hpp"
+
 #include <exception>
 #include <functional>
 #include <system_error>
@@ -64,22 +66,22 @@ class bad_expected_access : public bad_expected_access<void>
 public:
   explicit bad_expected_access(E error) : error_(std::move(error)) {}
   [[nodiscard]] auto
-  error() const& noexcept -> E const&
+  error() const& noexcept THREADSCHEDULE_LIFETIMEBOUND -> E const&
   {
     return error_;
   }
   auto
-  error() & noexcept -> E&
+  error() & noexcept THREADSCHEDULE_LIFETIMEBOUND -> E&
   {
     return error_;
   }
   [[nodiscard]] auto
-  error() const&& noexcept -> E const&&
+  error() const&& noexcept THREADSCHEDULE_LIFETIMEBOUND -> E const&&
   {
     return std::move(error_);
   }
   auto
-  error() && noexcept -> E&&
+  error() && noexcept THREADSCHEDULE_LIFETIMEBOUND -> E&&
   {
     return std::move(error_);
   }
@@ -96,22 +98,22 @@ public:
   constexpr explicit unexpected(E const& error) : error_(error) {}
   constexpr explicit unexpected(E&& error) : error_(std::move(error)) {}
   [[nodiscard]] constexpr auto
-  error() const& noexcept -> E const&
+  error() const& noexcept THREADSCHEDULE_LIFETIMEBOUND -> E const&
   {
     return error_;
   }
   constexpr auto
-  error() & noexcept -> E&
+  error() & noexcept THREADSCHEDULE_LIFETIMEBOUND -> E&
   {
     return error_;
   }
   [[nodiscard]] constexpr auto
-  error() const&& noexcept -> E const&&
+  error() const&& noexcept THREADSCHEDULE_LIFETIMEBOUND -> E const&&
   {
     return std::move(error_);
   }
   constexpr auto
-  error() && noexcept -> E&&
+  error() && noexcept THREADSCHEDULE_LIFETIMEBOUND -> E&&
   {
     return std::move(error_);
   }
@@ -184,42 +186,42 @@ public:
     return data_.index() == 0;
   }
   constexpr auto
-  value() & noexcept -> T&
+  value() & noexcept THREADSCHEDULE_LIFETIMEBOUND -> T&
   {
     return std::get<0>(data_).value;
   }
   [[nodiscard]] constexpr auto
-  value() const& noexcept -> T const&
+  value() const& noexcept THREADSCHEDULE_LIFETIMEBOUND -> T const&
   {
     return std::get<0>(data_).value;
   }
   constexpr auto
-  value() && noexcept -> T&&
+  value() && noexcept THREADSCHEDULE_LIFETIMEBOUND -> T&&
   {
     return std::move(std::get<0>(data_).value);
   }
   [[nodiscard]] constexpr auto
-  value() const&& noexcept -> T const&&
+  value() const&& noexcept THREADSCHEDULE_LIFETIMEBOUND -> T const&&
   {
     return std::move(std::get<0>(data_).value);
   }
   constexpr auto
-  error() & noexcept -> E&
+  error() & noexcept THREADSCHEDULE_LIFETIMEBOUND -> E&
   {
     return std::get<1>(data_).error;
   }
   [[nodiscard]] constexpr auto
-  error() const& noexcept -> E const&
+  error() const& noexcept THREADSCHEDULE_LIFETIMEBOUND -> E const&
   {
     return std::get<1>(data_).error;
   }
   constexpr auto
-  error() && noexcept -> E&&
+  error() && noexcept THREADSCHEDULE_LIFETIMEBOUND -> E&&
   {
     return std::move(std::get<1>(data_).error);
   }
   [[nodiscard]] constexpr auto
-  error() const&& noexcept -> E const&&
+  error() const&& noexcept THREADSCHEDULE_LIFETIMEBOUND -> E const&&
   {
     return std::move(std::get<1>(data_).error);
   }
@@ -606,81 +608,81 @@ public:
     return has_value();
   }
   constexpr auto
-  operator->() noexcept -> T*
+  operator->() noexcept THREADSCHEDULE_LIFETIMEBOUND -> T*
   {
     return &storage_.value();
   }
   constexpr auto
-  operator->() const noexcept -> T const*
+  operator->() const noexcept THREADSCHEDULE_LIFETIMEBOUND -> T const*
   {
     return &storage_.value();
   }
   constexpr auto
-  operator*() & noexcept -> T&
+  operator*() & noexcept THREADSCHEDULE_LIFETIMEBOUND -> T&
   {
     return storage_.value();
   }
   [[nodiscard]] constexpr auto
-  operator*() const& noexcept -> T const&
+  operator*() const& noexcept THREADSCHEDULE_LIFETIMEBOUND -> T const&
   {
     return storage_.value();
   }
   constexpr auto
-  operator*() && noexcept -> T&&
+  operator*() && noexcept THREADSCHEDULE_LIFETIMEBOUND -> T&&
   {
     return std::move(storage_).value();
   }
   [[nodiscard]] constexpr auto
-  operator*() const&& noexcept -> T const&&
+  operator*() const&& noexcept THREADSCHEDULE_LIFETIMEBOUND -> T const&&
   {
     return std::move(storage_).value();
   }
 
   auto
-  value() & -> T&
+  value() & THREADSCHEDULE_LIFETIMEBOUND -> T&
   {
     if (!has_value())
       THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(storage_.error()));
     return storage_.value();
   }
   [[nodiscard]] auto
-  value() const& -> T const&
+  value() const& THREADSCHEDULE_LIFETIMEBOUND -> T const&
   {
     if (!has_value())
       THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(storage_.error()));
     return storage_.value();
   }
   auto
-  value() && -> T&&
+  value() && THREADSCHEDULE_LIFETIMEBOUND -> T&&
   {
     if (!has_value())
       THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(std::move(storage_).error()));
     return std::move(storage_).value();
   }
   [[nodiscard]] auto
-  value() const&& -> T const&&
+  value() const&& THREADSCHEDULE_LIFETIMEBOUND -> T const&&
   {
     if (!has_value())
       THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(std::move(storage_).error()));
     return std::move(storage_).value();
   }
   constexpr auto
-  error() & noexcept -> E&
+  error() & noexcept THREADSCHEDULE_LIFETIMEBOUND -> E&
   {
     return storage_.error();
   }
   [[nodiscard]] constexpr auto
-  error() const& noexcept -> E const&
+  error() const& noexcept THREADSCHEDULE_LIFETIMEBOUND -> E const&
   {
     return storage_.error();
   }
   constexpr auto
-  error() && noexcept -> E&&
+  error() && noexcept THREADSCHEDULE_LIFETIMEBOUND -> E&&
   {
     return std::move(storage_).error();
   }
   [[nodiscard]] constexpr auto
-  error() const&& noexcept -> E const&&
+  error() const&& noexcept THREADSCHEDULE_LIFETIMEBOUND -> E const&&
   {
     return std::move(storage_).error();
   }
@@ -1001,22 +1003,22 @@ public:
       THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(storage_.error()));
   }
   constexpr auto
-  error() & noexcept -> E&
+  error() & noexcept THREADSCHEDULE_LIFETIMEBOUND -> E&
   {
     return storage_.error();
   }
   [[nodiscard]] constexpr auto
-  error() const& noexcept -> E const&
+  error() const& noexcept THREADSCHEDULE_LIFETIMEBOUND -> E const&
   {
     return storage_.error();
   }
   constexpr auto
-  error() && noexcept -> E&&
+  error() && noexcept THREADSCHEDULE_LIFETIMEBOUND -> E&&
   {
     return std::move(storage_).error();
   }
   [[nodiscard]] constexpr auto
-  error() const&& noexcept -> E const&&
+  error() const&& noexcept THREADSCHEDULE_LIFETIMEBOUND -> E const&&
   {
     return std::move(storage_).error();
   }

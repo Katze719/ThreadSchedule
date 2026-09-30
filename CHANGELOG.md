@@ -2,6 +2,17 @@
 
 ## v3.0.1
 
+### Lifetime diagnostics
+
+- Added feature-detected `clang::lifetimebound` annotations to borrowed value/error accessors in `expected`,
+  `unexpected`, and `bad_expected_access`, and the reference getters in `thread_config` and `thread_affinity`.
+  Unsupported compilers use an empty annotation; C++17 support, object layouts, and runtime behavior are unchanged.
+- Added compile-time regression checks for dangling references and valid value/move extraction, plus a separate
+  Clang 23 lifetime-analysis CI job for C++17 and C++20 with informational analysis warnings.
+- Annotated `thread_view` and internal `function_ref` as `gsl::Pointer` with lifetime-bound borrowing constructors,
+  and `thread_affinity` as `gsl::Owner`. Added `clang::noescape` to the synchronous input parameters of
+  `thread_view::configure()`, `set_name()`, and `set_affinity()`, with compiler validation when available.
+
 ### Threads and scheduling
 
 - Added reproducible C++17 thread-cost benchmarks comparing `std::thread`, direct `thread` construction, and `create()`,

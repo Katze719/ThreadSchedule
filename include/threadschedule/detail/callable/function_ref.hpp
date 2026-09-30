@@ -5,6 +5,7 @@
  * @brief Non-owning callable reference used by internal synchronous paths.
  */
 
+#include "../lifetime.hpp"
 #include "move_only_function.hpp"
 
 #include <functional>
@@ -16,10 +17,10 @@ namespace threadschedule::detail
 {
 
 template <typename Signature>
-class function_ref;
+class THREADSCHEDULE_POINTER function_ref;
 
 template <typename R, typename... Args>
-class function_ref<R(Args...)>
+class THREADSCHEDULE_POINTER function_ref<R(Args...)>
 {
 public:
   function_ref() = delete;
@@ -42,7 +43,8 @@ public:
 
   template <typename F, typename = std::enable_if_t<!std::is_same_v<remove_cvref_t<F>, function_ref>
                                                     && std::is_invocable_r_v<R, F&, Args...>>>
-  function_ref(F&& fn) noexcept : object_(const_cast<void*>(static_cast<void const*>(std::addressof(fn))))
+  function_ref(F&& fn THREADSCHEDULE_LIFETIMEBOUND) noexcept
+      : object_(const_cast<void*>(static_cast<void const*>(std::addressof(fn))))
   {
     callback_ = [](void* object, R (*)(Args...), Args... args) -> R
       {

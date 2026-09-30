@@ -79,6 +79,47 @@ an error callback when their exceptions must be observed.
 | Accepted `post(...)` task | Configured error callback |
 | Explicit `*_or_throw` helper | Exception |
 
+## Borrowed references and lifetime diagnostics
+
+References and pointers returned by `expected::value()`, `error()`, `operator*()`,
+and `operator->()` borrow storage from the result object. This also applies to
+`expected<void, E>::error()`, `unexpected::error()`, and `bad_expected_access::error()`.
+The reference getters in `thread_config` and `thread_affinity::cpus()` similarly
+borrow from their configuration object. Keep the owner alive while using a
+borrow, and respect invalidation caused by replacing or modifying its contents.
+
+These accessors use `clang::lifetimebound` when the compiler reports support for
+the attribute. Unsupported compilers see an empty annotation. The annotations
+do not extend lifetimes, change object layout, or add runtime checks, and they
+work in C++17. A value extracted with `auto value = result.value()` owns its copy;
+`auto value = std::move(result).value()` can move an owning payload out of the result.
+A reference obtained from a temporary result does not extend the result's lifetime.
+
+`thread_view` is annotated as `gsl::Pointer`, with constructors lifetime-bound
+to the referenced C++ thread object. Keep that object alive while using the view;
+this annotation does not guarantee that the native thread is still running.
+The internal `detail::function_ref` similarly borrows its callable, while its
+function-pointer overload copies the pointer value. `thread_affinity` is annotated
+as `gsl::Owner` because it owns its CPU list, including when used with a
+consumer-defined borrowed view.
+
+`thread_view::configure()`, `set_name()`, and `set_affinity()` mark their input
+references `clang::noescape`: the operations consume the inputs synchronously
+and retain no references to them. Temporary configuration and name arguments are
+therefore valid. Unlike a diagnostic-only hint, `noescape` is also a promise the
+optimizer may rely on. It is not applied to generic callbacks or asynchronous
+task submission. All attributes are individually feature-detected, with empty
+fallbacks on unsupported compilers.
+
+Clang builds run a focused diagnostic regression test alongside normal tests.
+The separate Clang 23 CI job also enables `-Wlifetime-safety-permissive` on tests
+and examples, initially without treating those analysis warnings as errors.
+When supported, `LifetimeNoescapeValidation` checks the annotated operations
+with `-Werror=lifetime-safety-noescape`.
+See the [Clang 23 lifetime-analysis documentation](https://releases.llvm.org/23.1.0/tools/clang/docs/LifetimeSafety.html).
+This analysis does not establish the safety of asynchronous reference captures
+or replace synchronization and sanitizer tests.
+
 ## Threads
 
 ```cpp

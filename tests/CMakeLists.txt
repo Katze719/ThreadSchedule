@@ -5,6 +5,46 @@ add_executable(compile_test compile_test.cpp)
 target_link_libraries(compile_test ThreadSchedule::ThreadSchedule)
 add_test(NAME CompileTest COMMAND compile_test)
 
+# Compile valid lifetime uses with every supported compiler. Clang additionally
+# verifies intentionally dangling public API calls without executing them.
+add_library(lifetime_annotations_test OBJECT lifetime_annotations_test.cpp)
+target_link_libraries(lifetime_annotations_test PRIVATE ThreadSchedule::ThreadSchedule)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT MSVC)
+    target_compile_options(lifetime_annotations_test PRIVATE -Werror=dangling -Werror=unknown-attributes)
+    if(NOT CMAKE_CROSSCOMPILING)
+        include(CheckCXXCompilerFlag)
+        check_cxx_compiler_flag("-Wlifetime-safety-permissive" THREADSCHEDULE_HAS_LIFETIME_SAFETY)
+        set(lifetime_diagnostic_flags)
+        if(THREADSCHEDULE_HAS_LIFETIME_SAFETY)
+            # Keep this regression test focused on the longstanding attribute
+            # diagnostics; the CI build separately runs the data-flow analysis.
+            list(APPEND lifetime_diagnostic_flags -Wno-lifetime-safety)
+        endif()
+        separate_arguments(lifetime_compiler_arg1 NATIVE_COMMAND "${CMAKE_CXX_COMPILER_ARG1}")
+        separate_arguments(lifetime_compiler_flags NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
+        add_test(
+            NAME LifetimeAnnotationsDiagnostics
+            COMMAND ${CMAKE_CXX_COMPILER} ${lifetime_compiler_arg1} ${lifetime_compiler_flags}
+                ${CMAKE_CXX${CMAKE_CXX_STANDARD}_STANDARD_COMPILE_OPTION}
+                -I${PROJECT_SOURCE_DIR}/include -fsyntax-only -Wdangling ${lifetime_diagnostic_flags}
+                -Wno-error=dangling -Wno-error=return-stack-address
+                -DTHREADSCHEDULE_TEST_DANGLING -Xclang -verify
+                ${CMAKE_CURRENT_SOURCE_DIR}/lifetime_annotations_test.cpp
+        )
+        check_cxx_compiler_flag("-Wlifetime-safety-noescape" THREADSCHEDULE_HAS_NOESCAPE_VALIDATION)
+        if(THREADSCHEDULE_HAS_NOESCAPE_VALIDATION)
+            add_test(
+                NAME LifetimeNoescapeValidation
+                COMMAND ${CMAKE_CXX_COMPILER} ${lifetime_compiler_arg1} ${lifetime_compiler_flags}
+                    ${CMAKE_CXX${CMAKE_CXX_STANDARD}_STANDARD_COMPILE_OPTION}
+                    -I${PROJECT_SOURCE_DIR}/include -fsyntax-only
+                    -Wno-lifetime-safety -Werror=lifetime-safety-noescape
+                    ${CMAKE_CURRENT_SOURCE_DIR}/lifetime_annotations_test.cpp
+            )
+        endif()
+    endif()
+endif()
+
 add_test(
     NAME IncludeLayerTest
     COMMAND ${CMAKE_COMMAND}
@@ -66,6 +106,7 @@ set(THREADSCHEDULE_SELF_CONTAINED_HEADERS
     threadschedule/detail/callable/copyable_function.hpp
     threadschedule/detail/callable/function_ref.hpp
     threadschedule/detail/callable/move_only_function.hpp
+    threadschedule/detail/lifetime.hpp
     threadschedule/detail/scope_exit.hpp
     threadschedule/detail/try_result.hpp
     threadschedule/detail/time.hpp

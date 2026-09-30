@@ -5,6 +5,7 @@
  * @brief Portable thread startup and runtime configuration.
  */
 
+#include "detail/lifetime.hpp"
 #include "scheduling.hpp"
 #include "thread_affinity.hpp"
 
@@ -85,19 +86,19 @@ public:
 
   /** @brief Return configured thread name if present. */
   [[nodiscard]] auto
-  get_name() const noexcept -> std::optional<std::string> const&
+  get_name() const noexcept THREADSCHEDULE_LIFETIMEBOUND -> std::optional<std::string> const&
   {
     return name_;
   }
   /** @brief Return configured scheduling request if present. */
   [[nodiscard]] auto
-  get_scheduling() const noexcept -> std::optional<scheduling_config> const&
+  get_scheduling() const noexcept THREADSCHEDULE_LIFETIMEBOUND -> std::optional<scheduling_config> const&
   {
     return scheduling_;
   }
   /** @brief Return configured affinity set if present. */
   [[nodiscard]] auto
-  get_affinity() const noexcept -> std::optional<thread_affinity> const&
+  get_affinity() const noexcept THREADSCHEDULE_LIFETIMEBOUND -> std::optional<thread_affinity> const&
   {
     return affinity_;
   }
