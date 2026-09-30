@@ -5,6 +5,7 @@
  * @brief Non-owning adapter for thread control/query operations.
  */
 
+#include "detail/lifetime.hpp"
 #include "detail/thread/control.hpp"
 #include "detail/thread_backend.hpp"
 #include "jthread.hpp"
@@ -25,8 +26,10 @@ namespace threadschedule
  * @brief Non-owning view over a running thread or jthread.
  *
  * This class never joins/detaches and only forwards control/query operations.
+ * The referenced C++ thread object must outlive the view. Configuration inputs
+ * are consumed synchronously and are not retained by the view.
  */
-class thread_view
+class THREADSCHEDULE_POINTER thread_view
 {
 #if defined(__cpp_lib_jthread) && __cpp_lib_jthread >= 201911L
   using std_thread_view = detail::thread_view_backend;
@@ -73,9 +76,12 @@ public:
    * @note On Linux, nice control reports @c operation_not_supported because
    *       an external thread's kernel TID cannot be recovered portably.
    */
-  explicit thread_view(std::thread& value) noexcept : impl_(std::in_place_type<std_thread_view>, value) {}
+  explicit thread_view(std::thread& value THREADSCHEDULE_LIFETIMEBOUND) noexcept
+      : impl_(std::in_place_type<std_thread_view>, value)
+  {
+  }
   /** @brief Create a view over a threadschedule::thread. */
-  explicit thread_view(thread& value) noexcept
+  explicit thread_view(thread& value THREADSCHEDULE_LIFETIMEBOUND) noexcept
       : impl_(std::in_place_type<std_thread_view>, value.impl_.get(), value.impl_.native_id())
   {
   }
@@ -85,9 +91,13 @@ public:
    * @note On Linux, nice control reports @c operation_not_supported because
    *       an external thread's kernel TID cannot be recovered portably.
    */
-  explicit thread_view(std::jthread& value) noexcept : impl_(std::in_place_type<jthread_view>, value) {}
+  explicit thread_view(std::jthread& value THREADSCHEDULE_LIFETIMEBOUND) noexcept
+      : impl_(std::in_place_type<jthread_view>, value)
+  {
+  }
   /** @brief Create a view over a threadschedule::jthread. */
-  explicit thread_view(jthread& value) noexcept : impl_(std::in_place_type<jthread_view>, value.impl_, value.native_id_)
+  explicit thread_view(jthread& value THREADSCHEDULE_LIFETIMEBOUND) noexcept
+      : impl_(std::in_place_type<jthread_view>, value.impl_, value.native_id_)
   {
   }
 #else
@@ -97,9 +107,12 @@ public:
    * @note On Linux, nice control reports @c operation_not_supported because
    *       an external thread's kernel TID cannot be recovered portably.
    */
-  explicit thread_view(std::thread& value) noexcept : impl_(value) {}
+  explicit thread_view(std::thread& value THREADSCHEDULE_LIFETIMEBOUND) noexcept : impl_(value) {}
   /** @brief Create a view over a threadschedule::thread. */
-  explicit thread_view(thread& value) noexcept : impl_(value.impl_.get(), value.impl_.native_id()) {}
+  explicit thread_view(thread& value THREADSCHEDULE_LIFETIMEBOUND) noexcept
+      : impl_(value.impl_.get(), value.impl_.native_id())
+  {
+  }
 #endif
 
   /** @brief Return whether viewed thread is joinable. */
@@ -118,7 +131,7 @@ public:
 
   /** @brief Apply full portable configuration to viewed thread. */
   auto
-  configure(thread_config const& config) -> result<void>
+  configure(thread_config const& config THREADSCHEDULE_NOESCAPE) -> result<void>
   {
     return with_impl([&](auto& value) { return detail::portable_thread_control::configure(value, config); });
   }
@@ -155,7 +168,7 @@ public:
 
   /** @brief Set viewed thread name. */
   auto
-  set_name(std::string const& name) -> result<void>
+  set_name(std::string const& name THREADSCHEDULE_NOESCAPE) -> result<void>
   {
     return with_impl([&](auto& value) { return value.set_name(name); });
   }
@@ -169,7 +182,7 @@ public:
 
   /** @brief Set viewed thread CPU affinity. */
   auto
-  set_affinity(thread_affinity const& affinity) -> result<void>
+  set_affinity(thread_affinity const& affinity THREADSCHEDULE_NOESCAPE) -> result<void>
   {
     return with_impl([&](auto& value) { return detail::portable_thread_control::set_affinity(value, affinity); });
   }

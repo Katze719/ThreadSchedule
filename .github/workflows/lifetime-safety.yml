@@ -1,0 +1,55 @@
+name: Lifetime safety
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+  workflow_dispatch:
+
+jobs:
+  lifetime-safety:
+    name: Clang 23, C++${{ matrix.standard }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        standard: [17, 20]
+    env:
+      CCACHE_DISABLE: "1"
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Clang 23
+      run: |
+        curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key -o /tmp/llvm.asc
+        sudo install -m 644 /tmp/llvm.asc /usr/share/keyrings/llvm.asc
+        echo 'deb [signed-by=/usr/share/keyrings/llvm.asc] https://apt.llvm.org/noble/ llvm-toolchain-noble-23 main' \
+          | sudo tee /etc/apt/sources.list.d/llvm.list
+        sudo apt-get update
+        sudo apt-get install -y clang-23 cmake ninja-build
+        clang++-23 --version
+        # Fail explicitly if the installed compiler lacks the requested analysis.
+        clang++-23 -x c++ -fsyntax-only -Werror=unknown-warning-option \
+          -Wlifetime-safety-permissive -Wlifetime-safety-noescape /dev/null
+
+    - name: Configure CMake
+      env:
+        CXX: clang++-23
+      run: |
+        cmake -S . -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DCMAKE_CXX_STANDARD=${{ matrix.standard }} \
+          -DCMAKE_CXX_FLAGS="-Wlifetime-safety-permissive -Wlifetime-safety-noescape" \
+          -DTHREADSCHEDULE_WARNINGS_AS_ERRORS=OFF \
+          -DTHREADSCHEDULE_BUILD_TESTS=ON \
+          -DTHREADSCHEDULE_BUILD_EXAMPLES=ON
+
+    # Analysis warnings are informational during initial adoption. Compilation
+    # failures and the focused annotation regression test still fail the job.
+    - name: Build with lifetime analysis
+      run: cmake --build build --parallel 2
+
+    - name: Run tests and verify annotation diagnostics
+      run: ctest --test-dir build --output-on-failure --parallel 2 --timeout 120

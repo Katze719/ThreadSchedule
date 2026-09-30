@@ -6,6 +6,7 @@
  */
 
 #include "cpu_id.hpp"
+#include "detail/lifetime.hpp"
 
 #include <algorithm>
 #include <initializer_list>
@@ -15,7 +16,7 @@
 namespace threadschedule
 {
 
-class thread_affinity
+class THREADSCHEDULE_OWNER thread_affinity
 {
 public:
   /** @brief Construct an empty affinity set (no CPU pinning requested). */
@@ -87,7 +88,7 @@ public:
 
   /** @brief Return the normalized sorted list of CPUs in the set. */
   [[nodiscard]] auto
-  cpus() const noexcept -> std::vector<cpu_id> const&
+  cpus() const noexcept THREADSCHEDULE_LIFETIMEBOUND -> std::vector<cpu_id> const&
   {
     return cpus_;
   }
