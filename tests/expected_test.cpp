@@ -111,20 +111,24 @@ struct incomparable
 
 struct equality_result
 {
+  bool equal;
+
   constexpr
   operator bool() const
   {
-    return true;
+    return equal;
   }
   explicit operator bool() = delete;
 };
 
 struct comparable
 {
+  int value;
+
   friend constexpr auto
-  operator==(comparable, comparable) -> equality_result
+  operator==(comparable const& lhs, comparable const& rhs) -> equality_result
   {
-    return {};
+    return { lhs.value == rhs.value };
   }
 };
 
@@ -1151,11 +1155,14 @@ TEST(ExpectedConformanceTest, EqualityRequiresImplicitlyBooleanComparisons)
   static_assert(!has_equality_v<void_result, void_result>);
   static_assert(!has_equality_v<ts::unexpected<incomparable>, void_result>);
 
-  constexpr comparable payload;
+  constexpr comparable payload{ 42 };
+  constexpr comparable different{ 7 };
   constexpr ts::expected<comparable, int> success(payload);
   constexpr ts::expected<void, comparable> failure(ts::unexpect, payload);
   static_assert(success == payload && payload == success);
+  static_assert(!(success == different));
   static_assert(failure == ts::unexpected(payload));
+  static_assert(!(failure == ts::unexpected(different)));
 }
 
 TEST(ExpectedConformanceTest, MonadicOperationsUseTheStoredValue)
