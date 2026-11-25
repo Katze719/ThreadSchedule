@@ -108,6 +108,52 @@ TEST(ExpectedTest, VoidFail)
   EXPECT_EQ(r.error(), std::make_error_code(std::errc::operation_not_permitted));
 }
 
+TEST(ExpectedTest, ConvertingToBoolPreservesValueOrError)
+{
+  constexpr ts::expected<int, int> zero(0);
+  constexpr ts::expected<int, int> nonzero(7);
+  constexpr ts::expected<int, int> failure(ts::unexpect, 9);
+
+  constexpr ts::expected<bool, long> false_value = zero;
+  constexpr ts::expected<bool, long> true_value = nonzero;
+  constexpr ts::expected<bool, long> error = failure;
+  static_assert(false_value.has_value() && !*false_value);
+  static_assert(true_value.has_value() && *true_value);
+  static_assert(!error.has_value() && error.error() == 9);
+
+  const ts::expected<bool, int> boolean(false);
+  const ts::expected<const bool, long> copied(boolean);
+  ASSERT_TRUE(copied.has_value());
+  EXPECT_FALSE(*copied);
+}
+
+TEST(ExpectedTest, ConvertingConstructorsRespectExplicitAndNestedValues)
+{
+  using source = ts::expected<int, int>;
+  static_assert(std::is_convertible_v<source, ts::expected<long, long>>);
+  static_assert(std::is_constructible_v<ts::expected<long, nondefault_error>, source>);
+  static_assert(!std::is_convertible_v<source, ts::expected<long, nondefault_error>>);
+  static_assert(!std::is_constructible_v<ts::expected<bool, int>, ts::expected<void, int>>);
+
+  const source inner(ts::unexpect, 13);
+  const ts::expected<source, int> outer(inner);
+  ASSERT_TRUE(outer.has_value());
+  ASSERT_FALSE(outer->has_value());
+  EXPECT_EQ(outer->error(), 13);
+}
+
+TEST(ExpectedTest, ConvertingFromRvalueMovesError)
+{
+  using source = ts::expected<int, std::unique_ptr<int>>;
+  using destination = ts::expected<bool, std::unique_ptr<const int>>;
+  static_assert(!std::is_constructible_v<destination, source const&>);
+  auto failed = source(ts::unexpect, std::make_unique<int>(42));
+  const destination converted = std::move(failed);
+  ASSERT_FALSE(converted.has_value());
+  ASSERT_TRUE(converted.error());
+  EXPECT_EQ(*converted.error(), 42);
+}
+
 TEST(ExpectedTest, IfConditionWorks)
 {
   auto r1 = parse_int_ok();

@@ -135,6 +135,38 @@ struct expected_value_tag
 struct expected_error_tag
 {
 };
+struct expected_from_other_tag
+{
+};
+
+template <typename>
+inline constexpr bool is_expected_v = false;
+template <typename T, typename E>
+inline constexpr bool is_expected_v<expected<T, E>> = true;
+
+template <typename T, typename Source>
+using constructs_from_expected
+    = std::disjunction<std::is_constructible<T, Source&>, std::is_constructible<T, Source const&>,
+                       std::is_constructible<T, Source&&>, std::is_constructible<T, Source const&&>>;
+
+template <typename T, typename Source>
+using converts_from_expected = std::disjunction<constructs_from_expected<T, Source>, std::is_convertible<Source&, T>,
+                                                std::is_convertible<Source const&, T>, std::is_convertible<Source&&, T>,
+                                                std::is_convertible<Source const&&, T>>;
+
+template <typename T, typename E, typename Source, typename Value, typename Error>
+inline constexpr bool expected_can_convert_v = std::conjunction_v<
+    std::negation<std::is_same<expected<T, E>, Source>>, std::is_constructible<T, Value>,
+    std::is_constructible<E, Error>,
+    std::disjunction<std::is_same<std::remove_cv_t<T>, bool>, std::negation<converts_from_expected<T, Source>>>,
+    std::negation<constructs_from_expected<unexpected<E>, Source>>>;
+
+template <typename T, typename E, typename U>
+inline constexpr bool expected_can_forward_v
+    = !std::is_same_v<std::decay_t<U>, expected<T, E>> && !std::is_same_v<std::decay_t<U>, std::in_place_t>
+      && !std::is_same_v<std::decay_t<U>, unexpected<E>>
+      && !(std::is_same_v<std::remove_cv_t<T>, bool> && is_expected_v<std::decay_t<U>>)
+      && std::is_constructible_v<T, U>;
 
 template <typename T>
 struct expected_value_holder
@@ -171,6 +203,14 @@ public:
   template <typename... Args>
   explicit constexpr expected_storage_common(expected_error_tag, Args&&... args)
       : data_(std::in_place_index<1>, std::in_place, std::forward<Args>(args)...)
+  {
+  }
+
+  template <typename Source>
+  explicit constexpr expected_storage_common(expected_from_other_tag, Source&& source)
+      : data_(source.has_value()
+                  ? storage_type(std::in_place_index<0>, std::in_place, *std::forward<Source>(source))
+                  : storage_type(std::in_place_index<1>, std::in_place, std::forward<Source>(source).error()))
   {
   }
 
@@ -409,7 +449,8 @@ private:
       }
   }
 
-  std::variant<value_holder, error_holder> data_;
+  using storage_type = std::variant<value_holder, error_holder>;
+  storage_type data_;
 };
 
 template <typename T, typename E>
@@ -533,22 +574,46 @@ public:
   auto operator=(expected&&) -> expected& = default;
   ~expected() = default;
 
-  template <typename U = T, std::enable_if_t<!std::is_same_v<std::decay_t<U>, expected>
-                                                 && !std::is_same_v<std::decay_t<U>, std::in_place_t>
-                                                 && !std::is_same_v<std::decay_t<U>, unexpected<E>>
-                                                 && std::is_constructible_v<T, U> && std::is_convertible_v<U, T>,
-                                             int> = 0>
+  template <typename U = T,
+            std::enable_if_t<detail::expected_can_forward_v<T, E, U> && std::is_convertible_v<U, T>, int> = 0>
   constexpr expected(U&& value) : storage_(detail::expected_value_tag{}, std::forward<U>(value))
   {
   }
-  template <typename U = T, std::enable_if_t<!std::is_same_v<std::decay_t<U>, expected>
-                                                 && !std::is_same_v<std::decay_t<U>, std::in_place_t>
-                                                 && !std::is_same_v<std::decay_t<U>, unexpected<E>>
-                                                 && std::is_constructible_v<T, U> && !std::is_convertible_v<U, T>,
-                                             int> = 0>
+  template <typename U = T,
+            std::enable_if_t<detail::expected_can_forward_v<T, E, U> && !std::is_convertible_v<U, T>, int> = 0>
   constexpr explicit expected(U&& value) : storage_(detail::expected_value_tag{}, std::forward<U>(value))
   {
   }
+
+  template <typename U, typename G,
+            std::enable_if_t<detail::expected_can_convert_v<T, E, expected<U, G>, U const&, G const&>
+                                 && std::is_convertible_v<U const&, T> && std::is_convertible_v<G const&, E>,
+                             int> = 0>
+  constexpr expected(expected<U, G> const& source) : storage_(detail::expected_from_other_tag{}, source)
+  {
+  }
+  template <typename U, typename G,
+            std::enable_if_t<detail::expected_can_convert_v<T, E, expected<U, G>, U const&, G const&>
+                                 && !(std::is_convertible_v<U const&, T> && std::is_convertible_v<G const&, E>),
+                             int> = 0>
+  constexpr explicit expected(expected<U, G> const& source) : storage_(detail::expected_from_other_tag{}, source)
+  {
+  }
+  template <typename U, typename G,
+            std::enable_if_t<detail::expected_can_convert_v<T, E, expected<U, G>, U, G> && std::is_convertible_v<U, T>
+                                 && std::is_convertible_v<G, E>,
+                             int> = 0>
+  constexpr expected(expected<U, G>&& source) : storage_(detail::expected_from_other_tag{}, std::move(source))
+  {
+  }
+  template <typename U, typename G,
+            std::enable_if_t<detail::expected_can_convert_v<T, E, expected<U, G>, U, G>
+                                 && !(std::is_convertible_v<U, T> && std::is_convertible_v<G, E>),
+                             int> = 0>
+  constexpr explicit expected(expected<U, G>&& source) : storage_(detail::expected_from_other_tag{}, std::move(source))
+  {
+  }
+
   template <typename... Args, std::enable_if_t<std::is_constructible_v<T, Args...>, int> = 0>
   constexpr explicit expected(std::in_place_t, Args&&... args)
       : storage_(detail::expected_value_tag{}, std::forward<Args>(args)...)

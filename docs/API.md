@@ -55,6 +55,10 @@ library operation. The static `create(...)` factories remain available as an
 optional non-throwing construction path. Explicitly named `*_or_throw` helpers
 are available where a throwing operation is otherwise useful.
 
+Converting between compatible `expected` types preserves the active alternative.
+For example, conversion to `expected<bool, E>` converts a successful zero to
+`false` and carries an error through as an error.
+
 When the standard library provides C++23 `std::expected`, a
 `threadschedule::expected<T, E>` implicitly converts to the matching
 `std::expected<T, E>`. Converting an lvalue copies its active value or error;
