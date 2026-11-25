@@ -704,28 +704,28 @@ public:
     return std::move(storage_).value();
   }
 
-  auto
+  constexpr auto
   value() & THREADSCHEDULE_LIFETIMEBOUND -> T&
   {
     if (!has_value())
       THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(storage_.error()));
     return storage_.value();
   }
-  [[nodiscard]] auto
+  [[nodiscard]] constexpr auto
   value() const& THREADSCHEDULE_LIFETIMEBOUND -> T const&
   {
     if (!has_value())
       THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(storage_.error()));
     return storage_.value();
   }
-  auto
+  constexpr auto
   value() && THREADSCHEDULE_LIFETIMEBOUND -> T&&
   {
     if (!has_value())
       THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(std::move(storage_).error()));
     return std::move(storage_).value();
   }
-  [[nodiscard]] auto
+  [[nodiscard]] constexpr auto
   value() const&& THREADSCHEDULE_LIFETIMEBOUND -> T const&&
   {
     if (!has_value())
@@ -764,6 +764,24 @@ public:
   value_or(U&& fallback) && -> T
   {
     return has_value() ? std::move(storage_).value() : static_cast<T>(std::forward<U>(fallback));
+  }
+  template <typename G = E>
+  constexpr auto
+  error_or(G&& fallback) const& -> E
+  {
+    static_assert(std::is_copy_constructible_v<E> && std::is_convertible_v<G, E>);
+    if (has_value())
+      return std::forward<G>(fallback);
+    return storage_.error();
+  }
+  template <typename G = E>
+  constexpr auto
+  error_or(G&& fallback) && -> E
+  {
+    static_assert(std::is_move_constructible_v<E> && std::is_convertible_v<G, E>);
+    if (has_value())
+      return std::forward<G>(fallback);
+    return std::move(storage_).error();
   }
   template <typename... Args, std::enable_if_t<std::is_nothrow_constructible_v<T, Args...>, int> = 0>
   auto
@@ -1062,7 +1080,7 @@ public:
   {
     return has_value();
   }
-  void
+  constexpr void
   value() const
   {
     if (!has_value())
@@ -1086,6 +1104,24 @@ public:
   [[nodiscard]] constexpr auto
   error() const&& noexcept THREADSCHEDULE_LIFETIMEBOUND -> E const&&
   {
+    return std::move(storage_).error();
+  }
+  template <typename G = E>
+  constexpr auto
+  error_or(G&& fallback) const& -> E
+  {
+    static_assert(std::is_copy_constructible_v<E> && std::is_convertible_v<G, E>);
+    if (has_value())
+      return std::forward<G>(fallback);
+    return storage_.error();
+  }
+  template <typename G = E>
+  constexpr auto
+  error_or(G&& fallback) && -> E
+  {
+    static_assert(std::is_move_constructible_v<E> && std::is_convertible_v<G, E>);
+    if (has_value())
+      return std::forward<G>(fallback);
     return std::move(storage_).error();
   }
   void

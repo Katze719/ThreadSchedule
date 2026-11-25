@@ -287,6 +287,51 @@ TEST(ExpectedTest, VoidValueThrows)
   EXPECT_THROW(bad.value(), bad_expected_access<std::error_code>);
 }
 
+TEST(ExpectedTest, ConstexprValue)
+{
+  constexpr auto observe = []
+    {
+      ts::expected<int, int> value(17);
+      const ts::expected<int, int> const_value(21);
+      ts::expected<void, int> empty;
+      empty.value();
+      const auto read = value.value() + const_value.value();
+      return read + std::move(value).value() + std::move(const_value).value();
+    };
+  static_assert(observe() == 76);
+}
+
+TEST(ExpectedTest, ErrorOr)
+{
+  constexpr ts::expected<int, long> value(42);
+  constexpr ts::expected<int, long> error(ts::unexpect, 7);
+  constexpr ts::expected<void, long> empty;
+  constexpr ts::expected<void, long> void_error(ts::unexpect, 8);
+  static_assert(value.error_or(9) == 9);
+  static_assert(error.error_or(9) == 7);
+  static_assert(empty.error_or(9) == 9);
+  static_assert(void_error.error_or(9) == 8);
+  static_assert(ts::expected<int, long>(42).error_or(9) == 9);
+  static_assert(ts::expected<void, long>(ts::unexpect, 8).error_or(9) == 8);
+}
+
+TEST(ExpectedTest, ErrorOrMovesErrorOrFallback)
+{
+  auto result = ts::expected<int, std::unique_ptr<int>>(ts::unexpect, std::make_unique<int>(42));
+  auto unused_fallback = std::make_unique<int>(7);
+  const auto error = std::move(result).error_or(std::move(unused_fallback));
+  ASSERT_TRUE(error);
+  EXPECT_EQ(*error, 42);
+  EXPECT_TRUE(unused_fallback);
+
+  auto empty = ts::expected<void, std::unique_ptr<int>>();
+  auto fallback = std::make_unique<int>(9);
+  const auto recovered = std::move(empty).error_or(std::move(fallback));
+  ASSERT_TRUE(recovered);
+  EXPECT_EQ(*recovered, 9);
+  EXPECT_FALSE(fallback);
+}
+
 TEST(ExpectedTest, Emplace)
 {
   ts::expected<int, std::error_code> r = parse_int_fail();

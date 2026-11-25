@@ -59,6 +59,9 @@ Converting between compatible `expected` types preserves the active alternative.
 For example, conversion to `expected<bool, E>` converts a successful zero to
 `false` and carries an error through as an error.
 
+`error_or(fallback)` returns the stored error or, on success, the fallback. A
+successful `value()` call can be used in a constant expression in C++17.
+
 When the standard library provides C++23 `std::expected`, a
 `threadschedule::expected<T, E>` implicitly converts to the matching
 `std::expected<T, E>`. Converting an lvalue copies its active value or error;
