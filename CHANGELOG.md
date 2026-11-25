@@ -20,6 +20,7 @@
 - Added the C++29 draft's `expected::has_error()` and C++26 updates for trivial assignment, braced `value_or`
   fallbacks, comparisons, monadic access, and constexpr exceptions where supported.
 - Hardened `expected<void, E>` observers so invalid state access terminates in release builds too.
+- Documented [mixed-GCC ABI compatibility for `expected`](docs/COMPATIBILITY.md#expected-across-gcc-versions).
 
 ## v3.0.1
 
