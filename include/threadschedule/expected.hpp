@@ -264,20 +264,29 @@ expected_in_constant_evaluation() noexcept -> bool
 }
 
 // Use ADL on the variant pointer to find std::construct_at when available.
-template <typename Storage, typename... Args>
+template <std::size_t I, typename Storage, typename... Args>
 constexpr auto
-reconstruct_expected_storage(Storage* storage, int, Args&&... args)
-    -> decltype(construct_at(storage, std::forward<Args>(args)...), bool())
+emplace_expected_storage(Storage& storage, int, Args&&... args) noexcept
+    -> decltype(construct_at(std::addressof(storage), std::in_place_index<I>, std::in_place,
+                             std::forward<Args>(args)...),
+                void())
 {
-  std::destroy_at(storage);
-  construct_at(storage, std::forward<Args>(args)...);
-  return true;
+  if (!expected_in_constant_evaluation())
+    {
+      storage.template emplace<I>(std::in_place, std::forward<Args>(args)...);
+      return;
+    }
+
+  // Reconstructing the whole variant avoids inactive union access in MSVC's constexpr emplace.
+  auto* address = std::addressof(storage);
+  std::destroy_at(address);
+  construct_at(address, std::in_place_index<I>, std::in_place, std::forward<Args>(args)...);
 }
-template <typename Storage, typename... Args>
-constexpr auto
-reconstruct_expected_storage(Storage*, long, Args&&...) noexcept -> bool
+template <std::size_t I, typename Storage, typename... Args>
+constexpr void
+emplace_expected_storage(Storage& storage, long, Args&&... args) noexcept
 {
-  return false;
+  storage.template emplace<I>(std::in_place, std::forward<Args>(args)...);
 }
 
 template <typename T, typename E>
@@ -540,12 +549,7 @@ private:
   constexpr void
   emplace_nothrow(Args&&... args) noexcept
   {
-    // Reconstructing the whole variant avoids inactive union access in MSVC's constexpr emplace.
-    if (expected_in_constant_evaluation()
-        && reconstruct_expected_storage(std::addressof(data_), 0, std::in_place_index<I>, std::in_place,
-                                        std::forward<Args>(args)...))
-      return;
-    data_.template emplace<I>(std::in_place, std::forward<Args>(args)...);
+    emplace_expected_storage<I>(data_, 0, std::forward<Args>(args)...);
   }
 
 #ifdef __cpp_exceptions
