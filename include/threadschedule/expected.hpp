@@ -9,6 +9,7 @@
 
 #include <exception>
 #include <functional>
+#include <memory>
 #include <system_error>
 #include <type_traits>
 #include <utility>
@@ -675,12 +676,12 @@ public:
   constexpr auto
   operator->() noexcept THREADSCHEDULE_LIFETIMEBOUND -> T*
   {
-    return &storage_.value();
+    return std::addressof(storage_.value());
   }
   constexpr auto
   operator->() const noexcept THREADSCHEDULE_LIFETIMEBOUND -> T const*
   {
-    return &storage_.value();
+    return std::addressof(storage_.value());
   }
   constexpr auto
   operator*() & noexcept THREADSCHEDULE_LIFETIMEBOUND -> T&
