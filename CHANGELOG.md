@@ -1,10 +1,12 @@
 # Changelog
 
-## v3.0.1
+## Unreleased
 
 ### Results and errors
 
 - Added converting `expected` constructors that preserve the active value or error, including conversions to `bool`.
+
+## v3.0.1
 
 ### Lifetime diagnostics
 
