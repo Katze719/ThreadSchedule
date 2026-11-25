@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- To store `unexpect` as a value, construct `expected<T, E>(std::in_place, unexpect)`.
+- Use `a == b` or `a != b` in place of explicit template calls such as `operator==<int>(a, b)` when comparing
+  an `expected` with a raw value.
+- Some `expected` copy assignment operators are now trivial and `noexcept`, and some comparison template symbols
+  have changed. Rebuild libraries that expose pointers to the affected assignment operators or export the affected
+  comparison instantiations.
+
 ### Results and errors
 
 - Added converting `expected` constructors that preserve the active value or error, including conversions to `bool`.
