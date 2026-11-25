@@ -5,6 +5,7 @@
 ### Results and errors
 
 - Added converting `expected` constructors that preserve the active value or error, including conversions to `bool`.
+- Fixed `expected::operator->` for values with an overloaded address-of operator.
 
 ## v3.0.1
 

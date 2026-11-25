@@ -238,6 +238,33 @@ TEST(ExpectedTest, OperatorArrow)
   EXPECT_EQ(cp->y, 6);
 }
 
+TEST(ExpectedTest, OperatorArrowIgnoresOverloadedAddressOf)
+{
+  struct value_type
+  {
+    int value;
+
+    auto
+    operator&() noexcept -> value_type*
+    {
+      return nullptr;
+    }
+    auto
+    operator&() const noexcept -> value_type const*
+    {
+      return nullptr;
+    }
+  };
+
+  ts::expected<value_type> value(value_type{ 7 });
+  ASSERT_EQ(value.operator->(), std::addressof(*value));
+  EXPECT_EQ(value->value, 7);
+
+  auto const& const_value = value;
+  ASSERT_EQ(const_value.operator->(), std::addressof(*const_value));
+  EXPECT_EQ(const_value->value, 7);
+}
+
 TEST(ExpectedTest, ValueThrows)
 {
   auto bad = parse_int_fail();
