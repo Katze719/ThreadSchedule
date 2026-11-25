@@ -559,6 +559,7 @@ MinGW, and MSVC artifacts.
 - [Advanced APIs](docs/ADVANCED.md)
 - [CMake reference](docs/CMAKE_REFERENCE.md)
 - [Compatibility and ABI](docs/COMPATIBILITY.md)
+- [Migrating from 3.x to 4.0.0](docs/MIGRATION_V4.md)
 - [Migrating from 2.x](docs/MIGRATION_V3.md)
 - [Changelog](CHANGELOG.md)
 

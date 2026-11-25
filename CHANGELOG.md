@@ -25,6 +25,11 @@
   with GCC 13 and a 3-byte `expected` with GCC 16.
   [Mixed GCC ABI example](docs/COMPATIBILITY.md#expected-across-gcc-versions)
 
+### Documentation
+
+- Fixed Doxygen generation for the link to the benchmark guide.
+- Added the [migration guide from 3.x to 4.0.0](docs/MIGRATION_V4.md).
+
 ## v3.0.1
 
 ### Lifetime diagnostics
