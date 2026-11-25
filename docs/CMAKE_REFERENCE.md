@@ -56,7 +56,7 @@ compiler ABI, standard library ABI, architecture, and runtime-library mode.
 ## Package consumption
 
 ```cmake
-find_package(ThreadSchedule 3 CONFIG REQUIRED)
+find_package(ThreadSchedule 4 CONFIG REQUIRED)
 target_link_libraries(my_app PRIVATE ThreadSchedule::ThreadSchedule)
 ```
 

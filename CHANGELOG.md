@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v4.0.0
 
 ### Breaking changes
 
@@ -24,6 +24,11 @@
   standard. On Linux x86-64, a value type with a `const` `[[no_unique_address]]` member produced a 2-byte `expected`
   with GCC 13 and a 3-byte `expected` with GCC 16.
   [Mixed GCC ABI example](docs/COMPATIBILITY.md#expected-across-gcc-versions)
+
+### Documentation
+
+- Fixed Doxygen generation for the link to the benchmark guide.
+- Added the [migration guide from 3.x to 4.0.0](docs/MIGRATION_V4.md).
 
 ## v3.0.1
 

@@ -50,12 +50,29 @@ jobs:
           test -f docs/COMPATIBILITY.md
           test -f docs/CMAKE_REFERENCE.md
           test -f docs/MIGRATION_V3.md
+          test -f docs/MIGRATION_V4.md
           grep -q '#include <threadschedule/threadschedule.hpp>' README.md
 
-  deploy-docs:
-    name: Build and deploy Doxygen
-    if: github.ref == 'refs/heads/main'
+  build-docs:
+    name: Build Doxygen
     needs: check-docs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y doxygen graphviz
+      - run: cmake -S . -B build -DTHREADSCHEDULE_BUILD_DOCS=ON
+      - run: cmake --build build --target docs --parallel
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: build/docs/doxygen/html
+
+  deploy-docs:
+    name: Deploy Doxygen
+    if: github.ref == 'refs/heads/main'
+    needs: build-docs
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -65,12 +82,5 @@ jobs:
       group: pages
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y doxygen graphviz
-      - run: cmake -S . -B build -DTHREADSCHEDULE_BUILD_DOCS=ON
-      - run: cmake --build build --target docs --parallel
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: build/docs/doxygen/html
       - uses: actions/deploy-pages@v4
