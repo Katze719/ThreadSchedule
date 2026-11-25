@@ -13,6 +13,7 @@
 #include <functional>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <system_error>
 #include <type_traits>
 #include <utility>
@@ -228,9 +229,6 @@ struct expected_from_other_tag
 struct expected_invoke_tag
 {
 };
-struct expected_void_value
-{
-};
 
 template <bool Enabled>
 struct expected_move_constructor
@@ -250,14 +248,14 @@ struct expected_move_constructor<false>
 constexpr auto
 expected_in_constant_evaluation() noexcept -> bool
 {
-#if defined(__has_builtin)
+#if defined(_MSC_VER) && !defined(__clang__)
+  return __builtin_is_constant_evaluated();
+#elif defined(__has_builtin)
 #  if __has_builtin(__builtin_is_constant_evaluated)
   return __builtin_is_constant_evaluated();
 #  else
   return false;
 #  endif
-#elif defined(_MSC_VER)
-  return __builtin_is_constant_evaluated();
 #else
   return false;
 #endif
@@ -539,10 +537,7 @@ private:
   {
     if (!source.has_value())
       return storage_type(std::in_place_index<1>, std::in_place, std::forward<Source>(source).error());
-    if constexpr (std::is_void_v<typename std::remove_reference_t<Source>::value_type>)
-      return storage_type(std::in_place_index<0>, std::in_place);
-    else
-      return storage_type(std::in_place_index<0>, std::in_place, *std::forward<Source>(source));
+    return storage_type(std::in_place_index<0>, std::in_place, *std::forward<Source>(source));
   }
 
   template <std::size_t I, typename... Args>
@@ -610,8 +605,6 @@ private:
   {
     if constexpr (std::is_nothrow_constructible_v<E, G>)
       emplace_nothrow<1>(std::forward<G>(source));
-    else if constexpr (std::is_same_v<T, expected_void_value>)
-      emplace_with_backup<1>(expected_void_value{}, std::forward<G>(source));
     else if constexpr (std::is_nothrow_move_constructible_v<E>)
       {
         E replacement(std::forward<G>(source));
@@ -628,12 +621,7 @@ private:
   static constexpr void
   swap_value_error(expected_storage_common& with_value, expected_storage_common& with_error)
   {
-    if constexpr (std::is_same_v<T, expected_void_value>)
-      {
-        with_value.replace_with_error(std::move(with_error.error()));
-        with_error.emplace_value();
-      }
-    else if constexpr (std::is_nothrow_move_constructible_v<E>)
+    if constexpr (std::is_nothrow_move_constructible_v<E>)
       {
         E backup(std::move(with_error.error()));
         with_error.template emplace_with_backup<0>(backup, std::move(with_value.value()));
@@ -1300,7 +1288,7 @@ template <typename T, typename E>
 class expected_void
 {
   static_assert(std::is_void_v<T> && valid_expected_error_v<E>);
-  using storage_type = expected_storage<expected_void_value, E>;
+  using storage_type = std::optional<expected_error_holder<E>>;
   using derived_type = expected<T, E>;
 
 public:
@@ -1311,65 +1299,64 @@ public:
   template <typename U>
   using rebind = expected<U, E>;
 
-  constexpr expected_void() noexcept : expected_void(std::in_place) {}
-  constexpr explicit expected_void(std::in_place_t) noexcept : storage_(detail::expected_value_tag{}) {}
+  constexpr expected_void() noexcept = default;
+  constexpr explicit expected_void(std::in_place_t) noexcept {}
 
   template <
       typename U, typename G,
       std::enable_if_t<detail::expected_void_can_convert_v<T, E, U, G, G const&> && std::is_convertible_v<G const&, E>,
                        int> = 0>
-  constexpr expected_void(expected<U, G> const& source) : storage_(detail::expected_from_other_tag{}, source)
+  constexpr expected_void(expected<U, G> const& source) : storage_(make_error_from(source))
   {
   }
   template <
       typename U, typename G,
       std::enable_if_t<detail::expected_void_can_convert_v<T, E, U, G, G const&> && !std::is_convertible_v<G const&, E>,
                        int> = 0>
-  constexpr explicit expected_void(expected<U, G> const& source) : storage_(detail::expected_from_other_tag{}, source)
+  constexpr explicit expected_void(expected<U, G> const& source) : storage_(make_error_from(source))
   {
   }
   template <typename U, typename G,
             std::enable_if_t<detail::expected_void_can_convert_v<T, E, U, G, G> && std::is_convertible_v<G, E>, int>
             = 0>
-  constexpr expected_void(expected<U, G>&& source) : storage_(detail::expected_from_other_tag{}, std::move(source))
+  constexpr expected_void(expected<U, G>&& source) : storage_(make_error_from(std::move(source)))
   {
   }
   template <typename U, typename G,
             std::enable_if_t<detail::expected_void_can_convert_v<T, E, U, G, G> && !std::is_convertible_v<G, E>, int>
             = 0>
-  constexpr explicit expected_void(expected<U, G>&& source)
-      : storage_(detail::expected_from_other_tag{}, std::move(source))
+  constexpr explicit expected_void(expected<U, G>&& source) : storage_(make_error_from(std::move(source)))
   {
   }
 
   template <typename... Args, std::enable_if_t<std::is_constructible_v<E, Args...>, int> = 0>
   constexpr explicit expected_void(unexpect_t, Args&&... args)
-      : storage_(detail::expected_error_tag{}, std::forward<Args>(args)...)
+      : storage_(std::in_place, std::in_place, std::forward<Args>(args)...)
   {
   }
   template <typename G,
             std::enable_if_t<std::is_constructible_v<E, G const&> && std::is_convertible_v<G const&, E>, int> = 0>
-  constexpr expected_void(unexpected<G> const& source) : storage_(detail::expected_error_tag{}, source.error())
+  constexpr expected_void(unexpected<G> const& source) : storage_(std::in_place, std::in_place, source.error())
   {
   }
   template <typename G,
             std::enable_if_t<std::is_constructible_v<E, G const&> && !std::is_convertible_v<G const&, E>, int> = 0>
-  constexpr explicit expected_void(unexpected<G> const& source) : storage_(detail::expected_error_tag{}, source.error())
+  constexpr explicit expected_void(unexpected<G> const& source) : storage_(std::in_place, std::in_place, source.error())
   {
   }
   template <typename G, std::enable_if_t<std::is_constructible_v<E, G> && std::is_convertible_v<G, E>, int> = 0>
-  constexpr expected_void(unexpected<G>&& source) : storage_(detail::expected_error_tag{}, std::move(source).error())
+  constexpr expected_void(unexpected<G>&& source) : storage_(std::in_place, std::in_place, std::move(source).error())
   {
   }
   template <typename G, std::enable_if_t<std::is_constructible_v<E, G> && !std::is_convertible_v<G, E>, int> = 0>
   constexpr explicit expected_void(unexpected<G>&& source)
-      : storage_(detail::expected_error_tag{}, std::move(source).error())
+      : storage_(std::in_place, std::in_place, std::move(source).error())
   {
   }
   template <typename U, typename... Args,
             std::enable_if_t<std::is_constructible_v<E, std::initializer_list<U>&, Args...>, int> = 0>
   constexpr explicit expected_void(unexpect_t, std::initializer_list<U> list, Args&&... args)
-      : storage_(detail::expected_error_tag{}, list, std::forward<Args>(args)...)
+      : storage_(std::in_place, std::in_place, list, std::forward<Args>(args)...)
   {
   }
   template <typename G,
@@ -1377,21 +1364,21 @@ public:
   constexpr auto
   operator=(unexpected<G> const& error) -> derived_type&
   {
-    storage_.assign_error(error.error());
+    assign_error(error.error());
     return static_cast<derived_type&>(*this);
   }
   template <typename G, std::enable_if_t<std::is_constructible_v<E, G> && std::is_assignable_v<E&, G>, int> = 0>
   constexpr auto
   operator=(unexpected<G>&& error) -> derived_type&
   {
-    storage_.assign_error(std::move(error).error());
+    assign_error(std::move(error).error());
     return static_cast<derived_type&>(*this);
   }
 
   [[nodiscard]] constexpr auto
   has_value() const noexcept -> bool
   {
-    return storage_.has_value();
+    return !storage_.has_value();
   }
   constexpr explicit
   operator bool() const noexcept
@@ -1407,33 +1394,33 @@ public:
   value() const&
   {
     if (!has_value())
-      THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(storage_.error()));
+      THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(storage_->error));
   }
   constexpr void
   value() &&
   {
     if (!has_value())
-      THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(std::move(storage_).error()));
+      THREADSCHEDULE_EXPECTED_THROW(bad_expected_access<E>(std::move(storage_->error)));
   }
   constexpr auto
   error() & noexcept THREADSCHEDULE_LIFETIMEBOUND -> E&
   {
-    return storage_.error();
+    return storage_->error;
   }
   [[nodiscard]] constexpr auto
   error() const& noexcept THREADSCHEDULE_LIFETIMEBOUND -> E const&
   {
-    return storage_.error();
+    return storage_->error;
   }
   constexpr auto
   error() && noexcept THREADSCHEDULE_LIFETIMEBOUND -> E&&
   {
-    return std::move(storage_).error();
+    return std::move(storage_->error);
   }
   [[nodiscard]] constexpr auto
   error() const&& noexcept THREADSCHEDULE_LIFETIMEBOUND -> E const&&
   {
-    return std::move(storage_).error();
+    return std::move(storage_->error);
   }
   template <typename G = E>
   constexpr auto
@@ -1442,7 +1429,7 @@ public:
     static_assert(std::is_copy_constructible_v<E> && std::is_convertible_v<G, E>);
     if (has_value())
       return std::forward<G>(fallback);
-    return storage_.error();
+    return storage_->error;
   }
   template <typename G = E>
   constexpr auto
@@ -1451,19 +1438,26 @@ public:
     static_assert(std::is_move_constructible_v<E> && std::is_convertible_v<G, E>);
     if (has_value())
       return std::forward<G>(fallback);
-    return std::move(storage_).error();
+    return std::move(storage_->error);
   }
   constexpr void
   emplace() noexcept
   {
-    if (!has_value())
-      storage_.emplace_value();
+    storage_.reset();
   }
   template <typename G = E, std::enable_if_t<std::is_move_constructible_v<E> && std::is_swappable_v<E>, G>* = nullptr>
   constexpr void
   swap(derived_type& other) noexcept(std::is_nothrow_move_constructible_v<E> && std::is_nothrow_swappable_v<E>)
   {
-    storage_.swap_storage(other.storage_);
+    if (storage_ && other.storage_)
+      {
+        using std::swap;
+        swap(storage_->error, other.storage_->error);
+      }
+    else if (storage_)
+      other.move_error_from(*this);
+    else if (other.storage_)
+      move_error_from(other);
   }
 
   template <typename F, detail::expected_require_constructible<F, E, E&> = 0>
@@ -1570,7 +1564,7 @@ public:
   {
     if (has_value())
       return std::expected<T, E>();
-    return std::expected<T, E>(std::unexpect, storage_.error());
+    return std::expected<T, E>(std::unexpect, storage_->error);
   }
   template <typename G = E, std::enable_if_t<std::is_move_constructible_v<G>, int> = 0>
   constexpr
@@ -1578,7 +1572,7 @@ public:
   {
     if (has_value())
       return std::expected<T, E>();
-    return std::expected<T, E>(std::unexpect, std::move(storage_).error());
+    return std::expected<T, E>(std::unexpect, std::move(storage_->error));
   }
 #endif
 
@@ -1683,8 +1677,34 @@ private:
 
   template <typename F, typename... Args>
   constexpr explicit expected_void(expected_error_tag, expected_invoke_tag, F&& f, Args&&... args)
-      : storage_(expected_error_tag{}, expected_invoke_tag{}, std::forward<F>(f), std::forward<Args>(args)...)
+      : storage_(std::in_place, std::in_place, expected_invoke_tag{}, std::forward<F>(f), std::forward<Args>(args)...)
   {
+  }
+
+  template <typename Source>
+  static constexpr auto
+  make_error_from(Source&& source) -> storage_type
+  {
+    if (source.has_value())
+      return std::nullopt;
+    return storage_type(std::in_place, std::in_place, std::forward<Source>(source).error());
+  }
+
+  template <typename G>
+  constexpr void
+  assign_error(G&& error)
+  {
+    if (storage_)
+      storage_->error = std::forward<G>(error);
+    else
+      storage_.emplace(std::in_place, std::forward<G>(error));
+  }
+
+  constexpr void
+  move_error_from(expected_void& source)
+  {
+    storage_.emplace(std::in_place, std::move(source.storage_->error));
+    source.storage_.reset();
   }
 
   storage_type storage_;
