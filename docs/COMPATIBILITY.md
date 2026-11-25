@@ -27,19 +27,19 @@ compiler release becomes supported only after it is added to and passes this
 matrix. Clang, macOS, and other environments are currently best effort.
 
 Only the lowercase API documented in [API.md](API.md) and the names documented
-in [ADVANCED.md](ADVANCED.md) form the supported v3 API. PascalCase backing
+in [ADVANCED.md](ADVANCED.md) form the supported API. PascalCase backing
 types in implementation headers are not compatibility entry points.
 
 ## Header-only and DSOs
 
 Header-only mode does not create a compiler-neutral binary boundary. Passing
-ThreadSchedule objects between DSOs requires identical v3 headers and a
+ThreadSchedule objects between DSOs requires identical ThreadSchedule headers and a
 compatible compiler, standard library, architecture, compile configuration,
 and runtime-library mode.
 
 The optional `ThreadSchedule::Runtime` centralizes the global registry, but it
 uses the same C++ ABI contract. Do not mix GCC/libstdc++, MinGW, and MSVC
-artifacts. ThreadSchedule 3.0 does not provide a C ABI or a portable plugin ABI.
+artifacts. ThreadSchedule does not provide a C ABI or a portable plugin ABI.
 
 ### `expected` across GCC versions
 

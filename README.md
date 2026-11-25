@@ -10,7 +10,7 @@ observing threads on Linux and Windows. It is header-only by default. C++20
 consumers additionally get `threadschedule::jthread` when the standard library
 provides `std::jthread`.
 
-The v3 core deliberately stays small and uses lowercase, standard-style names.
+The core deliberately stays small and uses lowercase, standard-style names.
 Operations whose normal failure mode should not require exceptions return
 `threadschedule::expected<T, std::error_code>`.
 
@@ -48,7 +48,7 @@ include(FetchContent)
 FetchContent_Declare(
     ThreadSchedule
     GIT_REPOSITORY https://github.com/Katze719/ThreadSchedule.git
-    GIT_TAG v3.0.0
+    GIT_TAG v4.0.0
 )
 FetchContent_MakeAvailable(ThreadSchedule)
 
@@ -71,7 +71,7 @@ cmake --install build --prefix /your/prefix
 ```
 
 ```cmake
-find_package(ThreadSchedule 3 CONFIG REQUIRED)
+find_package(ThreadSchedule 4 CONFIG REQUIRED)
 target_link_libraries(my_app PRIVATE ThreadSchedule::ThreadSchedule)
 ```
 

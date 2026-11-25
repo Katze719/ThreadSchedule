@@ -28,7 +28,7 @@ The core public surface is C++17. When the standard library exposes
 `std::jthread`, C++20 consumers additionally get `threadschedule::jthread`.
 This is the only language-standard-dependent core type.
 
-The lowercase classes and configuration objects are independent v3 types, not
+The lowercase classes and configuration objects are independent types, not
 aliases or public subclasses of the former PascalCase API. The standard-thread
 adapter lives under `threadschedule::detail`; specialized implementation types
 are supported only through the explicitly named `advanced` surface.

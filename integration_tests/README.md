@@ -7,7 +7,7 @@ real shared libraries.
 
 The application and two DSOs link `ThreadSchedule::Runtime` and observe one
 process-wide registry. All components must use the same supported compiler,
-standard-library ABI, architecture, runtime-library mode, and v3 headers.
+standard-library ABI, architecture, runtime-library mode, and ThreadSchedule headers.
 
 ## `app_injection`
 
