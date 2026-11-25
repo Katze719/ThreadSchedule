@@ -2,6 +2,10 @@
 
 ## v3.0.1
 
+### Results and errors
+
+- Added converting `expected` constructors that preserve the active value or error, including conversions to `bool`.
+
 ### Lifetime diagnostics
 
 - Added feature-detected `clang::lifetimebound` annotations to borrowed value/error accessors in `expected`,
