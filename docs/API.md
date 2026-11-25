@@ -71,6 +71,11 @@ assignment preserves the previous alternative if construction of the new one
 throws, `expected<void, E>` does not construct an inactive `E`, and
 `transform(...)` supports callables returning either a value or `void`.
 
+`expected` follows the C++23 N4950 API for construction, observers, and the
+four monadic operations. `transform` and `transform_error` can construct
+immovable results directly. The void specializations accept cv-qualified
+`void`, and rvalue `value()` can move the error into `bad_expected_access`.
+
 An accepted task returns a standard future. Exceptions thrown by the task are
 stored in the future and rethrown by `get()`. A callback installed with
 `thread_pool_config::set_error_callback(...)` can observe the same exception as a `task_error` without consuming it.
