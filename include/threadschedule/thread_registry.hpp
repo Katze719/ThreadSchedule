@@ -267,7 +267,7 @@ public:
         [&]() -> result<nice_value>
           {
             auto value = native().get_nice_value(native_id.value());
-            return detail::portable_thread_control::get_nice(std::move(value));
+            return detail::portable_thread_control::get_nice(value);
           });
   }
 

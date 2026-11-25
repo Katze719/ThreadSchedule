@@ -59,8 +59,12 @@ Converting between compatible `expected` types preserves the active alternative.
 For example, conversion to `expected<bool, E>` converts a successful zero to
 `false` and carries an error through as an error.
 
-`error_or(fallback)` returns the stored error or, on success, the fallback. A
-successful `value()` call can be used in a constant expression in C++17.
+`has_error()` reports whether a result holds an error, including for
+`expected<void, E>`. It is available in C++17 and follows the
+[C++29 working draft](https://eel.is/c++draft/expected.object.obs).
+`error_or(fallback)` returns the stored error or, on success, the fallback.
+`value_or()` also accepts a braced fallback when the value can be initialized
+from it.
 
 When the standard library provides C++23 `std::expected`, a
 `threadschedule::expected<T, E>` implicitly converts to the matching
@@ -71,10 +75,15 @@ assignment preserves the previous alternative if construction of the new one
 throws, `expected<void, E>` does not construct an inactive `E`, and
 `transform(...)` supports callables returning either a value or `void`.
 
-`expected` follows the C++23 N4950 API for construction, observers, and the
-four monadic operations. `transform` and `transform_error` can construct
-immovable results directly. The void specializations accept cv-qualified
-`void`, and rvalue `value()` can move the error into `bad_expected_access`.
+`expected` includes C++26 fixes for assignment triviality, comparisons and
+monadic operations. `transform` and `transform_error` can construct immovable
+results directly. The void specializations accept cv-qualified `void` and
+support move-only errors in rvalue `value()`.
+
+A successful `value()` call can be used in a constant expression in C++17.
+With compiler and library support for C++26 constexpr exceptions, a failed
+`value()` call can also be caught during constant evaluation. `error()`, `*`
+and `->` terminate the program if the requested alternative is inactive.
 
 An accepted task returns a standard future. Exceptions thrown by the task are
 stored in the future and rethrown by `get()`. A callback installed with

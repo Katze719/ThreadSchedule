@@ -252,7 +252,7 @@ TEST(V3Api, ThisThreadReadsEffectiveIdlePriority)
           auto configured = threadschedule::this_thread::configure(config);
           auto priority = threadschedule::this_thread::get_priority();
           auto nice = threadschedule::this_thread::get_nice();
-          completed.set_value(scheduling_results(configured, std::move(priority), std::move(nice)));
+          completed.set_value(scheduling_results(configured, priority, nice));
         });
 
   auto results = completed.get_future().get();

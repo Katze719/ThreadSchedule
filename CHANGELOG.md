@@ -8,6 +8,9 @@
 - Fixed `expected::operator->` for values with an overloaded address-of operator.
 - Added `error_or` for value and void results and enabled successful `value()` calls in constant expressions.
 - Completed the C++23 `expected` and `unexpected` API, including cv-`void` and immovable monadic results.
+- Added the C++29 draft's `expected::has_error()` and C++26 updates for trivial assignment, braced `value_or`
+  fallbacks, comparisons, monadic access, and constexpr exceptions where supported.
+- Hardened `expected<void, E>` observers so invalid state access terminates in release builds too.
 
 ## v3.0.1
 
