@@ -263,6 +263,23 @@ expected_in_constant_evaluation() noexcept -> bool
 #endif
 }
 
+// Use ADL on the variant pointer to find std::construct_at when available.
+template <typename Storage, typename... Args>
+constexpr auto
+reconstruct_expected_storage(Storage* storage, int, Args&&... args)
+    -> decltype(construct_at(storage, std::forward<Args>(args)...), bool())
+{
+  std::destroy_at(storage);
+  construct_at(storage, std::forward<Args>(args)...);
+  return true;
+}
+template <typename Storage, typename... Args>
+constexpr auto
+reconstruct_expected_storage(Storage*, long, Args&&...) noexcept -> bool
+{
+  return false;
+}
+
 template <typename T, typename E>
 class expected_void;
 
@@ -452,7 +469,7 @@ public:
   constexpr auto
   emplace_value(Args&&... args) noexcept -> T&
   {
-    data_.template emplace<0>(std::in_place, std::forward<Args>(args)...);
+    emplace_nothrow<0>(std::forward<Args>(args)...);
     return value();
   }
 
@@ -519,6 +536,18 @@ private:
       return storage_type(std::in_place_index<0>, std::in_place, *std::forward<Source>(source));
   }
 
+  template <std::size_t I, typename... Args>
+  constexpr void
+  emplace_nothrow(Args&&... args) noexcept
+  {
+    // Reconstructing the whole variant avoids inactive union access in MSVC's constexpr emplace.
+    if (expected_in_constant_evaluation()
+        && reconstruct_expected_storage(std::addressof(data_), 0, std::in_place_index<I>, std::in_place,
+                                        std::forward<Args>(args)...))
+      return;
+    data_.template emplace<I>(std::in_place, std::forward<Args>(args)...);
+  }
+
 #ifdef __cpp_exceptions
   template <std::size_t I, typename Backup, typename... Args>
   void
@@ -557,11 +586,11 @@ private:
   replace_with_value(U&& source)
   {
     if constexpr (std::is_nothrow_constructible_v<T, U>)
-      data_.template emplace<0>(std::in_place, std::forward<U>(source));
+      emplace_nothrow<0>(std::forward<U>(source));
     else if constexpr (std::is_nothrow_move_constructible_v<T>)
       {
         T replacement(std::forward<U>(source));
-        data_.template emplace<0>(std::in_place, std::move(replacement));
+        emplace_nothrow<0>(std::move(replacement));
       }
     else
       {
@@ -576,13 +605,13 @@ private:
   replace_with_error(G&& source)
   {
     if constexpr (std::is_nothrow_constructible_v<E, G>)
-      data_.template emplace<1>(std::in_place, std::forward<G>(source));
+      emplace_nothrow<1>(std::forward<G>(source));
     else if constexpr (std::is_same_v<T, expected_void_value>)
       emplace_with_backup<1>(expected_void_value{}, std::forward<G>(source));
     else if constexpr (std::is_nothrow_move_constructible_v<E>)
       {
         E replacement(std::forward<G>(source));
-        data_.template emplace<1>(std::in_place, std::move(replacement));
+        emplace_nothrow<1>(std::move(replacement));
       }
     else
       {
@@ -604,14 +633,14 @@ private:
       {
         E backup(std::move(with_error.error()));
         with_error.template emplace_with_backup<0>(backup, std::move(with_value.value()));
-        with_value.data_.template emplace<1>(std::in_place, std::move(backup));
+        with_value.template emplace_nothrow<1>(std::move(backup));
       }
     else
       {
         static_assert(std::is_nothrow_move_constructible_v<T>);
         T backup(std::move(with_value.value()));
         with_value.template emplace_with_backup<1>(backup, std::move(with_error.error()));
-        with_error.data_.template emplace<0>(std::in_place, std::move(backup));
+        with_error.template emplace_nothrow<0>(std::move(backup));
       }
   }
 

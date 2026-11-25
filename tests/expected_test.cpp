@@ -788,7 +788,7 @@ TEST(ExpectedStringTest, ValueOrRvalue)
 
 TEST(ExpectedConformanceTest, UnexpectedConversionsAndSwap)
 {
-  constexpr ts::unexpected<short> small(5);
+  constexpr ts::unexpected<short> small(short{ 5 });
   constexpr auto larger = ts::unexpected(5L);
   static_assert(small == larger && larger == small);
   static_assert(small != ts::unexpected(8));
