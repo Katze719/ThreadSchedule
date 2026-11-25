@@ -25,21 +25,18 @@ jobs:
           - { runner: ubuntu-24.04, gcc: 14, standard: 20 }
           - { runner: ubuntu-24.04, gcc: 14, standard: 23 }
           - { runner: ubuntu-24.04, gcc: 14, standard: 26 }
-          - { runner: ubuntu-24.04, gcc: 15, standard: 17 }
-          - { runner: ubuntu-24.04, gcc: 15, standard: 20 }
-          - { runner: ubuntu-24.04, gcc: 15, standard: 23 }
-          - { runner: ubuntu-24.04, gcc: 15, standard: 26 }
-          - { runner: ubuntu-24.04, gcc: 16, standard: 17 }
-          - { runner: ubuntu-24.04, gcc: 16, standard: 20 }
-          - { runner: ubuntu-24.04, gcc: 16, standard: 23 }
-          - { runner: ubuntu-24.04, gcc: 16, standard: 26 }
+          - { runner: ubuntu-26.04, gcc: 15, standard: 17 }
+          - { runner: ubuntu-26.04, gcc: 15, standard: 20 }
+          - { runner: ubuntu-26.04, gcc: 15, standard: 23 }
+          - { runner: ubuntu-26.04, gcc: 15, standard: 26 }
+          - { runner: ubuntu-26.04, gcc: 16, standard: 17 }
+          - { runner: ubuntu-26.04, gcc: 16, standard: 20 }
+          - { runner: ubuntu-26.04, gcc: 16, standard: 23 }
+          - { runner: ubuntu-26.04, gcc: 16, standard: 26 }
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain
         run: |
-          if [ "${{ matrix.gcc }}" -ge 15 ]; then
-            sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-          fi
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build g++-${{ matrix.gcc }}
       - name: Record toolchain
