@@ -7,6 +7,7 @@
 - Added converting `expected` constructors that preserve the active value or error, including conversions to `bool`.
 - Fixed `expected::operator->` for values with an overloaded address-of operator.
 - Added `error_or` for value and void results and enabled successful `value()` calls in constant expressions.
+- Completed the C++23 `expected` and `unexpected` API, including cv-`void` and immovable monadic results.
 
 ## v3.0.1
 

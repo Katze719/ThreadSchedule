@@ -1,5 +1,6 @@
 #include <array>
 #include <gtest/gtest.h>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -46,6 +47,80 @@ struct throwing_copy_value
 };
 
 bool throwing_copy_value::throw_on_copy = false;
+
+struct list_payload
+{
+  constexpr list_payload(std::initializer_list<int>& items, int extra) noexcept : count(items.size()), extra(extra) {}
+
+  std::size_t count;
+  int extra;
+};
+
+struct immovable_payload
+{
+  constexpr explicit immovable_payload(int value) : value(value) {}
+  immovable_payload(immovable_payload const&) = delete;
+  immovable_payload(immovable_payload&&) = delete;
+  auto operator=(immovable_payload const&) -> immovable_payload& = delete;
+  auto operator=(immovable_payload&&) -> immovable_payload& = delete;
+  ~immovable_payload() = default;
+  int value;
+};
+
+struct copy_only
+{
+  copy_only() = default;
+  copy_only(copy_only const&) = default;
+  copy_only(copy_only&&) = delete;
+  auto operator=(copy_only const&) -> copy_only& = default;
+  auto operator=(copy_only&&) -> copy_only& = delete;
+  ~copy_only() = default;
+};
+
+struct constexpr_may_throw
+{
+  constexpr explicit constexpr_may_throw(int value) noexcept(false) : value(value) {}
+  constexpr constexpr_may_throw(constexpr_may_throw const&) noexcept(false) = default;
+  constexpr constexpr_may_throw(constexpr_may_throw&& other) noexcept(false) : value(other.value) {}
+  auto operator=(constexpr_may_throw const&) -> constexpr_may_throw& = default;
+  auto operator=(constexpr_may_throw&&) -> constexpr_may_throw& = default;
+  ~constexpr_may_throw() = default;
+
+  constexpr auto
+  operator=(int input) noexcept -> constexpr_may_throw&
+  {
+    value = input;
+    return *this;
+  }
+
+  int value;
+};
+
+struct throwing_move_error
+{
+  explicit throwing_move_error(int code) : code(code) {}
+  throwing_move_error(throwing_move_error const&) = default;
+  throwing_move_error(throwing_move_error&&)
+  {
+    throw std::runtime_error("move failed");
+  }
+  auto operator=(throwing_move_error const&) -> throwing_move_error& = default;
+  auto operator=(throwing_move_error&&) -> throwing_move_error& = default;
+  ~throwing_move_error() = default;
+  int code;
+};
+
+template <typename Result, typename F, typename = void>
+inline constexpr bool can_and_then_v = false;
+template <typename Result, typename F>
+inline constexpr bool
+    can_and_then_v<Result, F, std::void_t<decltype(std::declval<Result>().and_then(std::declval<F>()))>> = true;
+
+template <typename Result, typename = void>
+inline constexpr bool has_member_swap_v = false;
+template <typename Result>
+inline constexpr bool
+    has_member_swap_v<Result, std::void_t<decltype(std::declval<Result&>().swap(std::declval<Result&>()))>> = true;
 
 ts::expected<int, std::error_code>
 parse_int_ok()
@@ -711,6 +786,250 @@ TEST(ExpectedStringTest, ValueOrRvalue)
   EXPECT_EQ(std::move(bad).value_or("x"), std::string("x"));
 }
 
+TEST(ExpectedConformanceTest, UnexpectedConversionsAndSwap)
+{
+  constexpr ts::unexpected<short> small(short{ 5 });
+  constexpr auto larger = ts::unexpected(5L);
+  static_assert(small == larger && larger == small);
+  static_assert(small != ts::unexpected(8));
+
+  constexpr ts::unexpected<list_payload> listed(std::in_place, { 1, 2 }, 3);
+  static_assert(listed.error().count == 2 && listed.error().extra == 3);
+  constexpr ts::unexpected<list_payload> in_place(std::in_place, std::initializer_list<int>{}, 7);
+  static_assert(in_place.error().count == 0 && in_place.error().extra == 7);
+
+  static_assert(std::is_convertible_v<decltype(small), ts::expected<int, long>>);
+  static_assert(std::is_constructible_v<ts::expected<int, nondefault_error>, decltype(small)>);
+  static_assert(!std::is_convertible_v<decltype(small), ts::expected<int, nondefault_error>>);
+  static_assert(std::is_constructible_v<ts::expected<void, nondefault_error>, decltype(small)>);
+  static_assert(!std::is_convertible_v<decltype(small), ts::expected<void, nondefault_error>>);
+  static_assert(
+      !std::is_constructible_v<ts::expected<int, std::unique_ptr<int>>, ts::unexpected<std::unique_ptr<int>> const&>);
+  const ts::expected<int, long> error = small;
+  ASSERT_FALSE(error.has_value());
+  EXPECT_EQ(error.error(), 5);
+
+  auto first = ts::unexpected(7);
+  auto second = ts::unexpected(9);
+  static_assert(noexcept(swap(first, second)));
+  using std::swap;
+  swap(first, second);
+  EXPECT_EQ(first.error(), 9);
+  EXPECT_EQ(second.error(), 7);
+}
+
+TEST(ExpectedConformanceTest, InitializerListConstructionAndEmplace)
+{
+  using result_type = ts::expected<list_payload, list_payload>;
+  constexpr result_type value(std::in_place, { 1, 2, 3 }, 4);
+  constexpr result_type error(ts::unexpect, { 1, 2 }, 5);
+  constexpr ts::expected<void, list_payload> void_error(ts::unexpect, { 1 }, 6);
+  static_assert(value->count == 3 && value->extra == 4);
+  static_assert(error.error().count == 2 && error.error().extra == 5);
+  static_assert(void_error.error().count == 1 && void_error.error().extra == 6);
+  static_assert(noexcept(std::declval<result_type&>().emplace({ 1, 2 }, 4)));
+
+  result_type emplaced = error;
+  auto& item = emplaced.emplace({ 1, 2, 3, 4 }, 7);
+  ASSERT_TRUE(emplaced.has_value());
+  EXPECT_EQ(std::addressof(item), emplaced.operator->());
+  EXPECT_EQ(item.count, 4);
+  EXPECT_EQ(item.extra, 7);
+}
+
+TEST(ExpectedConformanceTest, CvVoid)
+{
+  using result_type = ts::expected<const volatile void, long>;
+  static_assert(std::is_same_v<result_type::value_type, const volatile void>);
+  static_assert(std::is_same_v<result_type::rebind<int>, ts::expected<int, long>>);
+  static_assert(std::is_same_v<ts::expected<int, long>::rebind<const void>, ts::expected<const void, long>>);
+  static_assert(std::is_nothrow_default_constructible_v<result_type>);
+  static_assert(std::is_nothrow_constructible_v<result_type, std::in_place_t>);
+  static_assert(!std::is_convertible_v<std::in_place_t, result_type>);
+  static_assert(noexcept(*std::declval<result_type&>()));
+  static_assert(std::is_same_v<void, decltype(*std::declval<result_type const&>())>);
+  static_assert(!std::is_constructible_v<result_type, ts::expected<int, long>>);
+
+  constexpr result_type success(std::in_place);
+  constexpr ts::expected<const void, int> source(ts::unexpect, 6);
+  constexpr result_type failure = source;
+  static_assert(success == ts::expected<volatile void, short>());
+  static_assert(failure == source && source == failure);
+  static_assert(success != failure);
+  static_assert(failure.error() == 6);
+  *success;
+  result_type assigned = success;
+  static_assert(std::is_same_v<decltype(assigned = ts::unexpected(11)), result_type&>);
+  assigned = ts::unexpected(11);
+  ASSERT_FALSE(assigned.has_value());
+  EXPECT_EQ(assigned.error(), 11);
+  assigned.emplace();
+  EXPECT_TRUE(assigned.has_value());
+}
+
+TEST(ExpectedConformanceTest, VoidRvalueValueThrowsMoveOnlyError)
+{
+  using error_type = std::unique_ptr<int>;
+  auto success = ts::expected<const void, error_type>(std::in_place);
+  EXPECT_NO_THROW(std::move(success).value());
+  auto error = ts::expected<void, error_type>(ts::unexpect, std::make_unique<int>(23));
+  try
+    {
+      std::move(error).value();
+      FAIL() << "Expected bad_expected_access";
+    }
+  catch (ts::bad_expected_access<error_type> const& caught)
+    {
+      ASSERT_TRUE(caught.error());
+      EXPECT_EQ(*caught.error(), 23);
+    }
+  EXPECT_FALSE(error.error());
+}
+
+TEST(ExpectedConformanceTest, MoveOnlyPropagationConstrainsAndThen)
+{
+  using result_type = ts::expected<int, std::unique_ptr<int>>;
+  auto produce = [](int value) { return result_type(value + 1); };
+  static_assert(!can_and_then_v<result_type&, decltype(produce)>);
+  static_assert(!can_and_then_v<result_type const&, decltype(produce)>);
+  static_assert(!can_and_then_v<result_type const&&, decltype(produce)>);
+  static_assert(can_and_then_v<result_type&&, decltype(produce)>);
+  auto failed = result_type(ts::unexpect, std::make_unique<int>(13));
+  auto& source_error = failed.error();
+  auto propagated = std::move(failed).and_then(produce);
+  ASSERT_FALSE(propagated.has_value());
+  ASSERT_TRUE(propagated.error());
+  EXPECT_EQ(*propagated.error(), 13);
+  EXPECT_FALSE(source_error);
+}
+
+TEST(ExpectedConformanceTest, MonadicOperationsPreserveTheSpecifiedTypes)
+{
+  const auto returned = ts::expected<long, int>(15);
+  ts::expected<int, int> value(4);
+  auto next = value.and_then([&returned](int&) -> ts::expected<long, int> const& { return returned; });
+  static_assert(std::is_same_v<decltype(next), ts::expected<long, int>>);
+  ASSERT_TRUE(next.has_value());
+  EXPECT_EQ(*next, 15);
+
+  const auto fallback = ts::expected<int, long>(21);
+  auto recover = [&fallback](int) -> ts::expected<int, long> const& { return fallback; };
+  auto recovered = ts::expected<int, int>(ts::unexpect, 2).or_else(recover);
+  static_assert(std::is_same_v<decltype(recovered), ts::expected<int, long>>);
+  ASSERT_TRUE(recovered.has_value());
+  EXPECT_EQ(*recovered, 21);
+  EXPECT_EQ(value.or_else(recover).value(), 4);
+
+  ts::expected<const void, int> empty;
+  auto mapped = empty.transform_error([](int error) { return static_cast<long>(error); });
+  static_assert(std::is_same_v<decltype(mapped), ts::expected<const void, long>>);
+  EXPECT_TRUE(mapped.has_value());
+}
+
+TEST(ExpectedConformanceTest, TransformConstructsImmovablePayloadsInPlace)
+{
+  auto value = ts::expected<int, int>(6).transform([](int input) { return immovable_payload(input * 2); });
+  static_assert(std::is_same_v<decltype(value), ts::expected<immovable_payload, int>>);
+  static_assert(!std::is_move_constructible_v<decltype(value)>);
+  ASSERT_TRUE(value.has_value());
+  EXPECT_EQ(value->value, 12);
+
+  auto without_value = ts::expected<void, int>().transform([] { return immovable_payload(11); });
+  ASSERT_TRUE(without_value.has_value());
+  EXPECT_EQ(without_value->value, 11);
+
+  auto error
+      = ts::expected<int, int>(ts::unexpect, 7).transform_error([](int input) { return immovable_payload(input * 2); });
+  static_assert(std::is_same_v<decltype(error), ts::expected<int, immovable_payload>>);
+  ASSERT_FALSE(error.has_value());
+  EXPECT_EQ(error.error().value, 14);
+
+  auto void_error = ts::expected<void, int>(ts::unexpect, 8)
+                        .transform_error([](int input) { return immovable_payload(input * 2); });
+  ASSERT_FALSE(void_error.has_value());
+  EXPECT_EQ(void_error.error().value, 16);
+}
+
+TEST(ExpectedConformanceTest, VoidAssignmentAndSwapRollBackOnThrow)
+{
+  using result_type = ts::expected<void, throwing_move_error>;
+  static_assert(std::is_move_assignable_v<result_type>);
+  static_assert(!std::is_nothrow_move_assignable_v<result_type>);
+  static_assert(has_member_swap_v<result_type>);
+  static_assert(!noexcept(std::declval<result_type&>().swap(std::declval<result_type&>())));
+  static_assert(!has_member_swap_v<ts::expected<throwing_move_error, throwing_move_error>>);
+
+  result_type success;
+  result_type error(ts::unexpect, 17);
+  auto& source = error;
+  EXPECT_THROW(success = std::move(source), std::runtime_error);
+  EXPECT_TRUE(success.has_value());
+  ASSERT_FALSE(error.has_value());
+  EXPECT_EQ(error.error().code, 17);
+
+  EXPECT_THROW(success.swap(error), std::runtime_error);
+  EXPECT_TRUE(success.has_value());
+  ASSERT_FALSE(error.has_value());
+  EXPECT_EQ(error.error().code, 17);
+
+  ts::expected<throwing_move_error, int> value(std::in_place, 19);
+  ts::expected<throwing_move_error, int> other(ts::unexpect, 21);
+  EXPECT_THROW(value.swap(other), std::runtime_error);
+  ASSERT_TRUE(value.has_value());
+  ASSERT_FALSE(other.has_value());
+  EXPECT_EQ(value->code, 19);
+  EXPECT_EQ(other.error(), 21);
+}
+
+TEST(ExpectedConformanceTest, RvalueConstructionFallsBackToCopyWhenMoveCannotParticipate)
+{
+  using result_type = ts::expected<copy_only, std::optional<int>>;
+  static_assert(std::is_copy_constructible_v<result_type>);
+  static_assert(std::is_move_constructible_v<result_type>);
+  static_assert(!std::is_move_constructible_v<ts::expected<copy_only, std::unique_ptr<int>>>);
+
+  using observable_error = ts::expected<copy_only, std::string>;
+  observable_error original(ts::unexpect, "copied error");
+  auto const& original_error = original.error();
+  observable_error converted(std::move(original));
+  ASSERT_FALSE(converted.has_value());
+  EXPECT_EQ(converted.error(), "copied error");
+  EXPECT_EQ(original_error, converted.error());
+}
+
+#if defined(__cpp_lib_variant) && __cpp_lib_variant >= 202106L
+TEST(ExpectedConformanceTest, PotentiallyThrowingTransitionCanBeConstantEvaluated)
+{
+  constexpr auto transition = []
+    {
+      ts::expected<constexpr_may_throw, int> nonvoid(ts::unexpect, 4);
+      nonvoid = 8;
+      ts::expected<void, constexpr_may_throw> empty;
+      empty = ts::unexpected(9);
+      using std::swap;
+      ts::expected<void, constexpr_may_throw> error;
+      swap(empty, error);
+      return nonvoid->value == 8 && empty.has_value() && error.error().value == 9;
+    };
+  static_assert(transition());
+}
+#endif
+
+TEST(ExpectedConformanceTest, TrivialityAndNoexceptFollowTheStoredTypes)
+{
+  using result_type = ts::expected<int, long>;
+  static_assert(std::is_trivially_copy_constructible_v<result_type>);
+  static_assert(std::is_trivially_move_constructible_v<result_type>);
+  static_assert(std::is_trivially_destructible_v<result_type>);
+  static_assert(std::is_trivially_copy_constructible_v<ts::expected<void, int>>);
+  static_assert(std::is_trivially_move_constructible_v<ts::expected<const void, int>>);
+  static_assert(std::is_trivially_destructible_v<ts::expected<volatile void, int>>);
+  static_assert(std::is_nothrow_move_constructible_v<result_type>);
+  static_assert(std::is_nothrow_move_assignable_v<result_type>);
+  static_assert(noexcept(ts::swap(std::declval<result_type&>(), std::declval<result_type&>())));
+  static_assert(!std::is_trivially_destructible_v<ts::expected<void, std::string>>);
+}
+
 #if THREADSCHEDULE_HAS_STD_EXPECTED
 TEST(ExpectedInteropTest, ImplicitlyConvertsCopyableStatesToStdExpected)
 {
@@ -750,5 +1069,39 @@ TEST(ExpectedInteropTest, MovesMoveOnlyStatesToStdExpected)
   ASSERT_FALSE(standard_error.has_value());
   ASSERT_TRUE(static_cast<bool>(standard_error.error()));
   EXPECT_EQ(*standard_error.error(), 7);
+}
+TEST(ExpectedInteropTest, ConformsToDraftConstructionAndObservers)
+{
+  constexpr auto check = [](auto standard, auto library)
+    { return standard.has_value() == library.has_value() && standard.error_or(9) == library.error_or(9); };
+#  if __cpp_lib_expected >= 202211L
+  constexpr std::expected<const void, int> standard_empty(std::in_place);
+  constexpr ts::expected<const void, int> library_empty(std::in_place);
+  static_assert(check(standard_empty, library_empty));
+  static_assert(check(std::expected<long, int>(std::unexpect, 4), ts::expected<long, int>(ts::unexpect, 4)));
+
+  constexpr auto transform
+      = [](auto input) { return input.transform([](int value) { return immovable_payload(value + 1); })->value; };
+  static_assert(transform(std::expected<int, int>(4)) == transform(ts::expected<int, int>(4)));
+  constexpr auto transform_error = [](auto input)
+    { return input.transform_error([](int error) { return immovable_payload(error + 1); }).error().value; };
+  static_assert(transform_error(std::expected<void, int>(std::unexpect, 7))
+                == transform_error(ts::expected<void, int>(ts::unexpect, 7)));
+#  endif
+  static_assert(std::is_same_v<std::expected<const void, int>::value_type, ts::expected<const void, int>::value_type>);
+  static_assert(std::is_nothrow_move_assignable_v<std::expected<int, int>>
+                == std::is_nothrow_move_assignable_v<ts::expected<int, int>>);
+
+#  if defined(__cpp_lib_variant) && __cpp_lib_variant >= 202106L
+  constexpr auto transition = [](auto input, const auto& source)
+    {
+      input = source;
+      return input.emplace({ 1, 2 }, 5).count;
+    };
+  static_assert(transition(std::expected<list_payload, int>(std::unexpect, 8),
+                           std::expected<list_payload, int>(std::in_place, std::initializer_list<int>{}, 9))
+                == transition(ts::expected<list_payload, int>(ts::unexpect, 8),
+                              ts::expected<list_payload, int>(std::in_place, std::initializer_list<int>{}, 9)));
+#  endif
 }
 #endif
