@@ -2,12 +2,28 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- To store `unexpect` as a value, construct `expected<T, E>(std::in_place, unexpect)`.
+- Use `a == b` or `a != b` in place of explicit template calls such as `operator==<int>(a, b)` when comparing
+  an `expected` with a raw value.
+- Some `expected` copy assignment operators are now trivial and `noexcept`, and some comparison template symbols
+  have changed. Rebuild libraries that expose pointers to the affected assignment operators or export the affected
+  comparison instantiations.
+
 ### Results and errors
 
 - Added converting `expected` constructors that preserve the active value or error, including conversions to `bool`.
 - Fixed `expected::operator->` for values with an overloaded address-of operator.
 - Added `error_or` for value and void results and enabled successful `value()` calls in constant expressions.
 - Completed the C++23 `expected` and `unexpected` API, including cv-`void` and immovable monadic results.
+- Added the C++29 draft's `expected::has_error()` and C++26 updates for trivial assignment, braced `value_or`
+  fallbacks, comparisons, monadic access, and constexpr exceptions where supported.
+- Hardened `expected<void, E>` observers so invalid state access terminates in release builds too.
+- `expected<T, E>` can have different layouts across GCC versions even with identical headers and the same C++
+  standard. On Linux x86-64, a value type with a `const` `[[no_unique_address]]` member produced a 2-byte `expected`
+  with GCC 13 and a 3-byte `expected` with GCC 16.
+  [Mixed GCC ABI example](docs/COMPATIBILITY.md#expected-across-gcc-versions)
 
 ## v3.0.1
 

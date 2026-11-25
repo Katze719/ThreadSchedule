@@ -152,7 +152,7 @@ public:
   get_priority() const -> result<priority_level>
   {
     auto value = with_live_identity([&](auto id) { return detail::read_effective_nice(id, id); });
-    return detail::portable_thread_control::get_priority(std::move(value));
+    return detail::portable_thread_control::get_priority(value);
   }
 
   /** @brief Query the effective nice value. */
@@ -160,7 +160,7 @@ public:
   get_nice() const -> result<nice_value>
   {
     auto value = with_live_identity([&](auto id) { return detail::read_effective_nice(id, id); });
-    return detail::portable_thread_control::get_nice(std::move(value));
+    return detail::portable_thread_control::get_nice(value);
   }
 
   /** @brief Set the OS-visible target name without changing view identity. */
@@ -194,7 +194,7 @@ public:
   get_affinity() const -> result<thread_affinity>
   {
     auto native = with_live_identity([](auto id) { return detail::read_affinity(id); });
-    return detail::portable_thread_control::get_affinity(std::move(native));
+    return detail::portable_thread_control::get_affinity(native);
   }
 
 private:

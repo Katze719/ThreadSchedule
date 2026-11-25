@@ -23,6 +23,12 @@ Operations whose normal failure mode should not require exceptions return
 The tested compiler versions are the compatibility contract. See
 [Compatibility](docs/COMPATIBILITY.md) for the current matrix.
 
+When mixing GCC versions or C++ standards across a shared-library boundary,
+use identical ThreadSchedule headers, build the consumer with the library's
+GCC ABI version (`-fabi-version=N`, such as `N=18` for GCC 13) and libstdc++ ABI
+setting (`-D_GLIBCXX_USE_CXX11_ABI=0` or `-D_GLIBCXX_USE_CXX11_ABI=1`), and
+test the exact combination you ship.
+
 ### GCC 14 ThreadSanitizer limitation
 
 GCC 14's ThreadSanitizer can incorrectly report

@@ -79,7 +79,11 @@ struct copy_only
 
 struct constexpr_may_throw
 {
-  constexpr explicit constexpr_may_throw(int value) noexcept(false) : value(value) {}
+  constexpr explicit constexpr_may_throw(int value) noexcept(false) : value(value)
+  {
+    if (value < 0)
+      throw value;
+  }
   constexpr constexpr_may_throw(constexpr_may_throw const&) noexcept(false) = default;
   constexpr constexpr_may_throw(constexpr_may_throw&& other) noexcept(false) : value(other.value) {}
   auto operator=(constexpr_may_throw const&) -> constexpr_may_throw& = default;
@@ -95,6 +99,53 @@ struct constexpr_may_throw
 
   int value;
 };
+
+struct accepts_unexpect
+{
+  constexpr explicit accepts_unexpect(ts::unexpect_t) {}
+};
+
+struct incomparable
+{
+};
+
+struct equality_result
+{
+  bool equal;
+
+  constexpr
+  operator bool() const
+  {
+    return equal;
+  }
+  explicit operator bool() = delete;
+};
+
+struct comparable
+{
+  int value;
+
+  friend constexpr auto
+  operator==(comparable const& lhs, comparable const& rhs) -> equality_result
+  {
+    return { lhs.value == rhs.value };
+  }
+};
+
+template <typename L, typename R, typename = void>
+inline constexpr bool has_equality_v = false;
+template <typename L, typename R>
+inline constexpr bool has_equality_v<L, R, std::void_t<decltype(std::declval<L>() == std::declval<R>())>> = true;
+
+namespace adl
+{
+struct value
+{
+  int number;
+};
+
+void operator*(ts::expected<value, int>&) = delete;
+} // namespace adl
 
 struct throwing_move_error
 {
@@ -1017,10 +1068,37 @@ TEST(ExpectedConformanceTest, PotentiallyThrowingTransitionCanBeConstantEvaluate
 
 TEST(ExpectedConformanceTest, TrivialityAndNoexceptFollowTheStoredTypes)
 {
+  struct custom_copy
+  {
+    explicit custom_copy(int value) : value(value) {}
+    custom_copy(custom_copy const&) = default;
+    custom_copy(custom_copy&&) = default;
+    auto
+    operator=(custom_copy const& other) -> custom_copy&
+    {
+      value = other.value;
+      return *this;
+    }
+    auto operator=(custom_copy&&) -> custom_copy& = default;
+    ~custom_copy() = default;
+    int value;
+  };
+
   using result_type = ts::expected<int, long>;
   static_assert(std::is_trivially_copy_constructible_v<result_type>);
   static_assert(std::is_trivially_move_constructible_v<result_type>);
   static_assert(std::is_trivially_destructible_v<result_type>);
+  static_assert(std::is_trivially_copy_assignable_v<result_type>);
+  static_assert(std::is_trivially_move_assignable_v<result_type>);
+  static_assert(std::is_trivially_copy_assignable_v<ts::expected<const void, int>>);
+  static_assert(std::is_trivially_move_assignable_v<ts::expected<volatile void, int>>);
+  static_assert(!std::is_trivially_copy_assignable_v<ts::expected<std::string, int>>);
+  static_assert(!std::is_trivially_move_assignable_v<ts::expected<int, std::string>>);
+  static_assert(!std::is_trivially_copy_assignable_v<ts::expected<custom_copy, int>>);
+  static_assert(std::is_trivially_move_assignable_v<ts::expected<custom_copy, int>>);
+  static_assert(!std::is_copy_assignable_v<ts::expected<const int, int>>);
+  static_assert(std::is_copy_assignable_v<ts::expected<void, copy_only>>);
+  static_assert(std::is_move_assignable_v<ts::expected<void, copy_only>>);
   static_assert(std::is_trivially_copy_constructible_v<ts::expected<void, int>>);
   static_assert(std::is_trivially_move_constructible_v<ts::expected<const void, int>>);
   static_assert(std::is_trivially_destructible_v<ts::expected<volatile void, int>>);
@@ -1029,6 +1107,119 @@ TEST(ExpectedConformanceTest, TrivialityAndNoexceptFollowTheStoredTypes)
   static_assert(noexcept(ts::swap(std::declval<result_type&>(), std::declval<result_type&>())));
   static_assert(!std::is_trivially_destructible_v<ts::expected<void, std::string>>);
 }
+
+TEST(ExpectedConformanceTest, HasErrorReportsTheActiveAlternative)
+{
+  constexpr auto check = [](auto success, auto failure)
+    { return success.has_value() && !success.has_error() && !failure.has_value() && failure.has_error(); };
+  static_assert(check(ts::expected<int, int>(42), ts::expected<int, int>(ts::unexpect, 9)));
+  static_assert(check(ts::expected<void, int>(), ts::expected<void, int>(ts::unexpect, 9)));
+  static_assert(check(ts::expected<const void, int>(), ts::expected<const void, int>(ts::unexpect, 9)));
+  static_assert(check(ts::expected<volatile void, int>(), ts::expected<volatile void, int>(ts::unexpect, 9)));
+  static_assert(
+      check(ts::expected<const volatile void, int>(), ts::expected<const volatile void, int>(ts::unexpect, 9)));
+  static_assert(noexcept(std::declval<ts::expected<int, int> const&>().has_error()));
+
+  auto target = ts::expected<int, int>(ts::unexpect, 9);
+  const ts::expected<int, int> source(42);
+  target = source;
+  EXPECT_FALSE(target.has_error());
+  EXPECT_EQ(*target, 42);
+  target = ts::expected<int, int>(ts::unexpect, 11);
+  ASSERT_TRUE(target.has_error());
+  EXPECT_EQ(target.error(), 11);
+}
+
+TEST(ExpectedConformanceTest, AcceptsBracedFallbackAndReservesUnexpectTag)
+{
+  using pair_type = std::pair<int, int>;
+  constexpr ts::expected<const pair_type, int> value({ 1, 2 });
+  constexpr ts::expected<const pair_type, int> error(ts::unexpect, 3);
+  static_assert(value.value_or({ 4, 5 }).first == 1);
+  static_assert(error.value_or({ 4, 5 }).second == 5);
+  static_assert(ts::expected<const pair_type, int>(ts::unexpect, 3).value_or({ 6, 7 }).first == 6);
+
+  using result_type = ts::expected<accepts_unexpect, nondefault_error>;
+  static_assert(!std::is_constructible_v<result_type, ts::unexpect_t>);
+  constexpr ts::expected<accepts_unexpect, int> failed(ts::unexpect);
+  static_assert(failed.has_error());
+}
+
+TEST(ExpectedConformanceTest, EqualityRequiresImplicitlyBooleanComparisons)
+{
+  using result_type = ts::expected<incomparable, int>;
+  using void_result = ts::expected<void, incomparable>;
+  static_assert(!has_equality_v<result_type, result_type>);
+  static_assert(!has_equality_v<result_type, incomparable>);
+  static_assert(!has_equality_v<ts::expected<int, int>, ts::unexpected<incomparable>>);
+  static_assert(!has_equality_v<void_result, void_result>);
+  static_assert(!has_equality_v<ts::unexpected<incomparable>, void_result>);
+
+  constexpr comparable payload{ 42 };
+  constexpr comparable different{ 7 };
+  constexpr ts::expected<comparable, int> success(payload);
+  constexpr ts::expected<void, comparable> failure(ts::unexpect, payload);
+  static_assert(success == payload && payload == success);
+  static_assert(!(success == different));
+  static_assert(failure == ts::unexpected(payload));
+  static_assert(!(failure == ts::unexpected(different)));
+}
+
+TEST(ExpectedConformanceTest, MonadicOperationsUseTheStoredValue)
+{
+  ts::expected<adl::value, int> result(std::in_place, adl::value{ 42 });
+  auto next = result.and_then([](adl::value& value) { return ts::expected<int, int>(value.number); });
+  auto mapped = result.transform([](adl::value const& value) { return value.number; });
+  auto recovered = result.or_else([](int error) { return ts::expected<adl::value, long>(ts::unexpect, error); });
+  auto mapped_error = result.transform_error([](int error) { return static_cast<long>(error); });
+  EXPECT_EQ(next.value(), 42);
+  EXPECT_EQ(mapped.value(), 42);
+  EXPECT_EQ(recovered.value().number, 42);
+  EXPECT_EQ(mapped_error.value().number, 42);
+}
+
+TEST(ExpectedConformanceDeathTest, VoidObserversEnforceTheirState)
+{
+  const ts::expected<void, int> success;
+  const ts::expected<void, int> failure(ts::unexpect, 7);
+  EXPECT_DEATH_IF_SUPPORTED((void)success.error(), "");
+  EXPECT_DEATH_IF_SUPPORTED((void)*failure, "");
+}
+
+#if defined(__cpp_lib_constexpr_exceptions) && __cpp_lib_constexpr_exceptions >= 202502L
+TEST(ExpectedConformanceTest, ConstexprExceptionsPreserveErrorsAndRollBack)
+{
+  constexpr auto read_error = [](auto result)
+    {
+      try
+        {
+          (void)result.value();
+        }
+      catch (ts::bad_expected_access<int> const& error)
+        {
+          return error.what()[0] == 'b' && error.error() == 7;
+        }
+      return false;
+    };
+  static_assert(read_error(ts::expected<int, int>(ts::unexpect, 7)));
+  static_assert(read_error(ts::expected<void, int>(ts::unexpect, 7)));
+
+  constexpr auto roll_back = []
+    {
+      ts::expected<constexpr_may_throw, int> result(ts::unexpect, 9);
+      try
+        {
+          result = -1;
+        }
+      catch (int error)
+        {
+          return error == -1 && result.has_error() && result.error() == 9;
+        }
+      return false;
+    };
+  static_assert(roll_back());
+}
+#endif
 
 #if THREADSCHEDULE_HAS_STD_EXPECTED
 TEST(ExpectedInteropTest, ImplicitlyConvertsCopyableStatesToStdExpected)

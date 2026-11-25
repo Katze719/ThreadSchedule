@@ -7,7 +7,6 @@
 
 #include "detail/lifetime.hpp"
 
-#include <cassert>
 #include <cstddef>
 #include <exception>
 #include <functional>
@@ -38,6 +37,12 @@
 #  define THREADSCHEDULE_EXPECTED_THROW(ex) ::std::terminate()
 #endif
 
+#if defined(__cpp_lib_constexpr_exceptions) && __cpp_lib_constexpr_exceptions >= 202502L
+#  define THREADSCHEDULE_EXPECTED_EXCEPTION_CONSTEXPR constexpr
+#else
+#  define THREADSCHEDULE_EXPECTED_EXCEPTION_CONSTEXPR
+#endif
+
 namespace threadschedule
 {
 
@@ -56,14 +61,14 @@ class bad_expected_access<void> : public std::exception
 {
 protected:
   bad_expected_access() noexcept = default;
-  bad_expected_access(bad_expected_access const&) = default;
-  bad_expected_access(bad_expected_access&&) = default;
-  auto operator=(bad_expected_access const&) -> bad_expected_access& = default;
-  auto operator=(bad_expected_access&&) -> bad_expected_access& = default;
-  ~bad_expected_access() override = default;
+  bad_expected_access(bad_expected_access const&) noexcept = default;
+  bad_expected_access(bad_expected_access&&) noexcept = default;
+  auto operator=(bad_expected_access const&) noexcept -> bad_expected_access& = default;
+  auto operator=(bad_expected_access&&) noexcept -> bad_expected_access& = default;
+  THREADSCHEDULE_EXPECTED_EXCEPTION_CONSTEXPR ~bad_expected_access() override = default;
 
 public:
-  [[nodiscard]] auto
+  [[nodiscard]] THREADSCHEDULE_EXPECTED_EXCEPTION_CONSTEXPR auto
   what() const noexcept -> char const* override
   {
     return "bad expected access";
@@ -74,28 +79,28 @@ template <typename E>
 class bad_expected_access : public bad_expected_access<void>
 {
 public:
-  explicit bad_expected_access(E error) : error_(std::move(error)) {}
-  [[nodiscard]] auto
+  THREADSCHEDULE_EXPECTED_EXCEPTION_CONSTEXPR explicit bad_expected_access(E error) : error_(std::move(error)) {}
+  [[nodiscard]] THREADSCHEDULE_EXPECTED_EXCEPTION_CONSTEXPR auto
   what() const noexcept -> char const* override
   {
     return bad_expected_access<void>::what();
   }
-  [[nodiscard]] auto
+  [[nodiscard]] constexpr auto
   error() const& noexcept THREADSCHEDULE_LIFETIMEBOUND -> E const&
   {
     return error_;
   }
-  auto
+  constexpr auto
   error() & noexcept THREADSCHEDULE_LIFETIMEBOUND -> E&
   {
     return error_;
   }
-  [[nodiscard]] auto
+  [[nodiscard]] constexpr auto
   error() const&& noexcept THREADSCHEDULE_LIFETIMEBOUND -> E const&&
   {
     return std::move(error_);
   }
-  auto
+  constexpr auto
   error() && noexcept THREADSCHEDULE_LIFETIMEBOUND -> E&&
   {
     return std::move(error_);
@@ -321,9 +326,23 @@ inline constexpr bool expected_can_convert_v = std::conjunction_v<
 template <typename T, typename E, typename U>
 inline constexpr bool expected_can_forward_v
     = !std::is_same_v<std::decay_t<U>, expected<T, E>> && !std::is_same_v<std::decay_t<U>, std::in_place_t>
-      && !is_unexpected_v<expected_remove_cvref_t<U>>
+      && !std::is_same_v<std::decay_t<U>, unexpect_t> && !is_unexpected_v<expected_remove_cvref_t<U>>
       && !(std::is_same_v<std::remove_cv_t<T>, bool> && is_expected_v<std::decay_t<U>>)
       && std::is_constructible_v<T, U>;
+
+template <typename L, typename R, typename = void>
+inline constexpr bool expected_equality_comparable_v = false;
+template <typename L, typename R>
+inline constexpr bool
+    expected_equality_comparable_v<L, R, std::void_t<decltype(std::declval<L const&>() == std::declval<R const&>())>>
+    = std::is_convertible_v<decltype(std::declval<L const&>() == std::declval<R const&>()), bool>;
+
+constexpr void
+require_expected_state(bool valid) noexcept
+{
+  if (!valid)
+    std::terminate();
+}
 
 template <typename F, typename T, typename From>
 using expected_require_constructible
@@ -549,8 +568,11 @@ private:
 
 #ifdef __cpp_exceptions
   template <std::size_t I, typename Backup, typename... Args>
-  void
-  emplace_with_rollback(Backup& backup, Args&&... args)
+#  if defined(__cpp_constexpr_exceptions)
+  constexpr
+#  endif
+      void
+      emplace_with_rollback(Backup& backup, Args&&... args)
   {
     try
       {
@@ -568,16 +590,20 @@ private:
   constexpr void
   emplace_with_backup(Backup&& backup, Args&&... args)
   {
-#ifdef __cpp_exceptions
-    // An exception already makes constant evaluation fail. Roll back at runtime.
+#if defined(__cpp_exceptions) && defined(__cpp_constexpr_exceptions)
+    emplace_with_rollback<I>(backup, std::forward<Args>(args)...);
+#else
+#  ifdef __cpp_exceptions
+    // Without constexpr exceptions, a throw already makes constant evaluation fail.
     if (!expected_in_constant_evaluation())
       {
         emplace_with_rollback<I>(backup, std::forward<Args>(args)...);
         return;
       }
-#endif
+#  endif
     (void)backup;
     data_.template emplace<I>(std::in_place, std::forward<Args>(args)...);
+#endif
   }
 
   template <typename U>
@@ -650,25 +676,82 @@ inline constexpr bool expected_move_assignable_v
       && std::is_move_assignable_v<E>
       && (std::is_nothrow_move_constructible_v<T> || std::is_nothrow_move_constructible_v<E>);
 
-template <typename T, typename E, bool Copy = expected_copy_assignable_v<T, E>,
-          bool Move = expected_move_assignable_v<T, E>>
-class expected_storage;
+enum class expected_assignment
+{
+  unavailable,
+  custom,
+  trivial
+};
 
 template <typename T, typename E>
-class expected_storage<T, E, true, true> : public expected_storage_common<T, E>
-{
-  using base = expected_storage_common<T, E>;
+inline constexpr auto expected_copy_assignment_v
+    = !expected_copy_assignable_v<T, E> ? expected_assignment::unavailable
+      : std::is_trivially_copy_constructible_v<T> && std::is_trivially_copy_constructible_v<E>
+              && std::is_trivially_copy_assignable_v<T> && std::is_trivially_copy_assignable_v<E>
+              && std::is_trivially_destructible_v<T> && std::is_trivially_destructible_v<E>
+          ? expected_assignment::trivial
+          : expected_assignment::custom;
 
+template <typename T, typename E>
+inline constexpr auto expected_move_assignment_v
+    = !expected_move_assignable_v<T, E> ? expected_assignment::unavailable
+      : std::is_trivially_move_constructible_v<T> && std::is_trivially_move_constructible_v<E>
+              && std::is_trivially_move_assignable_v<T> && std::is_trivially_move_assignable_v<E>
+              && std::is_trivially_destructible_v<T> && std::is_trivially_destructible_v<E>
+          ? expected_assignment::trivial
+          : expected_assignment::custom;
+
+template <typename T, typename E, expected_assignment Copy = expected_copy_assignment_v<T, E>>
+class expected_copy_storage : public expected_storage_common<T, E>
+{
 public:
-  using base::base;
-  expected_storage(expected_storage const&) = default;
-  expected_storage(expected_storage&&) = default;
+  using expected_storage_common<T, E>::expected_storage_common;
+};
+
+template <typename T, typename E>
+class expected_copy_storage<T, E, expected_assignment::custom> : public expected_storage_common<T, E>
+{
+public:
+  using expected_storage_common<T, E>::expected_storage_common;
+  expected_copy_storage(expected_copy_storage const&) = default;
+  expected_copy_storage(expected_copy_storage&&) = default;
   constexpr auto
-  operator=(expected_storage const& other) -> expected_storage&
+  operator=(expected_copy_storage const& other) -> expected_copy_storage&
   {
     this->copy_assign(other);
     return *this;
   }
+  auto operator=(expected_copy_storage&&) -> expected_copy_storage& = default;
+  ~expected_copy_storage() = default;
+};
+
+template <typename T, typename E>
+class expected_copy_storage<T, E, expected_assignment::unavailable> : public expected_storage_common<T, E>
+{
+public:
+  using expected_storage_common<T, E>::expected_storage_common;
+  expected_copy_storage(expected_copy_storage const&) = default;
+  expected_copy_storage(expected_copy_storage&&) = default;
+  auto operator=(expected_copy_storage const&) -> expected_copy_storage& = delete;
+  auto operator=(expected_copy_storage&&) -> expected_copy_storage& = default;
+  ~expected_copy_storage() = default;
+};
+
+template <typename T, typename E, expected_assignment Move = expected_move_assignment_v<T, E>>
+class expected_storage : public expected_copy_storage<T, E>
+{
+public:
+  using expected_copy_storage<T, E>::expected_copy_storage;
+};
+
+template <typename T, typename E>
+class expected_storage<T, E, expected_assignment::custom> : public expected_copy_storage<T, E>
+{
+public:
+  using expected_copy_storage<T, E>::expected_copy_storage;
+  expected_storage(expected_storage const&) = default;
+  expected_storage(expected_storage&&) = default;
+  auto operator=(expected_storage const&) -> expected_storage& = default;
   constexpr auto
   operator=(expected_storage&& other) noexcept(std::is_nothrow_move_constructible_v<T>
                                                && std::is_nothrow_move_constructible_v<E>
@@ -678,58 +761,19 @@ public:
     this->move_assign(std::move(other));
     return *this;
   }
+  ~expected_storage() = default;
 };
 
 template <typename T, typename E>
-class expected_storage<T, E, true, false> : public expected_storage_common<T, E>
+class expected_storage<T, E, expected_assignment::unavailable> : public expected_copy_storage<T, E>
 {
-  using base = expected_storage_common<T, E>;
-
 public:
-  using base::base;
+  using expected_copy_storage<T, E>::expected_copy_storage;
   expected_storage(expected_storage const&) = default;
   expected_storage(expected_storage&&) = default;
-  constexpr auto
-  operator=(expected_storage const& other) -> expected_storage&
-  {
-    this->copy_assign(other);
-    return *this;
-  }
+  auto operator=(expected_storage const&) -> expected_storage& = default;
   auto operator=(expected_storage&&) -> expected_storage& = delete;
-};
-
-template <typename T, typename E>
-class expected_storage<T, E, false, true> : public expected_storage_common<T, E>
-{
-  using base = expected_storage_common<T, E>;
-
-public:
-  using base::base;
-  expected_storage(expected_storage const&) = default;
-  expected_storage(expected_storage&&) = default;
-  auto operator=(expected_storage const&) -> expected_storage& = delete;
-  constexpr auto
-  operator=(expected_storage&& other) noexcept(std::is_nothrow_move_constructible_v<T>
-                                               && std::is_nothrow_move_constructible_v<E>
-                                               && std::is_nothrow_move_assignable_v<T>
-                                               && std::is_nothrow_move_assignable_v<E>) -> expected_storage&
-  {
-    this->move_assign(std::move(other));
-    return *this;
-  }
-};
-
-template <typename T, typename E>
-class expected_storage<T, E, false, false> : public expected_storage_common<T, E>
-{
-  using base = expected_storage_common<T, E>;
-
-public:
-  using base::base;
-  expected_storage(expected_storage const&) = default;
-  expected_storage(expected_storage&&) = default;
-  auto operator=(expected_storage const&) -> expected_storage& = delete;
-  auto operator=(expected_storage&&) -> expected_storage& = delete;
+  ~expected_storage() = default;
 };
 
 /// @endcond
@@ -761,12 +805,12 @@ public:
   auto operator=(expected&&) -> expected& = default;
   ~expected() = default;
 
-  template <typename U = T,
+  template <typename U = std::remove_cv_t<T>,
             std::enable_if_t<detail::expected_can_forward_v<T, E, U> && std::is_convertible_v<U, T>, int> = 0>
   constexpr expected(U&& value) : storage_(detail::expected_value_tag{}, std::forward<U>(value))
   {
   }
-  template <typename U = T,
+  template <typename U = std::remove_cv_t<T>,
             std::enable_if_t<detail::expected_can_forward_v<T, E, U> && !std::is_convertible_v<U, T>, int> = 0>
   constexpr explicit expected(U&& value) : storage_(detail::expected_value_tag{}, std::forward<U>(value))
   {
@@ -844,7 +888,7 @@ public:
   {
   }
 
-  template <typename U = T,
+  template <typename U = std::remove_cv_t<T>,
             std::enable_if_t<!std::is_same_v<detail::expected_remove_cvref_t<U>, expected>
                                  && !detail::is_unexpected_v<detail::expected_remove_cvref_t<U>>
                                  && std::is_constructible_v<T, U> && std::is_assignable_v<T&, U>
@@ -884,6 +928,11 @@ public:
   has_value() const noexcept -> bool
   {
     return storage_.has_value();
+  }
+  [[nodiscard]] constexpr auto
+  has_error() const noexcept -> bool
+  {
+    return !has_value();
   }
   constexpr explicit
   operator bool() const noexcept
@@ -974,14 +1023,14 @@ public:
     return std::move(storage_).error();
   }
 
-  template <typename U>
+  template <typename U = std::remove_cv_t<T>>
   constexpr auto
   value_or(U&& fallback) const& -> T
   {
     static_assert(std::is_copy_constructible_v<T> && std::is_convertible_v<U, T>);
     return has_value() ? storage_.value() : static_cast<T>(std::forward<U>(fallback));
   }
-  template <typename U>
+  template <typename U = std::remove_cv_t<T>>
   constexpr auto
   value_or(U&& fallback) && -> T
   {
@@ -1145,7 +1194,10 @@ public:
   }
 #endif
 
-  template <typename T2, typename E2, std::enable_if_t<!std::is_void_v<T2>, int> = 0>
+  template <typename T2, typename E2,
+            std::enable_if_t<!std::is_void_v<T2> && detail::expected_equality_comparable_v<T, T2>
+                                 && detail::expected_equality_comparable_v<E, E2>,
+                             int> = 0>
   friend constexpr auto
   operator==(expected const& lhs, expected<T2, E2> const& rhs) -> bool
   {
@@ -1155,39 +1207,16 @@ public:
       return *lhs == *rhs;
     return lhs.error() == rhs.error();
   }
-  template <typename T2, typename E2, std::enable_if_t<!std::is_void_v<T2>, int> = 0>
+  template <typename T2, typename E2,
+            std::enable_if_t<!std::is_void_v<T2> && detail::expected_equality_comparable_v<T, T2>
+                                 && detail::expected_equality_comparable_v<E, E2>,
+                             int> = 0>
   friend constexpr auto
   operator!=(expected const& lhs, expected<T2, E2> const& rhs) -> bool
   {
     return !(lhs == rhs);
   }
-  template <typename T2, std::enable_if_t<!detail::is_expected_v<T2> && !detail::is_unexpected_v<T2>, int> = 0>
-  friend constexpr auto
-  operator==(expected const& lhs, T2 const& rhs) -> bool
-  {
-    if (!lhs.has_value())
-      return false;
-    return *lhs == rhs;
-  }
-  template <typename T2, std::enable_if_t<!detail::is_expected_v<T2> && !detail::is_unexpected_v<T2>, int> = 0>
-  friend constexpr auto
-  operator==(T2 const& lhs, expected const& rhs) -> bool
-  {
-    return rhs == lhs;
-  }
-  template <typename T2, std::enable_if_t<!detail::is_expected_v<T2> && !detail::is_unexpected_v<T2>, int> = 0>
-  friend constexpr auto
-  operator!=(expected const& lhs, T2 const& rhs) -> bool
-  {
-    return !(lhs == rhs);
-  }
-  template <typename T2, std::enable_if_t<!detail::is_expected_v<T2> && !detail::is_unexpected_v<T2>, int> = 0>
-  friend constexpr auto
-  operator!=(T2 const& lhs, expected const& rhs) -> bool
-  {
-    return !(lhs == rhs);
-  }
-  template <typename E2>
+  template <typename E2, std::enable_if_t<detail::expected_equality_comparable_v<E, E2>, int> = 0>
   friend constexpr auto
   operator==(expected const& lhs, unexpected<E2> const& rhs) -> bool
   {
@@ -1195,19 +1224,19 @@ public:
       return false;
     return lhs.error() == rhs.error();
   }
-  template <typename E2>
+  template <typename E2, std::enable_if_t<detail::expected_equality_comparable_v<E, E2>, int> = 0>
   friend constexpr auto
   operator==(unexpected<E2> const& lhs, expected const& rhs) -> bool
   {
     return rhs == lhs;
   }
-  template <typename E2>
+  template <typename E2, std::enable_if_t<detail::expected_equality_comparable_v<E, E2>, int> = 0>
   friend constexpr auto
   operator!=(expected const& lhs, unexpected<E2> const& rhs) -> bool
   {
     return !(lhs == rhs);
   }
-  template <typename E2>
+  template <typename E2, std::enable_if_t<detail::expected_equality_comparable_v<E, E2>, int> = 0>
   friend constexpr auto
   operator!=(unexpected<E2> const& lhs, expected const& rhs) -> bool
   {
@@ -1230,10 +1259,11 @@ private:
   static constexpr auto
   and_then_impl(Self&& self, F&& f)
   {
-    using result_type = detail::expected_remove_cvref_t<std::invoke_result_t<F, decltype(*std::forward<Self>(self))>>;
+    using result_type
+        = detail::expected_remove_cvref_t<std::invoke_result_t<F, decltype(std::forward<Self>(self).storage_.value())>>;
     static_assert(detail::is_expected_v<result_type> && std::is_same_v<typename result_type::error_type, E>);
     if (self.has_value())
-      return result_type(std::invoke(std::forward<F>(f), *std::forward<Self>(self)));
+      return result_type(std::invoke(std::forward<F>(f), std::forward<Self>(self).storage_.value()));
     return result_type(unexpect, std::forward<Self>(self).error());
   }
   template <typename Self, typename F>
@@ -1244,26 +1274,26 @@ private:
         = detail::expected_remove_cvref_t<std::invoke_result_t<F, decltype(std::forward<Self>(self).error())>>;
     static_assert(detail::is_expected_v<result_type> && std::is_same_v<typename result_type::value_type, T>);
     if (self.has_value())
-      return result_type(std::in_place, *std::forward<Self>(self));
+      return result_type(std::in_place, std::forward<Self>(self).storage_.value());
     return result_type(std::invoke(std::forward<F>(f), std::forward<Self>(self).error()));
   }
   template <typename Self, typename F>
   static constexpr auto
   transform_impl(Self&& self, F&& f)
   {
-    using result_value = std::remove_cv_t<std::invoke_result_t<F, decltype(*std::forward<Self>(self))>>;
+    using result_value = std::remove_cv_t<std::invoke_result_t<F, decltype(std::forward<Self>(self).storage_.value())>>;
     static_assert(detail::valid_expected_value_v<result_value>);
     using result_type = expected<result_value, E>;
     if (!self.has_value())
       return result_type(unexpect, std::forward<Self>(self).error());
     if constexpr (std::is_void_v<result_value>)
       {
-        std::invoke(std::forward<F>(f), *std::forward<Self>(self));
+        std::invoke(std::forward<F>(f), std::forward<Self>(self).storage_.value());
         return result_type();
       }
     else
       return result_type(detail::expected_value_tag{}, detail::expected_invoke_tag{}, std::forward<F>(f),
-                         *std::forward<Self>(self));
+                         std::forward<Self>(self).storage_.value());
   }
   template <typename Self, typename F>
   static constexpr auto
@@ -1273,7 +1303,7 @@ private:
     static_assert(detail::valid_expected_error_v<result_error>);
     using result_type = expected<T, result_error>;
     if (self.has_value())
-      return result_type(std::in_place, *std::forward<Self>(self));
+      return result_type(std::in_place, std::forward<Self>(self).storage_.value());
     return result_type(detail::expected_error_tag{}, detail::expected_invoke_tag{}, std::forward<F>(f),
                        std::forward<Self>(self).error());
   }
@@ -1380,6 +1410,11 @@ public:
   {
     return !storage_.has_value();
   }
+  [[nodiscard]] constexpr auto
+  has_error() const noexcept -> bool
+  {
+    return !has_value();
+  }
   constexpr explicit
   operator bool() const noexcept
   {
@@ -1388,7 +1423,7 @@ public:
   constexpr void
   operator*() const noexcept
   {
-    assert(has_value());
+    require_expected_state(has_value());
   }
   constexpr void
   value() const&
@@ -1405,21 +1440,25 @@ public:
   constexpr auto
   error() & noexcept THREADSCHEDULE_LIFETIMEBOUND -> E&
   {
+    require_expected_state(has_error());
     return storage_->error;
   }
   [[nodiscard]] constexpr auto
   error() const& noexcept THREADSCHEDULE_LIFETIMEBOUND -> E const&
   {
+    require_expected_state(has_error());
     return storage_->error;
   }
   constexpr auto
   error() && noexcept THREADSCHEDULE_LIFETIMEBOUND -> E&&
   {
+    require_expected_state(has_error());
     return std::move(storage_->error);
   }
   [[nodiscard]] constexpr auto
   error() const&& noexcept THREADSCHEDULE_LIFETIMEBOUND -> E const&&
   {
+    require_expected_state(has_error());
     return std::move(storage_->error);
   }
   template <typename G = E>
@@ -1576,7 +1615,8 @@ public:
   }
 #endif
 
-  template <typename T2, typename E2, std::enable_if_t<std::is_void_v<T2>, int> = 0>
+  template <typename T2, typename E2,
+            std::enable_if_t<std::is_void_v<T2> && expected_equality_comparable_v<E, E2>, int> = 0>
   friend constexpr auto
   operator==(derived_type const& lhs, expected<T2, E2> const& rhs) -> bool
   {
@@ -1586,13 +1626,14 @@ public:
       return true;
     return lhs.error() == rhs.error();
   }
-  template <typename T2, typename E2, std::enable_if_t<std::is_void_v<T2>, int> = 0>
+  template <typename T2, typename E2,
+            std::enable_if_t<std::is_void_v<T2> && expected_equality_comparable_v<E, E2>, int> = 0>
   friend constexpr auto
   operator!=(derived_type const& lhs, expected<T2, E2> const& rhs) -> bool
   {
     return !(lhs == rhs);
   }
-  template <typename E2>
+  template <typename E2, std::enable_if_t<detail::expected_equality_comparable_v<E, E2>, int> = 0>
   friend constexpr auto
   operator==(derived_type const& lhs, unexpected<E2> const& rhs) -> bool
   {
@@ -1600,19 +1641,19 @@ public:
       return false;
     return lhs.error() == rhs.error();
   }
-  template <typename E2>
+  template <typename E2, std::enable_if_t<detail::expected_equality_comparable_v<E, E2>, int> = 0>
   friend constexpr auto
   operator==(unexpected<E2> const& lhs, derived_type const& rhs) -> bool
   {
     return rhs == lhs;
   }
-  template <typename E2>
+  template <typename E2, std::enable_if_t<detail::expected_equality_comparable_v<E, E2>, int> = 0>
   friend constexpr auto
   operator!=(derived_type const& lhs, unexpected<E2> const& rhs) -> bool
   {
     return !(lhs == rhs);
   }
-  template <typename E2>
+  template <typename E2, std::enable_if_t<detail::expected_equality_comparable_v<E, E2>, int> = 0>
   friend constexpr auto
   operator!=(unexpected<E2> const& lhs, derived_type const& rhs) -> bool
   {
@@ -1752,6 +1793,42 @@ public:
   using base::operator=;
 };
 
+// Deduce both operands before checking payload equality to avoid recursive ADL.
+template <typename T, typename E, typename T2,
+          std::enable_if_t<!detail::is_expected_v<T2> && !detail::is_unexpected_v<T2> && !std::is_void_v<T>, int> = 0,
+          std::enable_if_t<detail::expected_equality_comparable_v<T, T2>, int> = 0>
+constexpr auto
+operator==(expected<T, E> const& lhs, T2 const& rhs) -> bool
+{
+  if (!lhs.has_value())
+    return false;
+  return *lhs == rhs;
+}
+template <typename T, typename E, typename T2,
+          std::enable_if_t<!detail::is_expected_v<T2> && !detail::is_unexpected_v<T2> && !std::is_void_v<T>, int> = 0,
+          std::enable_if_t<detail::expected_equality_comparable_v<T, T2>, int> = 0>
+constexpr auto
+operator==(T2 const& lhs, expected<T, E> const& rhs) -> bool
+{
+  return rhs == lhs;
+}
+template <typename T, typename E, typename T2,
+          std::enable_if_t<!detail::is_expected_v<T2> && !detail::is_unexpected_v<T2> && !std::is_void_v<T>, int> = 0,
+          std::enable_if_t<detail::expected_equality_comparable_v<T, T2>, int> = 0>
+constexpr auto
+operator!=(expected<T, E> const& lhs, T2 const& rhs) -> bool
+{
+  return !(lhs == rhs);
+}
+template <typename T, typename E, typename T2,
+          std::enable_if_t<!detail::is_expected_v<T2> && !detail::is_unexpected_v<T2> && !std::is_void_v<T>, int> = 0,
+          std::enable_if_t<detail::expected_equality_comparable_v<T, T2>, int> = 0>
+constexpr auto
+operator!=(T2 const& lhs, expected<T, E> const& rhs) -> bool
+{
+  return !(lhs == rhs);
+}
+
 template <typename T, typename E>
 constexpr auto
 swap(expected<T, E>& lhs, expected<T, E>& rhs) noexcept(noexcept(lhs.swap(rhs))) -> decltype(lhs.swap(rhs))
@@ -1761,4 +1838,5 @@ swap(expected<T, E>& lhs, expected<T, E>& rhs) noexcept(noexcept(lhs.swap(rhs)))
 
 } // namespace threadschedule
 
+#undef THREADSCHEDULE_EXPECTED_EXCEPTION_CONSTEXPR
 #undef THREADSCHEDULE_EXPECTED_THROW
